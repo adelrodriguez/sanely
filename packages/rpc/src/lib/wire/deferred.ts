@@ -13,6 +13,8 @@ export function deferWire(
   pending: Promise<Wire>,
   onReject: (reason: unknown) => void
 ): { wire: Wire; withdraw: (data: unknown) => boolean } {
+  // The wire after it arrived, and the wire that takes sends directly once the buffer is empty.
+  let arrived: Wire | undefined
   let inner: Wire | undefined
   let listener: ((data: unknown) => void) | undefined
   let innerUnsubscribe: (() => void) | undefined = undefined
@@ -26,15 +28,21 @@ export function deferWire(
       return
     }
 
-    inner = wire
+    arrived = wire
 
     if (listener) {
       innerUnsubscribe = subscribe(wire, listener)
     }
 
-    for (const data of outbox.splice(0)) {
-      wire.send(data)
+    // Send one entry at a time. A send can end another call or close the session, so each waiting
+    // entry stays in the buffer, where `withdraw` and a detach can still reach it. A detach empties
+    // the buffer, which ends the loop. Sends that happen during the flush join the end of the
+    // buffer, so frames keep their order.
+    while (outbox.length > 0) {
+      wire.send(outbox.shift())
     }
+
+    inner = wire
   }
 
   adopt().catch((error: unknown) => {
@@ -46,8 +54,8 @@ export function deferWire(
       onMessage: (incoming) => {
         listener = incoming
 
-        if (inner) {
-          innerUnsubscribe = subscribe(inner, incoming)
+        if (arrived) {
+          innerUnsubscribe = subscribe(arrived, incoming)
         }
 
         return () => {
