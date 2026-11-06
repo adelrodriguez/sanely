@@ -1,6 +1,6 @@
 {
   "name": "@sanely/ratelimit",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Atomic rate limiting for Redis and other stores",
   "keywords": [],

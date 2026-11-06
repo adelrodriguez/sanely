@@ -28,7 +28,7 @@ Each package is a skeleton until its code moves here from the repository it repl
 1. Run `pnpm run new-package`. It asks for the name, emoji, and description, then creates `packages/<name>` from the starter.
 2. Replace the example in `src/` with the library.
 3. Add the package to the table above.
-4. When the package is ready to publish, remove `private` from its `package.json` and add it as a trusted publisher on npm for this repository's `release.yml` workflow.
+4. When the package is ready to publish, remove `private` from its `package.json` without a changeset, and add it as a trusted publisher on npm for this repository's `release.yml` workflow. After the merge, `release.yml` publishes version `0.0.1`.
 
 ## Layout
 

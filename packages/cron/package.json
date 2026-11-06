@@ -1,6 +1,6 @@
 {
   "name": "@sanely/cron",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "A small, type-safe English-like language that compiles to exact cron expressions",
   "keywords": [],
