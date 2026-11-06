@@ -420,8 +420,10 @@ does not fail the evaluation.
 
 Each gate factory calls `subscribe` at most once at a time. Invalidation and
 `gate.changes` listeners share that one attachment. After the first evaluation that uses
-the cache or request coalescing, the factory stays attached. A factory that only
-`gate.changes` listeners use calls the detach function when the last listener leaves.
+the cache or request coalescing, the factory stays attached. The factory also stays
+attached after a [React gate cache](#control-the-react-gate-cache) first stores one of its
+evaluations. A factory that only `gate.changes` listeners use calls the detach function
+when the last listener leaves.
 
 ### Share concurrent provider work
 
@@ -544,7 +546,8 @@ cache.clear()
 
 Provider change notifications invalidate matching entries automatically when the gate
 factory has a [`subscribe` function](#invalidate-on-provider-changes). Components that read
-the changed flags re-evaluate.
+the changed flags re-evaluate. Entries from `prefetch` and `prefetchBatch`, and entries that
+no mounted component reads, re-evaluate on their next read.
 
 Pass the cache and an identity to `GateProvider`:
 

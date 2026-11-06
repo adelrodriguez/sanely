@@ -15,7 +15,7 @@ import type {
   GateEvaluator,
   Identity,
 } from "#lib/types/index.ts"
-import { getEvaluatorRecord } from "#lib/gate/registry.ts"
+import { type EvaluatorFactoryRef, getEvaluatorRecord } from "#lib/gate/registry.ts"
 import { evictOnRejection, type GateCacheOptions } from "#lib/promise-cache/index.ts"
 import { type GateCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
 import { ForeignGateEvaluatorError } from "#lib/shared/errors.ts"
@@ -65,11 +65,24 @@ type VersionStore = {
   subscribe: (listener: () => void) => () => void
 }
 
+/**
+ * Counts the change notifications of one gate factory and records when each flag last changed. It
+ * listens for the lifetime of the factory, so it also covers entries that no component reads.
+ */
+type ChangeClock = { allChangedAt: number; changedAt: Map<string, number>; count: number }
+
+/**
+ * The flags of one cache entry and the change count when its evaluation started. A read drops the
+ * entry when one of these flags changed later.
+ */
+type ChangeWatch = { clock: ChangeClock; keys: readonly string[]; since: number }
+
 type CacheEntry = {
   expiresAt?: number
   pendingExpiresAt?: number
   promise: Promise<unknown>
   settled: boolean
+  watch?: ChangeWatch
 }
 
 type Bucket = {
@@ -176,6 +189,37 @@ function getBatchBucket(cache: InternalGateCache, flags: readonly AnyGateEvaluat
   return bucket
 }
 
+const changeClocks = new WeakMap<EvaluatorFactoryRef, ChangeClock>()
+
+function getChangeClock(ref: EvaluatorFactoryRef): ChangeClock {
+  const existing = changeClocks.get(ref)
+  if (existing) return existing
+  const clock: ChangeClock = { allChangedAt: 0, changedAt: new Map(), count: 0 }
+  // Never detached: an entry can outlive every component that reads it, in any gate cache.
+  ref.changes.subscribe((keys) => {
+    clock.count += 1
+    if (keys === undefined) {
+      clock.allChangedAt = clock.count
+      return
+    }
+    for (const key of keys) clock.changedAt.set(key, clock.count)
+  })
+  changeClocks.set(ref, clock)
+  return clock
+}
+
+function watchChanges(flags: readonly object[]): ChangeWatch | undefined {
+  const records = flags.map((flag) => getEvaluatorRecord(flag))
+  const ref = records[0]?.factoryRef
+  if (!ref) return undefined
+  const clock = getChangeClock(ref)
+  return { clock, keys: records.map((record) => record?.options.key ?? ""), since: clock.count }
+}
+
+function changedSince({ clock, keys, since }: ChangeWatch): boolean {
+  return clock.allChangedAt > since || keys.some((key) => (clock.changedAt.get(key) ?? 0) > since)
+}
+
 function deleteAndBump(bucket: Bucket, key: string): void {
   bucket.entries.delete(key)
   bucket.stores.get(key)?.bump()
@@ -188,6 +232,7 @@ function readEntry(bucket: Bucket, key: string): Promise<unknown> | undefined {
   if (
     (!entry.settled && entry.pendingExpiresAt !== undefined && now >= entry.pendingExpiresAt)
     || (entry.settled && entry.expiresAt !== undefined && now >= entry.expiresAt)
+    || (entry.watch !== undefined && changedSince(entry.watch))
   ) {
     bucket.entries.delete(key)
     return undefined
@@ -202,7 +247,8 @@ function setEntry(
   bucket: Bucket,
   key: string,
   promise: Promise<unknown>,
-  ttlMs?: number
+  ttlMs: number | undefined,
+  watch: ChangeWatch | undefined
 ): Promise<unknown> {
   const entry: CacheEntry = {
     pendingExpiresAt:
@@ -211,6 +257,7 @@ function setEntry(
         : Date.now() + cache.options.pendingTtlMs,
     promise,
     settled: false,
+    watch,
   }
   bucket.entries.set(key, entry)
   void promise.then(
@@ -314,7 +361,8 @@ export function createGateCache(options: ReactGateCacheOptions = {}): ReactGateC
         bucket,
         key,
         () => evaluateFlag(flag, prefetchOptions.identity),
-        prefetchOptions.ttlMs
+        prefetchOptions.ttlMs,
+        watchChanges([flag])
       )
       await promise
     },
@@ -328,7 +376,8 @@ export function createGateCache(options: ReactGateCacheOptions = {}): ReactGateC
         bucket,
         key,
         () => evaluateBatch(flags, prefetchOptions.identity),
-        prefetchOptions.ttlMs
+        prefetchOptions.ttlMs,
+        watchChanges(flags)
       )
       await promise
     },
@@ -342,14 +391,15 @@ function createCachedEvaluation(
   bucket: Bucket,
   key: string,
   evaluate: () => Promise<unknown>,
-  ttlMs?: number
+  ttlMs: number | undefined,
+  watch: ChangeWatch | undefined
 ): Promise<unknown> {
   const cachedEvaluation = evictOnRejection(evaluate(), () => {
     setTimeout(() => {
       if (readEntry(bucket, key) === cachedEvaluation) bucket.entries.delete(key)
     }, 0)
   })
-  return setEntry(cache, bucket, key, cachedEvaluation, ttlMs)
+  return setEntry(cache, bucket, key, cachedEvaluation, ttlMs, watch)
 }
 
 // `binding` marks the identity of a `createGateHooks` provider, so its hooks never read an
@@ -543,7 +593,8 @@ function useGateWithIdentity(
     evaluator
       ? () => evaluateFlag(input as AnyGateEvaluator, identity)
       : (input as () => Promise<unknown>),
-    options.ttlMs
+    options.ttlMs,
+    evaluator ? watchChanges([input]) : undefined
   )
   const result = use(promise)
   return evaluator && !options.details
@@ -584,7 +635,8 @@ function useGateBatchWithIdentity<const TFlags extends readonly AnyGateEvaluator
     bucket,
     key,
     () => evaluateBatch(flags, identity),
-    ttlMs
+    ttlMs,
+    watchChanges(flags)
   )
   return use(promise) as GateBatchValuesOf<TFlags>
 }

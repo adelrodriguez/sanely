@@ -65,6 +65,7 @@ export type GatedConfig<TIdentity extends Identity = Identity> = {
    * Attaches to provider flag changes and returns a detach function. A gate factory attaches it at
    * most once at a time and shares that attachment between invalidation and `changes` listeners. A
    * factory with a cache or request coalescing stays attached after its first evaluation. A factory
+   * also stays attached after a React gate cache first stores one of its evaluations. A factory
    * that only `changes` listeners use detaches when the last listener leaves.
    */
   subscribe?: (notify: (change: GateChange) => void) => () => void
