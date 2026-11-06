@@ -10,18 +10,18 @@ Sanely is a pnpm and Turborepo monorepo for the `@sanely/*` libraries. Each pack
 
 ## Packages
 
-Each package is a skeleton until its code moves here from the repository it replaces.
+Migrated packages contain their source libraries. The other packages still contain the starter.
 
-| Package                                   | Replaces                                                  |
-| ----------------------------------------- | --------------------------------------------------------- |
-| [`@sanely/try`](packages/try)             | [`tryharder`](https://github.com/adelrodriguez/tryharder) |
-| [`@sanely/errors`](packages/errors)       | [`faultier`](https://github.com/adelrodriguez/faultier)   |
-| [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     |
-| [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         |
-| [`@sanely/duration`](packages/duration)   | [`humanspan`](https://github.com/adelrodriguez/humanspan) |
-| [`@sanely/cron`](packages/cron)           | [`plaincron`](https://github.com/adelrodriguez/plaincron) |
-| [`@sanely/rpc`](packages/rpc)             | [`typedport`](https://github.com/adelrodriguez/typedport) |
-| [`@sanely/skew`](packages/skew)           | [`crispen`](https://github.com/adelrodriguez/crispen)     |
+| Package                                   | Replaces                                                  | Status   |
+| ----------------------------------------- | --------------------------------------------------------- | -------- |
+| [`@sanely/try`](packages/try)             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Starter  |
+| [`@sanely/errors`](packages/errors)       | [`faultier`](https://github.com/adelrodriguez/faultier)   | Starter  |
+| [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     | Starter  |
+| [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         | Starter  |
+| [`@sanely/duration`](packages/duration)   | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Starter  |
+| [`@sanely/cron`](packages/cron)           | [`plaincron`](https://github.com/adelrodriguez/plaincron) | Migrated |
+| [`@sanely/rpc`](packages/rpc)             | [`typedport`](https://github.com/adelrodriguez/typedport) | Starter  |
+| [`@sanely/skew`](packages/skew)           | [`crispen`](https://github.com/adelrodriguez/crispen)     | Starter  |
 
 ## Add a package
 
