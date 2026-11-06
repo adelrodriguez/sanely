@@ -1,6 +1,6 @@
 # API reference
 
-typedport has four entry points:
+`@sanely/rpc` has four entry points:
 
 - `@sanely/rpc`
 - `@sanely/rpc/wire`
@@ -163,7 +163,7 @@ Returns `true` if `node` is a leaf.
 
 ### `ChannelError`
 
-The class of every failure that typedport raises during a call. `code` selects the extra fields.
+The class of every failure that the package raises during a call. `code` selects the extra fields.
 
 | `code`               | Raised when                                                    | Extra fields        |
 | -------------------- | -------------------------------------------------------------- | ------------------- |

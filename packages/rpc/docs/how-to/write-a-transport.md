@@ -1,6 +1,6 @@
 # How to write your own transport
 
-A transport is a function with the signature `(path, payload, options?) => result`. typedport doesn't ship transports. You write them in your code, and most fit on one line:
+A transport is a function with the signature `(path, payload, options?) => result`. The package ships no transport functions. You write them in your code, and most fit on one line. The last example builds one with `connect`, which turns a wire into a transport:
 
 ```typescript
 const memory = router.dispatch

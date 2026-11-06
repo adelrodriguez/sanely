@@ -22,7 +22,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
      })
      const push = createClient(pushContract, transport) // calls into the renderer
 
-     sendPort(win, port2, "typedport:port")
+     sendPort(win, port2, "rpc:port")
      port1.on("close", () => close(new Error("port disconnected")))
      win.on("closed", () => close(new Error("window closed")))
 
@@ -38,7 +38,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    import { relayPort } from "@sanely/rpc/wire/message-port"
    import { ipcRenderer } from "electron"
 
-   relayPort(ipcRenderer, "typedport:port")
+   relayPort(ipcRenderer, "rpc:port")
    ```
 
 3. In the renderer, pass `connect` the port that `receivePort` will deliver. `api` works as soon as the module loads. Calls made before the port arrives wait for it. Give `receivePort` a `signal` so the wait ends if the port never comes. Its rejection closes the connection.
@@ -52,7 +52,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
      // ... resolvers for calls from main
    })
 
-   const port = receivePort("typedport:port", { signal: AbortSignal.timeout(10_000) })
+   const port = receivePort("rpc:port", { signal: AbortSignal.timeout(10_000) })
 
    const { transport } = connect(port.then(domPort), {
      router: pushRouter,

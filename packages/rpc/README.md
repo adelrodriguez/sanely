@@ -1,14 +1,14 @@
 <p align="center">
-  <h1 align="center">🚌 <code>typedport</code></h1>
+  <h1 align="center">🚌 <code>@sanely/rpc</code></h1>
   <p align="center">
     <strong>Type-safe RPC over any transport</strong>
   </p>
 </p>
 
 > [!WARNING]
-> typedport is pre-1.0. Expect breaking changes in minor releases.
+> `@sanely/rpc` is pre-1.0. Expect breaking changes in minor releases.
 
-You write a contract once, as a tree of schemas. typedport turns it into two things. The caller gets a typed client, where `client.files.open()` is a function call. The receiver gets a router that validates every input before your code sees it.
+You write a contract once, as a tree of schemas. The package turns it into two things. The caller gets a typed client, where `client.files.open()` is a function call. The receiver gets a router that validates every input before your code sees it.
 
 What sits between them is up to you. A transport is one function, `(path, payload) => result`, so the same contract runs over Electron IPC, a worker thread, a WebSocket, an HTTP endpoint, a message queue, or a direct in-memory call.
 
@@ -21,77 +21,16 @@ What sits between them is up to you. A transport is one function, `(path, payloa
 ## Install
 
 ```bash
-pnpm add @sanely/rpc
+npm install @sanely/rpc
 ```
 
-Add a schema library too. These docs use Zod.
-
-## Build your first contract
-
-In this section, we build a contract with two channels, serve it, and call it. Everything runs in one process, so we need no server and no network.
-
-Create `rpc.mts` and define the contract. The `.mts` extension makes the file an ES module, which the top-level `await` calls below need. It has one round trip, `greetings.hello`, which returns a string, and one one-way channel, `log`, which returns nothing:
-
-```typescript
-import { ChannelError, channel, createClient, createRouter, defineContract } from "@sanely/rpc"
-import * as z from "zod"
-
-const contract = defineContract({
-  greetings: {
-    hello: channel({ input: z.object({ name: z.string() }), output: z.string() }),
-  },
-  log: channel(z.string()),
-})
-```
-
-Now implement it with a router. Each key is a dotted path from the contract. Hover over `name` or `message` in your editor, and you see that TypeScript already knows their types:
-
-```typescript
-const router = createRouter(contract, {
-  "greetings.hello": ({ input: { name } }) => `Hello, ${name}!`,
-  log: ({ input: message }) => {
-    console.log("server got:", message)
-  },
-})
-```
-
-Next, create a client. A client needs a transport, and `router.dispatch` is already one, so we pass it in directly:
-
-```typescript
-const client = createClient(contract, router.dispatch)
-
-console.log(await client.greetings.hello({ name: "Ada" }))
-await client.log("ping")
-```
-
-Run the file with `npx tsx rpc.mts`. You see:
-
-```text
-Hello, Ada!
-server got: ping
-```
-
-Finally, send the router a bad input. The client won't let us, because `{ name: 42 }` is a type error and the client also parses the input at runtime. So we call `router.dispatch` directly, the way an untrusted sender would:
-
-```typescript
-try {
-  await router.dispatch("greetings.hello", { name: 42 })
-} catch (error) {
-  if (error instanceof ChannelError && error.code === "validation") {
-    console.log("rejected:", error.issues[0]?.message)
-  }
-}
-```
-
-Run the file again. The resolver never runs, and you see a new line:
-
-```text
-rejected: Invalid input: expected string, received number
-```
-
-We now have a contract, a router that guards it, and a typed client. To move the router into another process, replace `router.dispatch` with a transport that crosses the boundary. The guides below show how.
+Add a [Standard Schema](https://standardschema.dev) library too. These docs use Zod.
 
 ## Documentation
+
+Tutorial:
+
+- [Build your first contract](./docs/tutorials/build-your-first-contract.md)
 
 How-to guides:
 
@@ -107,10 +46,10 @@ Reference:
 
 - [API reference](./docs/reference.md)
 
-Background:
+Explanation:
 
-- [About validation and trust](./docs/validation-and-trust.md)
+- [About validation and trust](./docs/explanation/validation-and-trust.md)
 
 ## License
 
-MIT
+MIT. See [LICENSE](../../LICENSE).

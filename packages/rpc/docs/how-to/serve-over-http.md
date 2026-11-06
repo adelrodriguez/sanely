@@ -66,4 +66,4 @@ toWire(router.dispatch(path, payload), {
 
 If a proxy returns an HTML error page, `response.json()` throws a `SyntaxError` before `fromWire` runs. If the body is valid JSON but not an envelope, `fromWire` throws a `ChannelError` with code `malformed-envelope`.
 
-Put auth headers, retries, and anything else HTTP-specific in the transport function. The rest of typedport never sees them.
+Put auth headers, retries, and anything else HTTP-specific in the transport function. The rest of the package never sees them.

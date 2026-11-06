@@ -1,6 +1,6 @@
 # About validation and trust
 
-typedport makes one promise on every transport: no resolver runs on input that hasn't been parsed. This page explains where the parsing happens, why input gets parsed twice, and what the library leaves to you.
+`@sanely/rpc` makes one promise on every transport: no resolver runs on input that hasn't been parsed. This page explains where the parsing happens, why input gets parsed twice, and what the library leaves to you.
 
 ## Why input is parsed twice
 
@@ -16,7 +16,7 @@ The router's parse is for the server. The sender might not be your client at all
 
 The router parses a round-trip resolver's return value against `output` before sending it. A resolver that drifts off contract fails on the server, as `output-validation`, where the bug lives. The caller never sees the bad value.
 
-The client doesn't parse results. When a typedport router is on the other end, the router already did, and parsing again would cost time for nothing. But when something else answers, such as a plain HTTP endpoint or a test mock, the client's return type is only a claim. If you don't trust the peer, parse the result yourself. Every round-trip leaf carries its output schema as `$output`:
+The client doesn't parse results. When a router from this package is on the other end, the router already did, and parsing again would cost time for nothing. But when something else answers, such as a plain HTTP endpoint or a test mock, the client's return type is only a claim. If you don't trust the peer, parse the result yourself. Every round-trip leaf carries its output schema as `$output`:
 
 ```typescript
 import { parseWith } from "@sanely/rpc"
@@ -27,7 +27,7 @@ const file = await parseWith(api.files.open.$output, raw)
 
 ## Who proves the sender's identity
 
-Not typedport. Parsing proves that a message has the right shape. It says nothing about who sent it. That job belongs to the transport, because only the transport knows what identity means at its boundary.
+Not the package. Parsing proves that a message has the right shape. It says nothing about who sent it. That job belongs to the transport, because only the transport knows what identity means at its boundary.
 
 - An HTTP edge checks a session cookie, a bearer token, or a signature such as QStash's `Upstash-Signature` header.
 - An Electron edge relies on process identity. It can also check `event.senderFrame`, and it can use `router.channels` as an allowlist of IPC channel names.

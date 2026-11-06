@@ -27,7 +27,7 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    // preload.ts
    import { contextBridge, ipcRenderer } from "electron"
 
-   contextBridge.exposeInMainWorld("typedport", {
+   contextBridge.exposeInMainWorld("rpc", {
      send: (path: string, payload: unknown) => ipcRenderer.invoke(path, payload),
    })
    ```
@@ -39,9 +39,7 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    import { createClient } from "@sanely/rpc"
    import { contract } from "./contract"
 
-   export const api = createClient(contract, (path, payload) =>
-     window.typedport.send(path, payload)
-   )
+   export const api = createClient(contract, (path, payload) => window.rpc.send(path, payload))
    ```
 
 One-way channels use `invoke` too. The empty reply costs little and keeps the transport to one function.
@@ -58,6 +56,6 @@ ipcMain.handle(channel, (_event, payload) => toWire(router.dispatch(channel, pay
 
 // renderer.ts
 export const api = createClient(contract, async (path, payload) =>
-  fromWire(await window.typedport.send(path, payload))
+  fromWire(await window.rpc.send(path, payload))
 )
 ```
