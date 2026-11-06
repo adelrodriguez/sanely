@@ -1,5 +1,5 @@
 import { Panic, TimeoutError } from "#lib/errors.ts"
-import { invariant, resolveWithAbort } from "#lib/utils.ts"
+import { discardOutcome, invariant, resolveWithAbort } from "#lib/utils.ts"
 import { defineDisposeAlias } from "#shims/disposer.ts"
 
 /**
@@ -88,13 +88,10 @@ export class TimeoutController {
       return promise
     }
 
-    if (this.#remaining <= 0) {
-      return Promise.resolve(this.#abort(cause))
-    }
-
     const timedOut = this.checkDidTimeout(cause)
 
     if (timedOut) {
+      discardOutcome(promise)
       return Promise.resolve(timedOut)
     }
 
