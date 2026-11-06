@@ -7,10 +7,16 @@ type GenErrors<TYield> = Extract<Awaited<TYield>, Error>
 type CheckIsAsync<TYield, TReturn> =
   Extract<TYield | TReturn, PromiseLike<unknown>> extends never ? false : true
 
+type GenOutcome<TYield, TReturn> = Awaited<TReturn> | GenErrors<TYield>
+
+/**
+ * A generator that can reach a promise still returns a plain value when it short-circuits or
+ * returns before it reaches one, so the result is a value or a promise of that value.
+ */
 export type GenResult<TYield, TReturn> =
   CheckIsAsync<TYield, TReturn> extends true
-    ? Promise<Awaited<TReturn> | GenErrors<TYield>>
-    : Awaited<TReturn> | GenErrors<TYield>
+    ? GenOutcome<TYield, TReturn> | Promise<GenOutcome<TYield, TReturn>>
+    : GenOutcome<TYield, TReturn>
 
 function* use<T>(value: T): Generator<T, GenUnwrap<T>, GenUnwrap<T>> {
   return yield value
