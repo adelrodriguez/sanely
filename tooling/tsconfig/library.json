@@ -2,5 +2,5 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./base.json",
   "display": "Library",
-  "include": ["${configDir}/src", "${configDir}/*.config.ts"]
+  "include": ["${configDir}/src", "${configDir}/scripts", "${configDir}/*.config.ts"]
 }
