@@ -1,9 +1,14 @@
 {
   "name": "@sanely/skew",
   "version": "0.0.1",
-  "private": true,
   "description": "Keep your deployments fresh",
-  "keywords": [],
+  "keywords": [
+    "deployment",
+    "react-hook",
+    "stale-client",
+    "version-skew",
+    "vite-plugin"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/skew#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -19,23 +24,31 @@
     "dist"
   ],
   "type": "module",
-  "sideEffects": false,
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "imports": {
     "#*": "./src/*"
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/integrations/react/index.d.ts",
+      "import": "./dist/integrations/react/index.js"
+    },
+    "./vite": {
+      "types": "./dist/adapters/vite/index.d.ts",
+      "import": "./dist/adapters/vite/index.js"
+    },
+    "./next": {
+      "types": "./dist/adapters/next/index.d.ts",
+      "import": "./dist/adapters/next/index.js"
     }
   },
   "scripts": {
     "build": "tsdown",
     "build:debug": "tsdown --no-minify --sourcemap",
-    "build:verify": "node ../../scripts/verify-build.ts",
+    "build:verify": "node scripts/verify-package-contract.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
@@ -43,14 +56,38 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "20.11.2",
+    "@testing-library/react": "16.3.2",
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.3",
     "@vitest/coverage-v8": "catalog:",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "tsdown": "catalog:",
     "typescript": "catalog:",
+    "vite": "8.3.5",
     "vitest": "catalog:"
   },
+  "peerDependencies": {
+    "next": ">=15",
+    "react": ">=18",
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24"
   }
 }

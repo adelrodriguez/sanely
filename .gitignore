@@ -43,3 +43,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # benchmark artifacts
 bench-results
+
+# fixture apps that the @sanely/skew Next.js adapter test builds and removes
+.next-adapter-test-*
