@@ -647,6 +647,8 @@ describe("retry give-up and catch contract", () => {
       expect(result).toBeInstanceOf(TimeoutError)
       expect(attempts).toBe(1)
       expect(caught).toHaveLength(0)
+      // The retry delay timer must not outlive the execution.
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
@@ -800,6 +802,8 @@ describe("timeout and cancellation behavior", () => {
       expect(result).toBeInstanceOf(CancellationError)
       expect(result.cause).toBe(reason)
       expect(attempts).toBe(1)
+      // The retry delay timer must not outlive the execution.
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
