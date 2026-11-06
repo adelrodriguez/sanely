@@ -3,7 +3,7 @@ import type { BuilderConfig } from "#lib/builder.ts"
 import { Panic } from "#errors.ts"
 import { BaseExecution } from "#lib/execution/base.ts"
 import { calculateRetryDelay, retryOptions } from "#lib/policies/retry.ts"
-import { assertUnreachable, resolveWithAbort, sleep } from "#lib/utils.ts"
+import { assertUnreachable, resolveWithAbort } from "#lib/utils.ts"
 
 // Coverage-only tests for internal helper and guard branches that are not
 // practical to exercise through the public API without heavy contrivance.
@@ -131,15 +131,6 @@ describe("coverage exceptions", () => {
       expect((thrown as Panic).message).toContain("Unreachable case: unexpected")
     })
 
-    it("resolves without scheduling a timer when sleep receives zero or less", async () => {
-      vi.useFakeTimers()
-
-      const pending = [sleep(0), sleep(-1)]
-
-      expect(vi.getTimerCount()).toBe(0)
-      await expect(Promise.all(pending)).resolves.toEqual([undefined, undefined])
-    })
-
     it("returns the abort result and observes the input rejection when the signal is already aborted", async () => {
       const controller = new AbortController()
       controller.abort(new Error("stop"))
@@ -158,7 +149,9 @@ describe("coverage exceptions", () => {
           return "aborted" as const
         })
 
-        await sleep(1)
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0)
+        })
 
         expect(result).toBe("aborted")
         expect(abortFactoryCalls).toBe(1)

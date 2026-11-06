@@ -10,7 +10,6 @@ import {
 import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
 import { SignalController } from "#lib/policies/signal.ts"
 import { TimeoutController } from "#lib/policies/timeout.ts"
-import { sleep } from "#lib/utils.ts"
 import { defineDisposeAlias } from "#shims/disposer.ts"
 import type { TryCtx } from "./context"
 
@@ -185,13 +184,22 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       return undefined
     }
 
-    const sleepResult = await this.race(sleep(delay))
+    const { promise: delayElapsed, resolve } = Promise.withResolvers()
+    const timer = setTimeout(resolve, delay)
 
-    if (sleepResult instanceof CancellationError || sleepResult instanceof TimeoutError) {
-      return sleepResult
+    try {
+      const delayResult = await this.race(delayElapsed)
+
+      if (delayResult instanceof CancellationError || delayResult instanceof TimeoutError) {
+        return delayResult
+      }
+
+      return undefined
+    } finally {
+      // A timeout or cancellation can end the wait before the timer fires. Clear the timer so it
+      // does not keep the process alive after the execution returns.
+      clearTimeout(timer)
     }
-
-    return undefined
   }
 
   /**

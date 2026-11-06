@@ -11,16 +11,6 @@ export function invariant(condition: unknown, error: Error): asserts condition {
   }
 }
 
-export function sleep(ms: number): Promise<void> {
-  if (ms <= 0) {
-    return Promise.resolve()
-  }
-
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
 export function checkIsPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     (typeof value === "object" || typeof value === "function")
