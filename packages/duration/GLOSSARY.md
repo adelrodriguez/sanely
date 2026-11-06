@@ -1,6 +1,6 @@
-# Humanspan
+# `@sanely/duration`
 
-Humanspan is a zero-dependency TypeScript package that converts human-readable time expressions to numeric durations and formats numeric durations as human-readable expressions.
+`@sanely/duration` is a zero-dependency TypeScript package that converts human-readable time expressions to numeric durations and formats numeric durations as human-readable expressions.
 
 ## Language
 
@@ -49,5 +49,5 @@ The maximum number of segments that `format` returns.
 _Avoid_: Decimal precision, accuracy
 
 **Package consumer**:
-A person or project that installs and uses Humanspan.
+A person or project that installs and uses `@sanely/duration`.
 _Avoid_: User, package author
