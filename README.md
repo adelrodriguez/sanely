@@ -1,5 +1,5 @@
 <div align="center">
-  <h1 align="center">🧘 <code>sanely</code></h1>
+  <h1 align="center">🎐 <code>sanely</code></h1>
 
   <p align="center">
     <strong>TypeScript libraries with sane defaults</strong>
