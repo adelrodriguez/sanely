@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type {
+  DecisionCache,
   DecisionCacheErrorReport,
   Decision,
   HookContext,
@@ -22,6 +23,25 @@ function createDeferred<T>() {
 async function flushBackground(): Promise<void> {
   await sleep(0)
   await sleep(0)
+}
+
+// A cached boolean gate whose provider value and change notifications the test controls.
+function changingGate(cache: DecisionCache) {
+  const provider = {
+    notify: (_change: { keys?: readonly string[] }): void => undefined,
+    value: true,
+  }
+  const decide = vi.fn((): Decision => ({ type: "boolean", value: provider.value }))
+  const gate = buildGate({
+    cache,
+    decide,
+    identify: () => ({ distinctId: "user123" }),
+    subscribe: (listener) => {
+      provider.notify = listener
+      return () => null
+    },
+  })
+  return { decide, evaluator: gate({ defaultValue: false, key: "beta-access" }), provider }
 }
 
 describe("observer hook lifecycle", () => {
@@ -528,6 +548,85 @@ describe("first-class cache", () => {
     await flushBackground()
     expect(decide).toHaveBeenCalledTimes(2)
     expect(set).toHaveBeenCalledTimes(1)
+  })
+
+  test("does not restore a decision whose write was in flight during a change", async () => {
+    const stored = new Map<string, Decision>()
+    const write = createDeferred<null>()
+    const writeStarted = createDeferred<null>()
+    const { evaluator, provider } = changingGate({
+      delete: (key) => Promise.resolve(stored.delete(key)),
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: async (key, value) => {
+        writeStarted.resolve(null)
+        await write.promise
+        stored.set(key, value)
+      },
+    })
+
+    expect(await evaluator()).toBe(true)
+    await writeStarted.promise
+    provider.value = false
+    provider.notify({ keys: ["beta-access"] })
+    await flushBackground()
+    write.resolve(null)
+    await flushBackground()
+
+    expect(await evaluator()).toBe(false)
+  })
+
+  test("keeps a newer write when an older write finishes after a change", async () => {
+    const stored = new Map<string, Decision>()
+    const firstWrite = createDeferred<null>()
+    const firstWriteStarted = createDeferred<null>()
+    let writes = 0
+    const { decide, evaluator, provider } = changingGate({
+      delete: (key) => Promise.resolve(stored.delete(key)),
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: async (key, value) => {
+        writes += 1
+        if (writes === 1) {
+          firstWriteStarted.resolve(null)
+          await firstWrite.promise
+        }
+        stored.set(key, value)
+      },
+    })
+
+    expect(await evaluator()).toBe(true)
+    await firstWriteStarted.promise
+    provider.value = false
+    provider.notify({ keys: ["beta-access"] })
+    expect(await evaluator()).toBe(false)
+    firstWrite.resolve(null)
+    await flushBackground()
+
+    expect(await evaluator.details()).toMatchObject({ source: "cache", value: false })
+    expect(decide).toHaveBeenCalledTimes(2)
+  })
+
+  test("does not read a decision while the delete for a change is in flight", async () => {
+    const stored = new Map<string, Decision>()
+    const deletion = createDeferred<null>()
+    const { evaluator, provider } = changingGate({
+      delete: async (key) => {
+        await deletion.promise
+        return stored.delete(key)
+      },
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: (key, value) => {
+        stored.set(key, value)
+        return Promise.resolve()
+      },
+    })
+
+    expect(await evaluator()).toBe(true)
+    await flushBackground()
+    provider.value = false
+    provider.notify({ keys: ["beta-access"] })
+
+    expect(await evaluator()).toBe(false)
+    deletion.resolve(null)
   })
 
   test("does not read or write the cache for an anonymous identity", async () => {
