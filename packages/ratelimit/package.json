@@ -1,9 +1,20 @@
 {
   "name": "@sanely/ratelimit",
   "version": "0.0.1",
-  "private": true,
-  "description": "Atomic rate limiting for Redis and other stores",
-  "keywords": [],
+  "description": "Atomic rate limiting with pluggable stores",
+  "keywords": [
+    "bun",
+    "fixed-window",
+    "ioredis",
+    "rate-limit",
+    "rate-limiting",
+    "ratelimit",
+    "redis",
+    "sliding-window",
+    "token-bucket",
+    "upstash",
+    "valkey"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/ratelimit#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -30,27 +41,61 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./stores/memory": {
+      "types": "./dist/stores/memory.d.ts",
+      "import": "./dist/stores/memory.js",
+      "default": "./dist/stores/memory.js"
+    },
+    "./stores/bun-redis": {
+      "types": "./dist/stores/bun-redis.d.ts",
+      "import": "./dist/stores/bun-redis.js",
+      "default": "./dist/stores/bun-redis.js"
+    },
+    "./stores/redis": {
+      "types": "./dist/stores/redis.d.ts",
+      "import": "./dist/stores/redis.js",
+      "default": "./dist/stores/redis.js"
+    },
+    "./stores/valkey": {
+      "types": "./dist/stores/valkey.d.ts",
+      "import": "./dist/stores/valkey.js",
+      "default": "./dist/stores/valkey.js"
     }
   },
   "scripts": {
+    "bench": "vitest bench --run --project \"unit (bench)\" --experimental.viteModuleRunner=false",
+    "bench:bun-redis-store": "bun --bun vitest bench --run --project \"bun-redis-store (bench)\"",
+    "bench:redis-store": "vitest bench --run --project \"redis-store (bench)\"",
+    "bench:valkey-store": "vitest bench --run --project \"valkey-store (bench)\"",
     "build": "tsdown",
     "build:debug": "tsdown --no-minify --sourcemap",
-    "build:verify": "node ../../scripts/verify-build.ts",
+    "build:verify": "node ../../scripts/verify-build.ts && node scripts/verify-package.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
-    "test": "vitest run",
-    "test:compat": "node ../../scripts/compat-smoke.mjs",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test": "vitest run --project unit",
+    "test:bun-redis-store": "bun --bun vitest run --project bun-redis-store",
+    "test:compat": "node scripts/compat/node.mjs dist",
+    "test:compat:bun": "bun scripts/compat/bun.mjs dist",
+    "test:coverage": "vitest run --project unit --coverage",
+    "test:redis-store": "vitest run --project redis-store",
+    "test:valkey-store": "vitest run --project valkey-store",
+    "test:watch": "vitest --project unit"
   },
   "devDependencies": {
     "@tooling/tsconfig": "workspace:*",
+    "@types/bun": "1.4.4",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "ioredis": "6.0.0",
+    "iovalkey": "0.4.0",
+    "redis": "6.3.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
+    "unplugin-macros": "0.23.3",
     "vitest": "catalog:"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "bun": ">=1.4.0",
+    "node": ">=22.0.0"
   }
 }

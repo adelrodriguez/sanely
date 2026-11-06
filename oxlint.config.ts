@@ -4,6 +4,12 @@ import react from "adamantite/lint/react"
 import reactStrict from "adamantite/lint/react-strict"
 import { defineConfig } from "oxlint"
 
+// Every folder in `packages/ratelimit/src/lib` bans this pattern.
+const ratelimitEntryPoints = {
+  group: ["#index.ts", "#stores/**"],
+  message: "lib must not import an entry point.",
+}
+
 export default defineConfig({
   extends: [core, custom()],
   ignorePatterns: core.ignorePatterns,
@@ -121,6 +127,145 @@ export default defineConfig({
           },
         ],
       },
+    },
+    // Dependencies inside `packages/ratelimit/src/lib` point one way, as its docs/architecture.md
+    // describes:
+    //
+    //   options, expiring-map <- algorithms <- store <- transitions <- stores/*
+    //                                                <- limiter
+    //
+    // These rules follow the generic `src/lib` rules above, because a later override replaces the
+    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` for that reason. A
+    // folder without a rule of its own may import nothing else in lib. The last rule lets tests
+    // cross these lines.
+    {
+      files: ["packages/ratelimit/src/lib/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/**"],
+                message:
+                  "This folder has no layer. Add its rule to oxlint.config.ts and its place to packages/ratelimit/docs/architecture.md.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: [
+        "packages/ratelimit/src/lib/options/**/*.ts",
+        "packages/ratelimit/src/lib/expiring-map/**/*.ts",
+      ],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/**"],
+                message: "options and expiring-map import nothing else in lib.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/lib/algorithms/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/**", "!#lib/options/**"],
+                message: "algorithms import only options.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/lib/store/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/**", "!#lib/algorithms/**"],
+                message: "The store contract imports only algorithms.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/lib/transitions/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/**", "!#lib/algorithms/**", "!#lib/store/**"],
+                message: "transitions import only algorithms and the store contract.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/lib/stores/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/stores/**", "#lib/limiter/**"],
+                message:
+                  "A store imports its own files with ./, and never another store or limiters.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/lib/limiter/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              ratelimitEntryPoints,
+              {
+                group: ["#lib/stores/**", "#lib/transitions/**"],
+                message:
+                  "Limiters know only the store contract, not a concrete store or its arithmetic.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/ratelimit/src/**/__tests__/**"],
+      rules: { "no-restricted-imports": "off" },
     },
     {
       // JSDoc is the only type syntax available in plain JavaScript files.
