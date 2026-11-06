@@ -1,6 +1,6 @@
 {
   "name": "@sanely/duration",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Parse human-readable time expressions into any unit, and format durations into human-readable strings",
   "keywords": [],

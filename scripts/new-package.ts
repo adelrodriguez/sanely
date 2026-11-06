@@ -75,7 +75,7 @@ npm install ${packageName}
   // Changesets skips private packages. Remove `private` when the package is ready to publish.
   "package.json": `{
   "name": ${quote(packageName)},
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": ${quote(description)},
   "keywords": [],
