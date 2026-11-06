@@ -10,8 +10,8 @@ export default {
       project: ["scripts/**/*.{mjs,ts}", "turbo/generators/**/*.ts"],
     },
     "packages/*": {
-      entry: ["src/__tests__/types.test-d.ts"],
-      project: ["src/**/*.ts"],
+      entry: ["src/**/*.test-d.ts", "scripts/*.{mjs,ts}"],
+      project: ["src/**/*.{ts,tsx}", "scripts/**/*.{mjs,ts}"],
     },
   },
 } satisfies KnipConfig

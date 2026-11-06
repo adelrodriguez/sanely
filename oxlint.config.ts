@@ -55,7 +55,7 @@ export default defineConfig({
     },
     {
       // JSDoc is the only type syntax available in plain JavaScript files.
-      files: ["scripts/**/*.mjs"],
+      files: ["scripts/**/*.mjs", "packages/*/scripts/**/*.mjs"],
       rules: { "jsdoc/check-tag-names": ["error", { typed: false }] },
     },
   ],
