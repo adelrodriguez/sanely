@@ -89,7 +89,9 @@ function valueToMessage(value: unknown): string {
 
   if (typeof value === "object") {
     try {
-      return JSON.stringify(value)
+      // JSON.stringify returns undefined when toJSON returns undefined or a function.
+      const serialized = JSON.stringify(value) as string | undefined
+      return serialized ?? Object.prototype.toString.call(value)
     } catch {
       return Object.prototype.toString.call(value)
     }
