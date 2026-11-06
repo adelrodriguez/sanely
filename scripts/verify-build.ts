@@ -40,14 +40,26 @@ function readManifest() {
     .filter(([field]) => ["exports", "module", "types"].includes(field))
     .flatMap(([, value]) => exportTargets(value))
 
-  return { name: manifest.name, targets }
+  if (
+    !("exports" in manifest)
+    || typeof manifest.exports !== "object"
+    || manifest.exports === null
+  ) {
+    throw new Error("Expected a package export map")
+  }
+  const name = manifest.name
+  const specifiers = Object.keys(manifest.exports).map((subpath) =>
+    subpath === "." ? name : `${name}${subpath.slice(1)}`
+  )
+
+  return { name, specifiers, targets }
 }
 
 function run(command: string, arguments_: string[], cwd: string) {
   execFileSync(command, arguments_, { cwd, stdio: "inherit" })
 }
 
-const { name, targets } = readManifest()
+const { name, specifiers, targets } = readManifest()
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "sanely-build-"))
 
 try {
@@ -75,12 +87,19 @@ try {
     temporaryDirectory
   )
 
-  writeFileSync(join(temporaryDirectory, "runtime.mjs"), `await import("${name}")\n`)
+  writeFileSync(
+    join(temporaryDirectory, "runtime.mjs"),
+    specifiers.map((specifier) => `await import("${specifier}")`).join("\n")
+  )
   run(process.execPath, ["runtime.mjs"], temporaryDirectory)
 
   writeFileSync(
     join(temporaryDirectory, "consumer.ts"),
-    `import * as library from "${name}"\n\nvoid library\n`
+    specifiers
+      .map(
+        (specifier, index) => `import * as entry${index} from "${specifier}"\nvoid entry${index}\n`
+      )
+      .join("\n")
   )
   writeFileSync(
     join(temporaryDirectory, "tsconfig.json"),
