@@ -137,3 +137,30 @@ describe("#66 registered constructors revive from their own fields object", () =
     expect(restored.message).toBe("No such user")
   })
 })
+
+describe("#21 flatten returns a string when a cause's toJSON returns undefined", () => {
+  it("flattens a cause whose toJSON returns undefined", () => {
+    const cause = {
+      toJSON(): undefined {
+        return undefined
+      },
+    }
+    const fault = new ServiceError().withMessage("svc").withCause(cause)
+
+    expect(fault.flatten()).toBe("svc -> [object Object]")
+  })
+
+  it("passes a string to a custom formatter for a cause whose toJSON returns a function", () => {
+    const formatted: unknown[] = []
+    const fault = new ServiceError().withMessage("svc").withCause({ toJSON: () => () => 1 })
+
+    fault.flatten({
+      formatter: (value) => {
+        formatted.push(value)
+        return value
+      },
+    })
+
+    expect(formatted).toStrictEqual(["svc", "[object Object]"])
+  })
+})
