@@ -29,7 +29,7 @@ Creates an independent monitor. The registry does not hold it, so `getMonitor` a
 function getDefaultMonitor(): DeploymentMonitor
 ```
 
-Returns the shared monitor for the embed. Crispen creates it on the first call. If the page has no valid embed, the monitor is inert and logs one warning outside production.
+Returns the shared monitor for the embed. The registry creates it on the first call. If the page has no valid embed, the monitor is inert and logs one warning outside production.
 
 ### `getMonitor(source)`
 
@@ -57,17 +57,17 @@ Returns the shared monitor for `source`. Each source object has one monitor. Aft
 
 ## `DeploymentStatus`
 
-| Field          | Type                                | Description                                                                                                                                                   |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`       | `"unknown" \| "current" \| "stale"` | The result of the last successful check. `"unknown"` until the first check succeeds.                                                                          |
-| `checkStatus`  | `CheckStatus`                       | `"checking"` while a check is in progress. Otherwise `"idle"`.                                                                                                |
-| `error`        | `Error \| null`                     | The error from the last failed check. A successful check sets it to `null`.                                                                                   |
-| `running`      | `Deployment`                        | The running deployment.                                                                                                                                       |
-| `target`       | `Deployment \| null`                | The target from the last successful check. `null` only when `status` is `"unknown"`.                                                                          |
-| `checkedAt`    | `Date \| null`                      | The time of the last successful check. `null` only when `status` is `"unknown"`.                                                                              |
-| `reloadStatus` | `ReloadStatus`                      | `"ready"`, `"blocked"`, or `"unprotected"`. See [the reload guard](../explanation/how-crispen-detects-a-stale-client.md#the-reload-guard-stops-reload-loops). |
-| `check`        | `() => Promise<DeploymentStatus>`   | The same as `DeploymentMonitor.check()`.                                                                                                                      |
-| `reload`       | `() => void`                        | The same as `DeploymentMonitor.reload()`.                                                                                                                     |
+| Field          | Type                                | Description                                                                                                                                                |
+| -------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`       | `"unknown" \| "current" \| "stale"` | The result of the last successful check. `"unknown"` until the first check succeeds.                                                                       |
+| `checkStatus`  | `CheckStatus`                       | `"checking"` while a check is in progress. Otherwise `"idle"`.                                                                                             |
+| `error`        | `Error \| null`                     | The error from the last failed check. A successful check sets it to `null`.                                                                                |
+| `running`      | `Deployment`                        | The running deployment.                                                                                                                                    |
+| `target`       | `Deployment \| null`                | The target from the last successful check. `null` only when `status` is `"unknown"`.                                                                       |
+| `checkedAt`    | `Date \| null`                      | The time of the last successful check. `null` only when `status` is `"unknown"`.                                                                           |
+| `reloadStatus` | `ReloadStatus`                      | `"ready"`, `"blocked"`, or `"unprotected"`. See [the reload guard](../explanation/how-skew-detects-a-stale-client.md#the-reload-guard-stops-reload-loops). |
+| `check`        | `() => Promise<DeploymentStatus>`   | The same as `DeploymentMonitor.check()`.                                                                                                                   |
+| `reload`       | `() => void`                        | The same as `DeploymentMonitor.reload()`.                                                                                                                  |
 
 `DeploymentStatus` is a discriminated union on `status`. When you check that `status` is not `"unknown"`, TypeScript narrows `target` to `Deployment` and `checkedAt` to `Date`.
 
@@ -87,7 +87,7 @@ function createHttpSource(
 
 Creates a source that fetches the descriptor from `endpoint` and parses it.
 
-`HttpSourceInit` is `RequestInit` without `cache` and `signal`, plus an optional `fetch` function. Crispen always sets `cache: "no-store"` and its own abort signal. Use `init` for headers, credentials, and a custom `fetch`.
+`HttpSourceInit` is `RequestInit` without `cache` and `signal`, plus an optional `fetch` function. The source always sets `cache: "no-store"` and its own abort signal. Use `init` for headers, credentials, and a custom `fetch`.
 
 The source throws a `TargetResolutionError` in these cases:
 

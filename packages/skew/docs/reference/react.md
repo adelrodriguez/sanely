@@ -27,7 +27,7 @@ During server rendering, the hook returns a state with `status: "unknown"`, `che
 
 The hook compares a new options object with the previous one key by key. An inline object with the same values does not subscribe again. `source` and `isCurrent` compare by reference. Define them at module scope or memoize them.
 
-When several subscribers share a monitor, the monitor combines their options. See [One shared monitor serves all subscribers](../explanation/how-crispen-detects-a-stale-client.md#one-shared-monitor-serves-all-subscribers).
+When several subscribers share a monitor, the monitor combines their options. See [One shared monitor serves all subscribers](../explanation/how-skew-detects-a-stale-client.md#one-shared-monitor-serves-all-subscribers).
 
 ### Return value
 

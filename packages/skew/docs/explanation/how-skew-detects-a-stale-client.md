@@ -1,10 +1,10 @@
-# How Crispen detects a stale client
+# How `@sanely/skew` detects a stale client
 
-A browser tab can stay open for days. During that time you can deploy many times, and the tab keeps running the JavaScript it loaded first. Its API calls can then send requests that the new server no longer accepts, and its lazy chunks can point at files that the new deployment deleted. Crispen finds this skew between the client and the deployment. It reports the result, and your app decides what to do.
+A browser tab can stay open for days. During that time you can deploy many times, and the tab keeps running the JavaScript it loaded first. Its API calls can then send requests that the new server no longer accepts, and its lazy chunks can point at files that the new deployment deleted. `@sanely/skew` finds this skew between the client and the deployment. It reports the result, and your app decides what to do.
 
 ## Two identities: running and target
 
-Crispen compares two deployments.
+The package compares two deployments.
 
 The **running deployment** is the build that produced the JavaScript in the tab. An adapter writes its ID into the page at build time as `globalThis.__CRISPEN__`, which is the **embed**. The running deployment never changes for the life of the page.
 
@@ -12,7 +12,7 @@ The **target deployment** is the build that the tab should use now. The adapter 
 
 If the two IDs are equal, the status is `current`. If they differ, the status is `stale`. You can replace the exact-ID comparison with an `isCurrent` predicate. For example, a predicate can treat two builds from one release branch as equal.
 
-Crispen says "target" and not "latest" on purpose. During a canary release, tenant pinning, or a staged rollout, the newest global deployment may not be the one that this client should use. The descriptor answers "what should this client run", and the host decides that answer.
+The package says "target" and not "latest" on purpose. During a canary release, tenant pinning, or a staged rollout, the newest global deployment may not be the one that this client should use. The descriptor answers "what should this client run", and the host decides that answer.
 
 ## The descriptor request must reach the live deployment
 
@@ -20,9 +20,9 @@ The descriptor request must not reach the old deployment. If the old deployment 
 
 Some hosts pin requests to one deployment. Vercel skew protection does this through the `__vdpl` cookie. If your app pins every request, point the adapter `endpoint` at an origin that is not pinned. Caches cause the same failure: a CDN that caches the descriptor returns an old target. For this reason, the descriptor response must carry `Cache-Control: no-store`. [How to stop hosts from caching the descriptor](../how-to/stop-hosts-from-caching-the-descriptor.md) gives the rule for each common host.
 
-## Crispen never reloads by itself
+## The package never reloads by itself
 
-A reload throws away form input, scroll position, and in-memory state. Only the app knows when a reload is safe. A user can be halfway through a checkout. So Crispen reports `stale` and gives you `reload()`. It never calls `reload()` for you.
+A reload throws away form input, scroll position, and in-memory state. Only the app knows when a reload is safe. A user can be halfway through a checkout. So the package reports `stale` and gives you `reload()`. It never calls `reload()` for you.
 
 This choice costs one component in your app, a notice or a banner. We think that cost is correct. An automatic reload that destroys a half-written message is a worse bug than a stale tab.
 
@@ -30,13 +30,13 @@ This choice costs one component in your app, a notice or a banner. We think that
 
 A reload does not always reach the new deployment. A CDN can serve old HTML for a few minutes after a deploy. In that case, the page reloads, loads the old running deployment again, sees `stale` again, and the user clicks **Reload** again. Without a limit, the page loops.
 
-`reload()` records each request in session storage under the key `crispen:reload`. The record holds the running ID, the target ID, an attempt count, and a time. Crispen counts a repeated request when the running ID and the target ID are the same as in the record and less than 10 minutes have passed. The guard allows the first request and one repeated request. It blocks the next repeated request and sets `reloadStatus` to `"blocked"`.
+`reload()` records each request in session storage under the key `crispen:reload`. The record holds the running ID, the target ID, an attempt count, and a time. The guard counts a repeated request when the running ID and the target ID are the same as in the record and less than 10 minutes have passed. The guard allows the first request and one repeated request. It blocks the next repeated request and sets `reloadStatus` to `"blocked"`.
 
 The block ends in three ways:
 
 - If a later check finds a different target, `reloadStatus` returns to `"ready"`.
-- If a page load starts on a different running deployment, the reload worked, and Crispen deletes the record.
-- If `reload()` runs 10 minutes or more after the last request, Crispen starts a new sequence and reloads the page. A blocked request also updates the time in the record, so each request during the block starts the 10 minutes again.
+- If a page load starts on a different running deployment, the reload worked, and the guard deletes the record.
+- If `reload()` runs 10 minutes or more after the last request, the guard starts a new sequence and reloads the page. A blocked request also updates the time in the record, so each request during the block starts the 10 minutes again.
 
 A check that finds the same target does not end the block, even after 10 minutes. Keep the reload action visible in the blocked state, so the user can retry.
 
@@ -55,7 +55,7 @@ A failed check or a new check does not change `status`. When a tab knows that it
 
 ## One shared monitor serves all subscribers
 
-The **monitor** is the headless runtime. It schedules checks, runs them, and holds the state. Crispen keeps one monitor for each `DeploymentSource` object, so ten components that use `useDeploymentStatus()` send one request, not ten. There is no provider component.
+The **monitor** is the headless runtime. It schedules checks, runs them, and holds the state. The package keeps one monitor for each `DeploymentSource` object, so ten components that use `useDeploymentStatus()` send one request, not ten. There is no provider component.
 
 The first subscriber starts the schedule. The last subscriber to leave stops it and cancels a check that is in progress. When subscribers ask for different options, the monitor combines them:
 
@@ -72,7 +72,7 @@ A check runs at these times:
 - when the browser comes back online (`checkOnReconnect`),
 - on an interval (`checkInterval`, 5 minutes by default, 10 seconds at least).
 
-The interval pauses while the tab is hidden. A hidden tab cannot show a notice, so a check there wastes a request. Crispen listens to `visibilitychange` and not to `focus`. The browser also fires `focus` when the user comes back from another window while the page was visible the whole time, so a `focus` check adds a request and no information.
+The interval pauses while the tab is hidden. A hidden tab cannot show a notice, so a check there wastes a request. The monitor listens to `visibilitychange` and not to `focus`. The browser also fires `focus` when the user comes back from another window while the page was visible the whole time, so a `focus` check adds a request and no information.
 
 A check that takes longer than 30 seconds stops and records a timeout error. A monitor that you create with `createDeploymentMonitor` can change this limit through `checkTimeout`.
 

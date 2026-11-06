@@ -1,11 +1,11 @@
-# How to add Crispen to a Vite app
+# How to add `@sanely/skew` to a Vite app
 
 This guide adds an update notice to a Vite and React app. The notice appears when a newer deployment is live.
 
 1. Install the package:
 
    ```sh
-   bun add @sanely/skew
+   npm install @sanely/skew
    ```
 
 2. Add the adapter to `vite.config.ts`, after the React plugin:
@@ -83,4 +83,4 @@ return (
 
 A click 10 minutes or more after the last click reloads the page again. A click before that stays blocked and starts the 10 minutes again.
 
-[The reload guard stops reload loops](../explanation/how-crispen-detects-a-stale-client.md#the-reload-guard-stops-reload-loops) explains why.
+[The reload guard stops reload loops](../explanation/how-skew-detects-a-stale-client.md#the-reload-guard-stops-reload-loops) explains why.

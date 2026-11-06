@@ -1,6 +1,6 @@
-# Crispen glossary
+# `@sanely/skew` glossary
 
-Crispen detects skew between a running browser client and the deployment that the client should use. Use these terms, with these meanings, in code, tests, issues, and docs.
+`@sanely/skew` detects skew between a running browser client and the deployment that the client should use. Use these terms, with these meanings, in code, tests, issues, and docs.
 
 ## Word rules
 
@@ -44,7 +44,7 @@ Each word below belongs to one kind of text. Use it only there.
 
 ## Runtime
 
-**Monitor** (`DeploymentMonitor`). The headless runtime. It schedules checks, runs them, holds the state, and has `check()` and `reload()`. Crispen keeps one shared monitor for each `DeploymentSource`. Components subscribe to a monitor. They do not own it, and no provider component exists.
+**Monitor** (`DeploymentMonitor`). The headless runtime. It schedules checks, runs them, holds the state, and has `check()` and `reload()`. The package keeps one shared monitor for each `DeploymentSource`. Components subscribe to a monitor. They do not own it, and no provider component exists.
 
 **Registry.** The module-level map from a `DeploymentSource` to its shared monitor. `getMonitor` and `getDefaultMonitor` read it.
 

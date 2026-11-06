@@ -1,6 +1,6 @@
 # Descriptor and embed reference
 
-Crispen uses two data formats. The descriptor tells a client its target deployment. The embed tells a client its running deployment. App code does not read either format. A custom adapter or a control-plane service must write them exactly as this page describes.
+`@sanely/skew` uses two data formats. The descriptor tells a client its target deployment. The embed tells a client its running deployment. App code does not read either format. A custom adapter or a control-plane service must write them exactly as this page describes.
 
 ## Descriptor
 

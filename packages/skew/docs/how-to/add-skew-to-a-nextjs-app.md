@@ -1,11 +1,11 @@
-# How to add Crispen to a Next.js app
+# How to add `@sanely/skew` to a Next.js app
 
 This guide adds an update notice to a Next.js app. The notice appears when a newer deployment is live. It works with the App Router and the Pages Router.
 
 1. Install the package:
 
    ```sh
-   bun add @sanely/skew
+   npm install @sanely/skew
    ```
 
 2. Wrap your config in `next.config.ts`:
@@ -84,7 +84,7 @@ This guide adds an update notice to a Next.js app. The notice appears when a new
 
    Write `{CrispenScript()}`, not `<CrispenScript />`. Next.js finds a `beforeInteractive` script in `_document` only when the `<Script>` element is there directly.
 
-4. Add the `UpdateNotice` component from [How to add Crispen to a Vite app](./add-crispen-to-a-vite-app.md), step 3. Add `"use client"` at the top of its file.
+4. Add the `UpdateNotice` component from [How to add `@sanely/skew` to a Vite app](./add-skew-to-a-vite-app.md), step 3. Add `"use client"` at the top of its file.
 
 5. Run `next build` and `next start`. Make sure that the descriptor returns JSON with an `id`: `/_crispen/deployment.json` for the App Router, or `/api/crispen/deployment.json` for the Pages Router.
 
@@ -107,4 +107,4 @@ Vercel skew protection does not pin a `fetch` from client code by default, so th
 - Set `endpoint` to an origin that Vercel does not pin.
 - Exclude the descriptor path, such as `/_crispen/deployment.json`, from the cookie.
 
-[The descriptor request must reach the live deployment](../explanation/how-crispen-detects-a-stale-client.md#the-descriptor-request-must-reach-the-live-deployment) explains why.
+[The descriptor request must reach the live deployment](../explanation/how-skew-detects-a-stale-client.md#the-descriptor-request-must-reach-the-live-deployment) explains why.

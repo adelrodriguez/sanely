@@ -1,6 +1,6 @@
-# Contributing to Crispen
+# Contributing to `@sanely/skew`
 
-Crispen lives in `packages/skew` of the sanely monorepo. It uses pnpm and the Node.js version in the root `.node-version` (24).
+The package lives in `packages/skew` of the [sanely](https://github.com/adelrodriguez/sanely) monorepo. It uses pnpm and the Node.js version in the root `.node-version` (24).
 
 ## Set up
 
