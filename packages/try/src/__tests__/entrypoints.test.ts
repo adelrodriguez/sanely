@@ -1,0 +1,205 @@
+import { runInNewContext } from "node:vm"
+import { describe, expect, it } from "vitest"
+import {
+  CancellationError,
+  isCancellationError,
+  isPanic,
+  isRetryExhaustedError,
+  isTimeoutError,
+  isUnhandledException,
+  Panic,
+  RetryExhaustedError,
+  TimeoutError,
+  UnhandledException,
+} from "#errors.ts"
+import * as errors$ from "#errors.ts"
+import * as try$ from "#index.ts"
+import * as types$ from "#types.ts"
+import { expectPanic } from "./test-utils"
+
+function createForeignError(name: string, extras: Record<string, unknown> = {}): Error {
+  const foreign = runInNewContext("new Error('foreign')") as Error
+  foreign.name = name
+  Object.assign(foreign, extras)
+  return foreign
+}
+
+describe("entrypoints", () => {
+  it("exposes only the execution API from the root entrypoint", () => {
+    expect(Object.keys(try$).toSorted()).toEqual([
+      "all",
+      "allSettled",
+      "disposer",
+      "flow",
+      "gen",
+      "retry",
+      "retryOptions",
+      "run",
+      "runSync",
+      "signal",
+      "timeout",
+      "wrap",
+    ])
+  })
+
+  it("exposes only errors and type guards from the errors entrypoint", () => {
+    expect(Object.keys(errors$).toSorted()).toEqual([
+      "CancellationError",
+      "Panic",
+      "RetryExhaustedError",
+      "TimeoutError",
+      "UnhandledException",
+      "isCancellationError",
+      "isPanic",
+      "isRetryExhaustedError",
+      "isTimeoutError",
+      "isUnhandledException",
+    ])
+  })
+
+  it("exposes no runtime values from the types entrypoint", () => {
+    expect(Object.keys(types$)).toEqual([])
+  })
+
+  it("constructs errors from the errors entrypoint with stable names and messages", () => {
+    const panic = new Panic("FLOW_NO_EXIT")
+
+    expect(panic).toBeInstanceOf(Error)
+
+    expect(panic.name).toBe("Panic")
+    expect(panic.message).toBe("flow() requires at least one task to call $exit().")
+    expect(panic.code).toBe("FLOW_NO_EXIT")
+    expect(new CancellationError().name).toBe("CancellationError")
+    expect(new CancellationError().message).toBe("Execution was cancelled")
+    expect(new RetryExhaustedError().name).toBe("RetryExhaustedError")
+    expect(new RetryExhaustedError().message).toBe("Retry attempts exhausted")
+    expect(new TimeoutError().name).toBe("TimeoutError")
+    expect(new TimeoutError().message).toBe("Execution timed out")
+    expect(new UnhandledException().name).toBe("UnhandledException")
+    expect(new UnhandledException().message).toBe("Unhandled exception")
+  })
+
+  it("exposes retryOptions from the root entrypoint", () => {
+    expect(try$.retryOptions(2)).toEqual({
+      backoff: "constant",
+      delayMs: 0,
+      limit: 2,
+    })
+  })
+
+  it("throws Panic when timeout() receives Infinity", () => {
+    try {
+      try$.timeout(Infinity)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "TIMEOUT_INVALID_MS")
+    }
+  })
+
+  it("throws Panic when timeout() receives a negative number", () => {
+    try {
+      try$.timeout(-1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "TIMEOUT_INVALID_MS")
+    }
+  })
+
+  it("throws Panic when timeout() receives NaN", () => {
+    try {
+      try$.timeout(Number.NaN)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "TIMEOUT_INVALID_MS")
+    }
+  })
+
+  it("throws Panic when retry() receives Infinity", () => {
+    try {
+      try$.retry(Infinity)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "RETRY_INVALID_LIMIT")
+    }
+  })
+
+  it("throws Panic when retry() receives a negative number", () => {
+    try {
+      try$.retry(-1 as number)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "RETRY_INVALID_LIMIT")
+    }
+  })
+
+  it("throws Panic when retry() receives NaN", () => {
+    try {
+      try$.retry(Number.NaN)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "RETRY_INVALID_LIMIT")
+    }
+  })
+
+  it("throws Panic when retry() receives zero", () => {
+    try {
+      try$.retry(0 as number)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "RETRY_INVALID_LIMIT")
+    }
+  })
+
+  it("throws Panic when retry() receives a fractional limit", () => {
+    try {
+      try$.retry(2.5 as number)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "RETRY_INVALID_LIMIT")
+    }
+  })
+
+  describe("error type guards", () => {
+    it("matches genuine instances", () => {
+      expect(isCancellationError(new CancellationError())).toBe(true)
+      expect(isTimeoutError(new TimeoutError())).toBe(true)
+      expect(isRetryExhaustedError(new RetryExhaustedError())).toBe(true)
+      expect(isUnhandledException(new UnhandledException())).toBe(true)
+      expect(isPanic(new Panic("FLOW_NO_EXIT"))).toBe(true)
+    })
+
+    it("matches foreign errors by name when instanceof fails", () => {
+      const foreignCancellation = createForeignError("CancellationError")
+
+      expect(foreignCancellation).not.toBeInstanceOf(CancellationError)
+      expect(foreignCancellation).not.toBeInstanceOf(Error)
+      expect(isCancellationError(foreignCancellation)).toBe(true)
+
+      expect(isTimeoutError(createForeignError("TimeoutError"))).toBe(true)
+      expect(isRetryExhaustedError(createForeignError("RetryExhaustedError"))).toBe(true)
+      expect(isUnhandledException(createForeignError("UnhandledException"))).toBe(true)
+      expect(isPanic(createForeignError("Panic", { code: "FLOW_NO_EXIT" }))).toBe(true)
+    })
+
+    it("requires a string code for foreign Panic errors", () => {
+      expect(isPanic(createForeignError("Panic"))).toBe(false)
+      expect(isPanic(createForeignError("Panic", { code: 42 }))).toBe(false)
+    })
+
+    it("rejects non-errors and unrelated names", () => {
+      const spoofedError = { name: "TimeoutError", [Symbol.toStringTag]: "Error" }
+
+      expect(Object.prototype.toString.call(spoofedError)).toBe("[object Error]")
+      expect(isTimeoutError(spoofedError)).toBe(false)
+      expect(isPanic({ code: "FLOW_NO_EXIT", name: "Panic", [Symbol.toStringTag]: "Error" })).toBe(
+        false
+      )
+      expect(isCancellationError(null)).toBe(false)
+      expect(isTimeoutError(0)).toBe(false)
+      expect(isRetryExhaustedError("RetryExhaustedError")).toBe(false)
+      expect(isUnhandledException({ name: "UnhandledException" })).toBe(false)
+      expect(isPanic(new Error("Panic"))).toBe(false)
+      expect(isCancellationError(new TimeoutError())).toBe(false)
+    })
+  })
+})

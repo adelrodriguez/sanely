@@ -11,6 +11,16 @@ export default defineConfig({
     typeCheck: true,
   },
   overrides: [
+    // The source builder and its execution modules share recursive type contracts.
+    // Keep runtime cycle checks while preserving those public types during the move.
+    {
+      files: ["packages/try/src/**/*.ts"],
+      rules: { "import/no-cycle": ["error", { ignoreTypes: true }] },
+    },
+    {
+      files: ["packages/try/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
     // Preserve Fault's public name and the source's conditional payload types.
     {
       files: ["packages/errors/src/lib/fault.ts"],
