@@ -1,9 +1,20 @@
 {
   "name": "@sanely/rpc",
   "version": "0.0.1",
-  "private": true,
   "description": "Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues",
-  "keywords": [],
+  "keywords": [
+    "arktype",
+    "contract",
+    "ipc",
+    "proxy",
+    "rpc",
+    "schema",
+    "standard-schema",
+    "type-safe",
+    "typescript",
+    "valibot",
+    "zod"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/rpc#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -20,6 +31,7 @@
   ],
   "type": "module",
   "sideEffects": false,
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "imports": {
@@ -30,25 +42,47 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js",
+      "default": "./dist/wire.js"
+    },
+    "./wire/message-port": {
+      "types": "./dist/wire/message-port.d.ts",
+      "import": "./dist/wire/message-port.js",
+      "default": "./dist/wire/message-port.js"
+    },
+    "./wire/web-socket": {
+      "types": "./dist/wire/web-socket.d.ts",
+      "import": "./dist/wire/web-socket.js",
+      "default": "./dist/wire/web-socket.js"
     }
   },
   "scripts": {
     "build": "tsdown",
     "build:debug": "tsdown --no-minify --sourcemap",
-    "build:verify": "node ../../scripts/verify-build.ts",
+    "build:verify": "node ../../scripts/verify-build.ts && node scripts/verify-package.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "@standard-schema/spec": "^1.0.0"
+  },
   "devDependencies": {
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
+    "@types/ws": "8.18.1",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "valibot": "1.5.0",
+    "vitest": "catalog:",
+    "ws": "8.18.0",
+    "zod": "4.4.3"
   },
   "engines": {
     "node": ">=20.0.0"

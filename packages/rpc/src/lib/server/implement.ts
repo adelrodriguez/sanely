@@ -1,0 +1,164 @@
+import type { Join } from "#lib/core/types.ts"
+import { type Channel, type ContractTree, isChannel, joinPath } from "#lib/core/contract.ts"
+import { isRecord } from "#lib/core/guards.ts"
+import { SetupError } from "#lib/core/setup-error.ts"
+import type { Resolver, ResolverArgs } from "./types"
+
+/**
+ * One implemented leaf: the dotted path it serves, the resolver, and (as a phantom on the resolver)
+ * the context it was built against. Produced by calling a leaf on an {@link implement} builder;
+ * consumed by `createRouter`, where the path brand must agree with the fragment's position in the
+ * handler tree — so a fragment for another leaf, or another contract, cannot occupy a slot even
+ * when names collide.
+ */
+export type Fragment<Path extends string = string, Context = never> = {
+  _kind: "fragment"
+  $path: Path
+  $resolver: (args: ResolverArgs<never, Context>) => unknown
+}
+
+/**
+ * The widest fragment: every concrete `Fragment<P, C>` is assignable to it (contravariance).
+ */
+type AnyFragment = Fragment
+
+/**
+ * Mirrors the contract tree: every branch is a sub-implementer, every leaf is a fragment factory.
+ * `$context` rebinds the context type — a type-level operation with no runtime counterpart, split
+ * from `implement` itself because TypeScript cannot infer the contract argument and take an
+ * explicit context parameter in the same call.
+ */
+export type Implementer<Tree, Context = void, Prefix extends string = ""> = {
+  [Key in keyof Tree & string]: Tree[Key] extends Channel
+    ? (resolver: Resolver<Tree[Key], Context>) => Fragment<Join<Prefix, Key>, Context>
+    : Implementer<Tree[Key], Context, Join<Prefix, Key>>
+} & {
+  /**
+   * Returns the same builder with the context type rebound — the one place the context type is
+   * written: `const tp = implement(contract).$context<Session>()`. Fragments carry it from there,
+   * and `createRouter` infers it back out of them.
+   */
+  $context: <NextContext>() => Implementer<Tree, NextContext, Prefix>
+}
+
+/**
+ * The handler-definition builder for a contract: `tp.notes.open(resolver)` returns a
+ * {@link Fragment} for that leaf with input, output, and context fully inferred — so handlers can
+ * live next to their domain code, one file per branch, with zero annotations. Assemble them with
+ * `createRouter(contract, { notes, ping })`, where a namespace import of a handler module already
+ * has the required shape.
+ */
+export function implement<Tree extends ContractTree>(contract: Tree): Implementer<Tree> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- `build` mirrors the contract at runtime; only the contract's type knows the shape
+  return build(contract, "") as Implementer<Tree>
+}
+
+function build(tree: ContractTree, prefix: string): Record<string, unknown> {
+  const node: Record<string, unknown> = {
+    // Context exists only in the type system; at runtime the builder is unchanged.
+    $context: () => node,
+  }
+
+  for (const [key, child] of Object.entries(tree)) {
+    const path = joinPath(prefix, key)
+
+    node[key] = isChannel(child)
+      ? (resolver: Fragment["$resolver"]): Fragment => ({
+          $path: path,
+          $resolver: resolver,
+          _kind: "fragment",
+        })
+      : build(child, path)
+  }
+
+  return node
+}
+
+export function isFragment(node: unknown): node is Fragment {
+  return typeof node === "object" && node !== null && "_kind" in node && node._kind === "fragment"
+}
+
+/**
+ * The implementation shape a contract demands: the same tree with a fragment at every leaf. Missing
+ * leaves are missing properties (TypeScript names them in the error), and each slot demands the
+ * fragment whose path brand matches the position.
+ */
+export type FragmentTree<Tree, Context, Prefix extends string = ""> = {
+  [Key in keyof Tree & string]: Tree[Key] extends Channel
+    ? Fragment<Join<Prefix, Key>, Context>
+    : FragmentTree<Tree[Key], Context, Join<Prefix, Key>>
+}
+
+/**
+ * The union of fragments at the contract's leaf positions in a handler tree; stray non-fragment
+ * exports contribute nothing. Walks the contract, not the handler object, like `flattenFragments`:
+ * the contract is finite, so the recursion always ends — walking the handlers instead would recurse
+ * into whatever else a caller passes, such as an explicit context type that references itself
+ * (TS2615), before overload resolution can fall back to the flat-map form.
+ */
+type HandlerLeaves<Handlers, Tree> = Tree extends Channel
+  ? Handlers extends AnyFragment
+    ? Handlers
+    : never
+  : {
+      [Key in keyof Tree & keyof Handlers]: HandlerLeaves<Handlers[Key], Tree[Key]>
+    }[keyof Tree & keyof Handlers]
+
+type FragmentContext<F> = F extends Fragment<string, infer Context> ? Context : never
+
+/**
+ * The context a handler tree was built against. `FragmentContext` distributes (its parameter is
+ * naked in the conditional), so a uniform tree yields its one context and a mixed tree yields a
+ * union — which no concrete fragment satisfies (context is contravariant), turning disagreement
+ * into a per-entry compile error instead of a silent widening. Inferred here rather than on the
+ * `createRouter` signature because TypeScript cannot infer a type parameter through the mapped
+ * conditional in `FragmentTree`.
+ */
+export type ContextOfHandlers<Handlers, Tree> = FragmentContext<HandlerLeaves<Handlers, Tree>>
+
+/**
+ * Flattens a handler tree into the dotted-path resolver map the router dispatches from. Walks the
+ * contract, not the handler object, so stray extra exports in a handler module (a helper, a
+ * constant) are ignored — which is what makes raw namespace imports usable as branches. The type
+ * system prevents the throws below; they guard the JavaScript and cast-happy callers.
+ */
+export function flattenFragments(
+  contract: ContractTree,
+  handlers: Record<string, unknown>
+): Record<string, Fragment["$resolver"]> {
+  const map: Record<string, Fragment["$resolver"]> = Object.create(null)
+
+  walk(contract, handlers, "")
+
+  return map
+
+  function walk(tree: ContractTree, node: Record<string, unknown>, prefix: string): void {
+    for (const [key, child] of Object.entries(tree)) {
+      const path = joinPath(prefix, key)
+      const value = Object.hasOwn(node, key) ? node[key] : undefined
+
+      if (value === undefined) {
+        throw new SetupError({ code: "missing-resolver", path })
+      }
+
+      if (isChannel(child)) {
+        if (!isFragment(value)) {
+          throw new SetupError({ code: "invalid-handler", expected: "fragment", path })
+        }
+
+        if (value.$path !== path) {
+          throw new SetupError({ code: "misplaced-handler", fragmentPath: value.$path, path })
+        }
+
+        map[path] = value.$resolver
+        continue
+      }
+
+      if (!isRecord(value)) {
+        throw new SetupError({ code: "invalid-handler", expected: "branch", path })
+      }
+
+      walk(child, value, path)
+    }
+  }
+}

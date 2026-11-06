@@ -1,0 +1,259 @@
+import { describe, expect, test } from "vitest"
+import WebSocket from "ws"
+import * as z from "zod"
+import { webSocket, whenOpen, type WebSocketLike } from "#lib/adapters/web-socket.ts"
+import { createClient } from "#lib/client/client.ts"
+import { defineContract, channel } from "#lib/core/contract.ts"
+import { createRouter } from "#lib/server/router.ts"
+import { connect } from "#lib/wire/connect.ts"
+
+type MessageListener = (event: { data: unknown }) => void
+
+type FakeSocket = WebSocketLike & {
+  open: () => void
+  fail: () => void
+  hangUp: () => void
+  listenerCount: (type: string) => number
+}
+
+// A connected socket pair that transmits JSON text frames only — sending anything
+// non-string would throw, which is exactly what the wire must never do. Lifecycle
+// listeners (open/close/error) take no arguments, so storing everything as
+// MessageListener and firing lifecycle events with a dummy payload is sound.
+function createSocketPair(): [FakeSocket, FakeSocket] {
+  const ends: [Record<string, MessageListener[]>, Record<string, MessageListener[]>] = [{}, {}]
+  const state: [number, number] = [0, 0]
+
+  const listenersFor = (side: 0 | 1, type: string): MessageListener[] => {
+    const existing = ends[side][type]
+
+    if (existing) {
+      return existing
+    }
+
+    const created: MessageListener[] = []
+    ends[side][type] = created
+    return created
+  }
+
+  const fire = (side: 0 | 1, type: "open" | "close" | "error"): void => {
+    for (const listener of listenersFor(side, type)) {
+      listener({ data: undefined })
+    }
+  }
+
+  const makeEnd = (mine: 0 | 1, theirs: 0 | 1): FakeSocket => ({
+    addEventListener: (type: string, listener: MessageListener) => {
+      listenersFor(mine, type).push(listener)
+    },
+    fail: () => {
+      fire(mine, "error")
+    },
+    hangUp: () => {
+      fire(mine, "close")
+    },
+    listenerCount: (type: string) => listenersFor(mine, type).length,
+    open: () => {
+      state[mine] = 1
+      fire(mine, "open")
+    },
+    get readyState() {
+      return state[mine]
+    },
+    removeEventListener: (type: string, listener: MessageListener) => {
+      ends[mine][type] = listenersFor(mine, type).filter((entry) => entry !== listener)
+    },
+    send: (data) => {
+      if (typeof data !== "string") {
+        throw new TypeError("socket frames must be strings")
+      }
+
+      for (const listener of listenersFor(theirs, "message")) {
+        queueMicrotask(() => {
+          listener({ data })
+        })
+      }
+    },
+  })
+
+  return [makeEnd(0, 1), makeEnd(1, 0)]
+}
+
+const contract = defineContract({
+  math: {
+    add: channel({ input: z.object({ a: z.number(), b: z.number() }), output: z.number() }),
+  },
+  ping: channel({ input: z.void(), output: z.literal("pong") }),
+})
+
+describe("webSocket", () => {
+  test("a full stack round-trips over JSON frames", async () => {
+    const [serverSocket, clientSocket] = createSocketPair()
+
+    const router = createRouter(contract, {
+      "math.add": ({ input: { a, b } }) => a + b,
+      ping: () => "pong" as const,
+    })
+    connect(webSocket(serverSocket), { router })
+
+    const client = connect(webSocket(clientSocket))
+    const api = createClient(contract, client.transport)
+
+    await expect(api.math.add({ a: 2, b: 3 })).resolves.toBe(5)
+  })
+
+  test("no-input calls survive JSON dropping the undefined payload", async () => {
+    const [serverSocket, clientSocket] = createSocketPair()
+
+    connect(webSocket(serverSocket), {
+      router: createRouter(contract, {
+        "math.add": ({ input: { a, b } }) => a + b,
+        ping: () => "pong" as const,
+      }),
+    })
+
+    const api = createClient(
+      contract,
+      connect(webSocket(clientSocket), { timeoutMs: 1000 }).transport
+    )
+
+    await expect(api.ping()).resolves.toBe("pong")
+  })
+
+  test("parses Buffer-style frames, as ws delivers them", () => {
+    const seen: unknown[] = []
+    let handler: MessageListener | undefined
+
+    const wire = webSocket({
+      addEventListener: (_type: string, listener: MessageListener) => {
+        handler = listener
+      },
+      readyState: 1,
+      removeEventListener: () => null,
+      send: () => null,
+    })
+
+    wire.onMessage((data) => {
+      seen.push(data)
+    })
+
+    // `ws` hands text frames over as Buffers; String() must recover the JSON.
+    handler?.({ data: Buffer.from('{"kind":"req"}', "utf8") })
+
+    expect(seen).toEqual([{ kind: "req" }])
+  })
+
+  test("drops malformed frames instead of throwing out of the listener", () => {
+    const seen: unknown[] = []
+    let handler: MessageListener | undefined
+
+    const wire = webSocket({
+      addEventListener: (_type: string, listener: MessageListener) => {
+        handler = listener
+      },
+      readyState: 1,
+      removeEventListener: () => null,
+      send: () => null,
+    })
+
+    wire.onMessage((data) => {
+      seen.push(data)
+    })
+
+    // A throw here would propagate through ws's EventEmitter as an
+    // uncaughtException and kill a Node server process.
+    expect(() => handler?.({ data: "not json at all" })).not.toThrow()
+    expect(seen).toEqual([])
+
+    // The connection survives: the next well-formed frame still arrives.
+    handler?.({ data: '{"kind":"req"}' })
+    expect(seen).toEqual([{ kind: "req" }])
+  })
+})
+
+describe("whenOpen", () => {
+  test("resolves immediately for an already-open socket", async () => {
+    const [socket] = createSocketPair()
+
+    socket.open()
+
+    await expect(whenOpen(socket)).resolves.toBe(socket)
+  })
+
+  test("waits for the open event otherwise", async () => {
+    const [socket] = createSocketPair()
+
+    const pending = whenOpen(socket)
+
+    socket.open()
+
+    await expect(pending).resolves.toBe(socket)
+  })
+
+  test("rejects when the socket errors before opening", async () => {
+    const [socket] = createSocketPair()
+
+    const pending = whenOpen(socket)
+
+    socket.fail()
+
+    await expect(pending).rejects.toThrow(
+      expect.objectContaining({
+        cause: new Error("Socket errored before opening"),
+        code: "closed",
+      }) as Error
+    )
+  })
+
+  test("rejects when the socket closes before opening", async () => {
+    const [socket] = createSocketPair()
+
+    const pending = whenOpen(socket)
+
+    socket.hangUp()
+
+    await expect(pending).rejects.toThrow(
+      expect.objectContaining({
+        cause: new Error("Socket closed before opening"),
+        code: "closed",
+      }) as Error
+    )
+  })
+
+  test("rejects a socket that is already closed instead of waiting forever", async () => {
+    const socket: WebSocketLike = {
+      addEventListener: () => null,
+      readyState: 3,
+      removeEventListener: () => null,
+      send: () => null,
+    }
+
+    await expect(whenOpen(socket)).rejects.toThrow(
+      expect.objectContaining({ code: "closed", name: "ChannelError" }) as Error
+    )
+  })
+
+  test("survives a real ws socket closed mid-handshake", async () => {
+    // `close()` before the handshake leaves the socket CLOSING and makes `ws` emit `error` on
+    // the next tick. Without a listener for it, Node throws and the process dies.
+    const socket = new WebSocket("ws://127.0.0.1:1")
+    socket.close()
+
+    expect(socket.readyState).toBe(WebSocket.CLOSING)
+    await expect(whenOpen(socket)).rejects.toMatchObject({ code: "closed" })
+  })
+
+  test("detaches its listeners once settled", async () => {
+    const [socket] = createSocketPair()
+
+    const pending = whenOpen(socket)
+    socket.open()
+    await pending
+
+    // A lingering "error" listener would suppress ws's throw-on-unhandled-error
+    // for the socket's whole life; whenOpen must clean up after itself.
+    expect(socket.listenerCount("open")).toBe(0)
+    expect(socket.listenerCount("error")).toBe(0)
+    expect(socket.listenerCount("close")).toBe(0)
+  })
+})
