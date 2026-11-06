@@ -1,5 +1,6 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
 import { expectTypeOf } from "vitest"
+import type { RegistryMergeConflictError, RegistryTagMismatchError } from "#errors.ts"
 import type {
   ByTag,
   FaultRegistry,
@@ -10,7 +11,7 @@ import type {
   SerializableValue,
   TagOf,
 } from "#types.ts"
-import { InvalidPayloadError } from "#errors.ts"
+import { InvalidPayloadError, ReservedFieldError } from "#errors.ts"
 
 import {
   type Fault,
@@ -195,6 +196,44 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   matchTags(err, {
     InvalidPayloadError: (e) => expectTypeOf(e).toEqualTypeOf<InvalidPayloadError>(),
     TimeoutError: (e) => expectTypeOf(e).toEqualTypeOf<TimeoutError>(),
+  })
+}
+
+// Narrows every library error by its tag in standalone matchers.
+{
+  const err = new ReservedFieldError({ field: "_tag" }) as
+    | InvalidPayloadError
+    | RegistryMergeConflictError
+    | RegistryTagMismatchError
+    | ReservedFieldError
+
+  expectTypeOf(err._tag).toEqualTypeOf<
+    | "InvalidPayloadError"
+    | "RegistryMergeConflictError"
+    | "RegistryTagMismatchError"
+    | "ReservedFieldError"
+  >()
+
+  matchTag(err, "ReservedFieldError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<ReservedFieldError>()
+    expectTypeOf(e.field).toEqualTypeOf<string>()
+  })
+
+  matchTag(err, "RegistryTagMismatchError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>()
+    expectTypeOf(e.registryKey).toEqualTypeOf<string>()
+  })
+
+  matchTag(err, "RegistryMergeConflictError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryMergeConflictError>()
+    expectTypeOf(e.conflictingTag).toEqualTypeOf<string>()
+  })
+
+  matchTags(err, {
+    InvalidPayloadError: (e) => expectTypeOf(e).toEqualTypeOf<InvalidPayloadError>(),
+    RegistryMergeConflictError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryMergeConflictError>(),
+    RegistryTagMismatchError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>(),
+    ReservedFieldError: (e) => expectTypeOf(e).toEqualTypeOf<ReservedFieldError>(),
   })
 }
 
