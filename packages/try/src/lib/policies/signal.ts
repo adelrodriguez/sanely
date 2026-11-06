@@ -1,4 +1,4 @@
-import { CancellationError, TimeoutError } from "#lib/errors.ts"
+import { CancellationError } from "#lib/errors.ts"
 import { discardOutcome, resolveWithAbort } from "#lib/utils.ts"
 
 export class SignalController {
@@ -26,11 +26,9 @@ export class SignalController {
   }
 
   checkDidCancel(cause?: unknown): CancellationError | undefined {
+    // Every abort on the external signals is a cancellation, whatever its reason. A parent deadline
+    // aborts with a TimeoutError, and this execution's own deadline never reaches this signal.
     if (!this.#cancelSignal?.aborted) {
-      return
-    }
-
-    if (this.#cancelSignal.reason instanceof TimeoutError) {
       return
     }
 
