@@ -27,7 +27,7 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    // preload.ts
    import { contextBridge, ipcRenderer } from "electron"
 
-   contextBridge.exposeInMainWorld("@sanely/rpc", {
+   contextBridge.exposeInMainWorld("typedport", {
      send: (path: string, payload: unknown) => ipcRenderer.invoke(path, payload),
    })
    ```
