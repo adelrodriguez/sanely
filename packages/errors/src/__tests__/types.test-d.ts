@@ -199,6 +199,21 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   })
 }
 
+// Types a numeric registry key as the string tag that the registry stores.
+{
+  class NumericError extends Tagged("1")() {}
+  const NumericFault = registry({ 1: NumericError })
+  const fault = NumericFault.create(1)
+
+  expectTypeOf(fault._tag).toEqualTypeOf<"1">()
+  expectTypeOf(NumericFault.tags).toEqualTypeOf<ReadonlyArray<"1">>()
+
+  NumericFault.matchTag(fault, 1, (e) => expectTypeOf(e).toEqualTypeOf<NumericError>())
+
+  // @ts-expect-error -- standalone matchTag takes the fault's string tag, not the registry key
+  matchTag(fault, 1, () => "handler")
+}
+
 // Narrows every library error by its tag in standalone matchers.
 {
   const err = new ReservedFieldError({ field: "_tag" }) as

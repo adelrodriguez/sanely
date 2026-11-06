@@ -164,3 +164,31 @@ describe("#21 flatten returns a string when a cause's toJSON returns undefined",
     expect(formatted).toStrictEqual(["svc", "[object Object]"])
   })
 })
+
+describe("#33 registry matchers match a fault by a numeric registry key", () => {
+  class NumericError extends Tagged("1")() {}
+  const NumericFault = registry({ 1: NumericError })
+
+  it("calls the matchTag handler for a numeric key", () => {
+    const fault = NumericFault.create(1)
+
+    expect(
+      NumericFault.matchTag(
+        fault,
+        1,
+        () => "handler",
+        () => "fallback"
+      )
+    ).toBe("handler")
+  })
+
+  it("calls the matchTags handler for a numeric key", () => {
+    const fault = NumericFault.create(1)
+
+    expect(NumericFault.matchTags(fault, { 1: () => "handler" }, () => "fallback")).toBe("handler")
+  })
+
+  it("lists the string tag for a numeric key", () => {
+    expect(NumericFault.tags).toStrictEqual(["1"])
+  })
+})
