@@ -4,11 +4,18 @@ import {
   DAY_GROUPS,
   DAYS,
   HOUR_INTERVALS,
-  MAX_ORDINAL,
+  LAST_DAY_OF_MONTH,
   MINUTE_INTERVALS,
   UNITS,
+  WEEKDAYS,
   formatChoices,
   getOrdinalSuffix,
+  isDayOfMonth,
+  isHour,
+  isMinute,
+  isOneOf,
+  isWeekday,
+  isWindowEnd,
 } from "#lib/vocabulary/words.ts"
 
 // Every unit alias in the `@sanely/duration` unit table.
@@ -49,9 +56,9 @@ const DURATION_ALIASES = [
   "ms",
 ]
 
-describe("DAYS", () => {
+describe("WEEKDAYS", () => {
   it("should list the days in calendar order, Monday first", () => {
-    expect(DAYS.map((day) => day.name)).toEqual([
+    expect(WEEKDAYS).toEqual([
       "monday",
       "tuesday",
       "wednesday",
@@ -61,24 +68,26 @@ describe("DAYS", () => {
       "sunday",
     ])
   })
+})
 
+describe("DAYS", () => {
   it("should use the cron day numbers, with 0 for Sunday", () => {
-    expect(DAYS.map((day) => day.cron)).toEqual([1, 2, 3, 4, 5, 6, 0])
+    expect(WEEKDAYS.map((day) => DAYS[day].cron)).toEqual([1, 2, 3, 4, 5, 6, 0])
   })
 
   it("should give each alias exactly one day", () => {
-    const aliases: readonly string[] = DAYS.flatMap((day) => day.aliases)
+    const aliases: readonly string[] = WEEKDAYS.flatMap((day) => DAYS[day].aliases)
 
     expect(new Set(aliases).size).toBe(aliases.length)
-    expect(aliases.filter((alias) => DAYS.some((day) => day.name === alias))).toEqual([])
+    expect(aliases.filter((alias) => isWeekday(alias))).toEqual([])
   })
 })
 
 describe("DAY_GROUPS", () => {
   it("should select Monday to Friday and the weekend", () => {
-    expect(DAY_GROUPS.map((group) => [group.singular, group.plural, group.cron])).toEqual([
-      ["weekday", "weekdays", [1, 2, 3, 4, 5]],
-      ["weekend", "weekends", [0, 6]],
+    expect(DAY_GROUPS.map((group) => [group.singular, group.name, group.days])).toEqual([
+      ["weekday", "weekdays", ["monday", "tuesday", "wednesday", "thursday", "friday"]],
+      ["weekend", "weekends", ["saturday", "sunday"]],
     ])
   })
 })
@@ -100,8 +109,8 @@ describe("intervals", () => {
     expect(HOUR_INTERVALS).toEqual(divisors)
   })
 
-  it("should stop the ordinals at the last day that occurs in every month", () => {
-    expect(MAX_ORDINAL).toBe(28)
+  it("should stop the days of the month at the last day that occurs in every month", () => {
+    expect(LAST_DAY_OF_MONTH).toBe(28)
   })
 })
 
@@ -135,6 +144,30 @@ describe("UNITS", () => {
 
   it("should contain no alias that @sanely/duration does not have", () => {
     expect([...unitByAlias.keys()].filter((alias) => !DURATION_ALIASES.includes(alias))).toEqual([])
+  })
+})
+
+describe("guards", () => {
+  const SAMPLES = [-1, 0, 0.5, 1, 12, 23, 24, 28, 29, 59, 60, Number.NaN, "1", null, undefined]
+
+  it.each([
+    ["isHour", isHour, [0, 1, 12, 23]],
+    ["isMinute", isMinute, [0, 1, 12, 23, 24, 28, 29, 59]],
+    ["isWindowEnd", isWindowEnd, [1, 12, 23, 24]],
+    ["isDayOfMonth", isDayOfMonth, [1, 12, 23, 24, 28]],
+  ] as const)("%s should accept only whole numbers in its range", (_, guard, accepted) => {
+    expect(SAMPLES.filter((value) => guard(value))).toEqual(accepted)
+  })
+
+  it("should accept only the day names in isWeekday", () => {
+    expect(WEEKDAYS.every((day) => isWeekday(day))).toBe(true)
+    expect(["Monday", "mon", "weekday", "", 1, null].some((value) => isWeekday(value))).toBe(false)
+  })
+
+  it("should accept only a member of the list in isOneOf", () => {
+    expect(isOneOf(MINUTE_INTERVALS, 15)).toBe(true)
+    expect(isOneOf(MINUTE_INTERVALS, "15")).toBe(false)
+    expect(isOneOf(MINUTE_INTERVALS, 7)).toBe(false)
   })
 })
 

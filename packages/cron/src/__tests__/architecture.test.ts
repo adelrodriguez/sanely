@@ -9,15 +9,24 @@ const LIB = join(import.meta.dirname, "..", "lib")
 //
 //   phrase      the public functions: cron, parse, safeParse, guards, and errors
 //   normalize   lenient form -> strict form
-//   grammar     strict form  -> schedule (and the type-level validator)
-//   serialize   schedule     -> standard cron expression
-//   schedule    the schedule model
+//   grammar     strict form  -> cron fields (and the type-level validator)
+//   serialize   cron fields  -> standard cron expression
+//   fields      the cron fields model
+//   schedule    the public schedule types
 //   vocabulary  the words and slot types of the language
 //
 // The grammar does not know the cron format, and the serializer does not know the language.
 // `src/index.ts` re-exports the public API from `phrase` and the types. Nothing in lib imports from
 // outside lib.
-const LAYERS = ["vocabulary", "schedule", "serialize", "grammar", "normalize", "phrase"] as const
+const LAYERS = [
+  "vocabulary",
+  "schedule",
+  "fields",
+  "serialize",
+  "grammar",
+  "normalize",
+  "phrase",
+] as const
 
 const IMPORT_RE = /from\s+"([.#][^"]+)"/g
 
@@ -69,7 +78,10 @@ describe("module dependencies", () => {
 describe("public entry", () => {
   it("only re-exports from lib", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "index.ts"), "utf8")
-    const statements = source.split("\n").filter((line) => line.trim() !== "")
+    const statements = source
+      .split(/\n(?=export )/)
+      .map((statement) => statement.replaceAll(/\s+/g, " ").trim())
+      .filter((statement) => statement !== "")
 
     for (const statement of statements) {
       expect(statement).toMatch(

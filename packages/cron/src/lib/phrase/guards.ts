@@ -1,4 +1,4 @@
-import type { CronPhrase } from "#lib/grammar/types.ts"
+import type { CronPhrase } from "#lib/schedule/schedule.ts"
 import { parseStrict } from "#lib/grammar/grammar.ts"
 import { parseLenient } from "./parse"
 

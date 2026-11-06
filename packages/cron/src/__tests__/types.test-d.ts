@@ -4,28 +4,32 @@ import { expectTypeOf } from "vitest"
 import type { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
 import {
   cron,
+  type CronExpression,
   type CronPhrase,
-  type DayNameList,
+  type DayOfMonth,
   type DaySet,
+  HOUR_INTERVALS,
   type HourInterval,
   InvalidCronPhraseError,
   isCronPhrase,
   isValidCronPhrase,
+  MINUTE_INTERVALS,
   type MinuteInterval,
-  type OnDaySet,
-  type Ordinal,
   parse,
   safeParse,
-  type Shortcut,
+  type Schedule,
+  type Time,
   type ValidateCronPhrase,
+  WEEKDAYS,
   type Weekday,
+  type Window,
 } from "#index.ts"
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 declare const userInput: string
+declare const anySchedule: Schedule
 
-type NotLiteral =
-  "a string is not a CronPhrase. Use parse, or narrow the string with isCronPhrase first"
+type NotLiteral = "a string is not a CronPhrase. Use parse for a string at runtime"
 
 type Row = (typeof GRAMMAR)[number]
 type StrictPhrase = Extract<Row, { strict: true }>["phrase"]
@@ -155,54 +159,90 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(pair).toExtend<CronPhrase[]>()
 }
 
-// Documents a known limitation: CronPhrase does not check times and interval clauses. `cron` and
-// `ValidateCronPhrase` check them.
+// Documents a known limitation: CronPhrase does not check the slots after the sentence shape, such
+// as times, day sets, ordinals, and windows. `cron` and `ValidateCronPhrase` check them.
 {
   expectTypeOf<"every day at 25:00">().toExtend<CronPhrase>()
+  expectTypeOf<"every monday and frday at 9:00">().toExtend<CronPhrase>()
+  expectTypeOf<"on the 29th of every month at 9:00">().toExtend<CronPhrase>()
   expectTypeOf<"every 15 minutes on frday">().toExtend<CronPhrase>()
   expectTypeOf<"every 15 minutes between 17:00 and 9:00">().toExtend<CronPhrase>()
 }
 
-// Slot types
+// ── Schedule ─────────────────────────────────────────────────────────────────
 
-// Makes Weekday the seven day names.
+// Accepts each kind of schedule, with and without its optional keys.
 {
-  expectTypeOf<Weekday>().toEqualTypeOf<
-    "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
+  const schedules: Schedule[] = [
+    { every: "minute" },
+    { every: "minute", interval: 15 },
+    { between: { from: 9, to: 17 }, every: "minute", interval: 15, on: "weekdays" },
+    { between: { from: 18, to: 24 }, every: "minute" },
+    { between: { from: 0, to: 1 }, every: "minute" },
+    { every: "hour" },
+    { every: "hour", interval: 6, on: ["saturday", "sunday"] },
+    { at: { hour: 9, minute: 30 }, every: "day" },
+    { at: { hour: 17, minute: 30 }, every: "day", on: ["monday", "friday"] },
+    { at: { hour: 0, minute: 0 }, every: "day", on: "weekends" },
+    { at: { hour: 8, minute: 0 }, day: 1, every: "month" },
+    { at: { hour: 23, minute: 59 }, day: 28, every: "month" },
+  ]
+
+  void schedules
+}
+
+// Accepts a day list in any order and with duplicates, because a day list is a set.
+{
+  expectTypeOf<["friday", "monday", "friday"]>().toExtend<DaySet>()
+}
+
+// Narrows a schedule by its kind.
+{
+  if (anySchedule.every === "month") expectTypeOf(anySchedule.day).toEqualTypeOf<DayOfMonth>()
+  if (anySchedule.every === "day") expectTypeOf(anySchedule.at).toEqualTypeOf<Time>()
+}
+
+// Makes the window end after its start, up to 24.
+{
+  expectTypeOf<Extract<Window, { from: 17 }>["to"]>().toEqualTypeOf<
+    18 | 19 | 20 | 21 | 22 | 23 | 24
   >()
+  expectTypeOf<Extract<Window, { from: 23 }>["to"]>().toEqualTypeOf<24>()
+  expectTypeOf<Window["from"]>().toEqualTypeOf<Time["hour"]>()
 }
 
-// Makes the interval types the divisors of 60 and 24, without 1.
+// Makes the slot types the values of the constants.
 {
-  expectTypeOf<MinuteInterval>().toEqualTypeOf<2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30>()
-  expectTypeOf<HourInterval>().toEqualTypeOf<2 | 3 | 4 | 6 | 8 | 12>()
+  expectTypeOf<Weekday>().toEqualTypeOf<(typeof WEEKDAYS)[number]>()
+  expectTypeOf<MinuteInterval>().toEqualTypeOf<(typeof MINUTE_INTERVALS)[number]>()
+  expectTypeOf<HourInterval>().toEqualTypeOf<(typeof HOUR_INTERVALS)[number]>()
+  expectTypeOf(WEEKDAYS).toEqualTypeOf<
+    readonly ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+  >()
+  expectTypeOf(MINUTE_INTERVALS).toEqualTypeOf<readonly [2, 3, 4, 5, 6, 10, 12, 15, 20, 30]>()
+  expectTypeOf(HOUR_INTERVALS).toEqualTypeOf<readonly [2, 3, 4, 6, 8, 12]>()
 }
 
-// Makes Shortcut the four shortcut words.
+// Covers the hours, the minutes, and the days of the month exactly.
 {
-  expectTypeOf<Shortcut>().toEqualTypeOf<"hourly" | "daily" | "weekly" | "monthly">()
+  expectTypeOf<0 | 23>().toExtend<Time["hour"]>()
+  expectTypeOf<-1>().not.toExtend<Time["hour"]>()
+  expectTypeOf<24>().not.toExtend<Time["hour"]>()
+  expectTypeOf<1.5>().not.toExtend<Time["hour"]>()
+  expectTypeOf<0 | 59>().toExtend<Time["minute"]>()
+  expectTypeOf<60>().not.toExtend<Time["minute"]>()
+  expectTypeOf<1 | 28>().toExtend<DayOfMonth>()
+  expectTypeOf<0>().not.toExtend<DayOfMonth>()
+  expectTypeOf<29>().not.toExtend<DayOfMonth>()
 }
 
-// Gives each Ordinal the correct suffix.
+// Makes CronExpression a string, but not every string a CronExpression.
 {
-  expectTypeOf<
-    "1st" | "2nd" | "3rd" | "4th" | "11th" | "12th" | "13th" | "21st" | "22nd" | "23rd" | "28th"
-  >().toExtend<Ordinal>()
+  expectTypeOf<CronExpression>().toExtend<string>()
+  expectTypeOf<string>().not.toExtend<CronExpression>()
 }
 
-// Lists the day names in calendar order, with the list format "a, b and c".
-{
-  expectTypeOf<
-    "monday" | "monday and friday" | "monday, wednesday and friday"
-  >().toExtend<DayNameList>()
-  expectTypeOf<"monday, tuesday, wednesday, thursday, friday, saturday and sunday">().toExtend<DayNameList>()
-}
-
-// Adds the singular day groups to DaySet, and the plural day groups to OnDaySet.
-{
-  expectTypeOf<DaySet>().toEqualTypeOf<DayNameList | "weekday" | "weekend">()
-  expectTypeOf<OnDaySet>().toEqualTypeOf<DayNameList | "weekdays" | "weekends">()
-}
+// ── Functions ────────────────────────────────────────────────────────────────
 
 // cron
 
@@ -299,17 +339,73 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
 // The function bodies never execute — only the type checker matters.
 
 function _negativeTypeTests() {
-  // @ts-expect-error -- 7 is not a minute interval
-  const interval: CronPhrase = "every 7 minutes"
+  // @ts-expect-error -- 1 is not a MinuteInterval: a schedule without an interval runs every minute
+  const minutes: MinuteInterval = 1
+  void minutes
+
+  // @ts-expect-error -- 5 does not divide 24
+  const hours: HourInterval = 5
+  void hours
+
+  // @ts-expect-error -- "weekday" is a day group, not a Weekday
+  const weekday: Weekday = "weekday"
+  void weekday
+
+  // @ts-expect-error -- a schedule uses the plural day group
+  const singular: DaySet = "weekday"
+  void singular
+
+  // @ts-expect-error -- a day list has one or more days
+  const empty: DaySet = []
+  void empty
+
+  // @ts-expect-error -- the 29th does not occur in every month
+  const day: DayOfMonth = 29
+  void day
+
+  // @ts-expect-error -- 24 is not an hour
+  const hour: Time = { hour: 24, minute: 0 }
+  void hour
+
+  // @ts-expect-error -- 60 is not a minute
+  const minute: Time = { hour: 9, minute: 60 }
+  void minute
+
+  // @ts-expect-error -- the window must end after it starts
+  const backwards: Window = { from: 17, to: 9 }
+  void backwards
+
+  // @ts-expect-error -- the window must end after it starts
+  const same: Window = { from: 9, to: 9 }
+  void same
+
+  // @ts-expect-error -- 7 does not divide 60
+  const interval: Schedule = { every: "minute", interval: 7 }
   void interval
 
-  // @ts-expect-error -- the 29th is not an Ordinal
-  const ordinal: CronPhrase = "on the 29th of every month at 9:00"
-  void ordinal
+  // @ts-expect-error -- an hour schedule has no window
+  const window: Schedule = { between: { from: 9, to: 17 }, every: "hour" }
+  void window
 
-  // @ts-expect-error -- the days after "every" are not in calendar order
-  const days: CronPhrase = "every friday and monday at 9:00"
-  void days
+  // @ts-expect-error -- a month schedule has no day set
+  const monthDays: Schedule = { at: { hour: 9, minute: 0 }, day: 1, every: "month", on: "weekdays" }
+  void monthDays
+
+  // @ts-expect-error -- a day schedule needs a time
+  const noTime: Schedule = { every: "day" }
+  void noTime
+
+  // @ts-expect-error -- "week" is not a kind of schedule
+  const week: Schedule = { every: "week" }
+  void week
+
+  // @ts-expect-error -- a string is not a CronExpression
+  const expression: CronExpression = "*/15 * * * *"
+  void expression
+
+  // @ts-expect-error -- 7 is not a minute interval
+  const phraseInterval: CronPhrase = "every 7 minutes"
+  void phraseInterval
 
   // @ts-expect-error -- a minute interval cannot have an "at" clause
   const at: CronPhrase = "every 15 minutes at 9:30"
@@ -319,49 +415,13 @@ function _negativeTypeTests() {
   const word: CronPhrase = "biweekly"
   void word
 
-  // @ts-expect-error -- "weekday" is a day group, not a Weekday
-  const weekday: Weekday = "weekday"
-  void weekday
+  // @ts-expect-error -- a day set starts with a day name or a day group
+  const frday: CronPhrase = "every frday at 9:00"
+  void frday
 
-  // @ts-expect-error -- 1 is spelled "every minute"
-  const minutes: MinuteInterval = 1
-  void minutes
-
-  // @ts-expect-error -- 5 does not divide 24
-  const hours: HourInterval = 5
-  void hours
-
-  // @ts-expect-error -- the 29th does not occur in every month
-  const day: Ordinal = "29th"
-  void day
-
-  // @ts-expect-error -- the suffix of 1 is "st"
-  const suffix: Ordinal = "1th"
-  void suffix
-
-  // @ts-expect-error -- the days are not in calendar order
-  const order: DayNameList = "friday and monday"
-  void order
-
-  // @ts-expect-error -- the last separator is "and"
-  const separator: DayNameList = "monday, friday"
-  void separator
-
-  // @ts-expect-error -- a day group stands alone
-  const group: DaySet = "weekday and saturday"
-  void group
-
-  // @ts-expect-error -- the day group after "every" is singular
-  const plural: DaySet = "weekdays"
-  void plural
-
-  // @ts-expect-error -- the day group after "on" is plural
-  const singular: OnDaySet = "weekday"
-  void singular
-
-  // @ts-expect-error -- "biweekly" is not a Shortcut
-  const shortcut: Shortcut = "biweekly"
-  void shortcut
+  // @ts-expect-error -- a day of the month starts with a number
+  const ordinal: CronPhrase = "on the first of every month at 9:00"
+  void ordinal
 
   // @ts-expect-error -- 7 does not divide 60
   cron("every 7 minutes")

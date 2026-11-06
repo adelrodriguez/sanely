@@ -34,7 +34,7 @@ export function parseLenient(value: unknown): GrammarResult {
 export function parse(value: string): string {
   const result = parseLenient(value)
   if (!result.ok) throw new InvalidCronPhraseError(value, result.reason)
-  return toStandardCron(result.schedule)
+  return toStandardCron(result.fields)
 }
 
 /**
@@ -50,5 +50,5 @@ export function parse(value: string): string {
  */
 export function safeParse(value: string): string | null {
   const result = parseLenient(value)
-  return result.ok ? toStandardCron(result.schedule) : null
+  return result.ok ? toStandardCron(result.fields) : null
 }
