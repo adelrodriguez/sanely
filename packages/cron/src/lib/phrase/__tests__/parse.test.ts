@@ -111,8 +111,17 @@ interface Meaning {
    * The span of time to compare, from a start time.
    */
   readonly spanDays: number
-  readonly matches: (date: Date) => boolean
+  /**
+   * Whether the phrase runs on the UTC day that starts at this time.
+   */
+  readonly matchesDay: (day: Date) => boolean
+  /**
+   * Whether the phrase runs at this UTC time of day, on a day that it runs.
+   */
+  readonly matchesTime: (hour: number, minute: number) => boolean
 }
+
+const EVERY_DAY = () => true
 
 function formatList(names: readonly string[]): string {
   if (names.length <= 2) return names.join(" and ")
@@ -172,10 +181,9 @@ const minuteIntervalArb: fc.Arbitrary<Meaning> = fc
     window: fc.option(windowArb, { nil: undefined }),
   })
   .map(({ days, interval, window }) => ({
-    matches: (date: Date) =>
-      date.getUTCMinutes() % interval === 0
-      && (!window || (date.getUTCHours() >= window.start && date.getUTCHours() < window.end))
-      && (!days || days.days.includes(date.getUTCDay())),
+    matchesDay: days ? (day: Date) => days.days.includes(day.getUTCDay()) : EVERY_DAY,
+    matchesTime: (hour: number, minute: number) =>
+      minute % interval === 0 && (!window || (hour >= window.start && hour < window.end)),
     phrase: [
       interval === 1 ? "every minute" : `every ${interval} minutes`,
       window?.text,
@@ -192,21 +200,20 @@ const hourIntervalArb: fc.Arbitrary<Meaning> = fc
     interval: fc.constantFrom(1, 2, 3, 4, 6, 8, 12),
   })
   .map(({ days, interval }) => ({
-    matches: (date: Date) =>
-      date.getUTCMinutes() === 0
-      && date.getUTCHours() % interval === 0
-      && (!days || days.days.includes(date.getUTCDay())),
+    matchesDay: days ? (day: Date) => days.days.includes(day.getUTCDay()) : EVERY_DAY,
+    matchesTime: (hour: number, minute: number) => minute === 0 && hour % interval === 0,
     phrase: [interval === 1 ? "every hour" : `every ${interval} hours`, days && `on ${days.text}`]
       .filter(Boolean)
       .join(" "),
     spanDays: 8,
   }))
 
-const atTime = (time: { hour: number; minute: number }, date: Date) =>
-  date.getUTCHours() === time.hour && date.getUTCMinutes() === time.minute
+const atTime = (time: { hour: number; minute: number }) => (hour: number, minute: number) =>
+  hour === time.hour && minute === time.minute
 
 const dailyArb: fc.Arbitrary<Meaning> = timeArb.map((time) => ({
-  matches: (date: Date) => atTime(time, date),
+  matchesDay: EVERY_DAY,
+  matchesTime: atTime(time),
   phrase: `every day at ${time.text}`,
   spanDays: 8,
 }))
@@ -214,7 +221,8 @@ const dailyArb: fc.Arbitrary<Meaning> = timeArb.map((time) => ({
 const daysOfWeekArb: fc.Arbitrary<Meaning> = fc
   .tuple(daySetArb("every"), timeArb)
   .map(([days, time]) => ({
-    matches: (date: Date) => atTime(time, date) && days.days.includes(date.getUTCDay()),
+    matchesDay: (day: Date) => days.days.includes(day.getUTCDay()),
+    matchesTime: atTime(time),
     phrase: `every ${days.text} at ${time.text}`,
     spanDays: 15,
   }))
@@ -231,7 +239,8 @@ const dayOfMonthArb: fc.Arbitrary<Meaning> = fc
             ? "rd"
             : "th"
     return {
-      matches: (date: Date) => atTime(time, date) && date.getUTCDate() === day,
+      matchesDay: (date: Date) => date.getUTCDate() === day,
+      matchesTime: atTime(time),
       phrase: `on the ${day}${suffix} of every month at ${time.text}`,
       spanDays: 70,
     }
@@ -250,10 +259,24 @@ const startArb = fc
   .integer({ max: Date.UTC(2028, 0, 1) / MINUTE_MS, min: Date.UTC(2026, 0, 1) / MINUTE_MS })
   .map((minutes) => minutes * MINUTE_MS)
 
+// The times of day do not change from day to day, so the test finds them once in the 1440 minutes
+// of a day. Then it walks the span one UTC day at a time.
 function expectedRuns(meaning: Meaning, start: number): number[] {
+  const end = start + meaning.spanDays * DAY_MS
+  const timesOfDay: number[] = []
+  for (let minuteOfDay = 0; minuteOfDay < DAY_MS / MINUTE_MS; minuteOfDay += 1) {
+    if (meaning.matchesTime(Math.floor(minuteOfDay / 60), minuteOfDay % 60)) {
+      timesOfDay.push(minuteOfDay * MINUTE_MS)
+    }
+  }
+
   const runs: number[] = []
-  for (let time = start; time < start + meaning.spanDays * DAY_MS; time += MINUTE_MS) {
-    if (meaning.matches(new Date(time))) runs.push(time)
+  for (let day = start - (start % DAY_MS); day < end; day += DAY_MS) {
+    if (!meaning.matchesDay(new Date(day))) continue
+    for (const timeOfDay of timesOfDay) {
+      const time = day + timeOfDay
+      if (time >= start && time < end) runs.push(time)
+    }
   }
   return runs
 }
