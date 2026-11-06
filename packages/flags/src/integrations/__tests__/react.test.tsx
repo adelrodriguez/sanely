@@ -34,6 +34,29 @@ function makeFactory() {
   return { decide, decideMany, factory }
 }
 
+function changingFactory() {
+  const provider = {
+    emit: (_keys?: readonly string[]): void => undefined,
+    value: true,
+  }
+  const decide = vi.fn(() => decision.boolean(provider.value))
+  const decideMany = vi.fn((keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, decision.boolean(provider.value)]))
+  )
+  const factory = buildGate({
+    decide,
+    decideMany,
+    identify: () => ({ distinctId: "core" }),
+    subscribe: (notify) => {
+      provider.emit = (keys) => {
+        notify(keys === undefined ? {} : { keys })
+      }
+      return () => null
+    },
+  })
+  return { decide, decideMany, factory, provider }
+}
+
 async function renderAsync(node: ReactNode): Promise<void> {
   await act(() => {
     render(node)
@@ -450,6 +473,100 @@ describe("React integration", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("true")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(["prefetch", "unmount"] as const)(
+    "re-evaluates a gate that changed after %s while no component read it",
+    async (retainedBy) => {
+      const { decide, factory, provider } = changingFactory()
+      const flag = factory({ defaultValue: false, key: "beta" })
+      const cache = createGateCache()
+      function Consumer() {
+        return <span>{String(useGate(flag))}</span>
+      }
+      const tree = (
+        <GateProvider cache={cache}>
+          <Suspense fallback="loading">
+            <Consumer />
+          </Suspense>
+        </GateProvider>
+      )
+      if (retainedBy === "prefetch") {
+        await cache.prefetch(flag)
+      } else {
+        await renderAsync(tree)
+        expect(await screen.findByText("true")).toBeTruthy()
+        cleanup()
+      }
+
+      provider.value = false
+      await act(() => {
+        provider.emit(["beta"])
+        return Promise.resolve()
+      })
+      await renderAsync(tree)
+
+      expect(await screen.findByText("false")).toBeTruthy()
+      expect(decide).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it.each(["prefetch", "unmount"] as const)(
+    "re-evaluates a batch that changed after %s while no component read it",
+    async (retainedBy) => {
+      const { decideMany, factory, provider } = changingFactory()
+      const flag = factory({ defaultValue: false, key: "beta" })
+      const cache = createGateCache()
+      function Consumer() {
+        const [value] = useGateBatch([flag])
+        return <span>{String(value)}</span>
+      }
+      const tree = (
+        <GateProvider cache={cache}>
+          <Suspense fallback="loading">
+            <Consumer />
+          </Suspense>
+        </GateProvider>
+      )
+      if (retainedBy === "prefetch") {
+        await cache.prefetchBatch([flag])
+      } else {
+        await renderAsync(tree)
+        expect(await screen.findByText("true")).toBeTruthy()
+        cleanup()
+      }
+
+      provider.value = false
+      await act(() => {
+        provider.emit(["beta"])
+        return Promise.resolve()
+      })
+      await renderAsync(tree)
+
+      expect(await screen.findByText("false")).toBeTruthy()
+      expect(decideMany).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it("keeps a retained entry when a change names another flag", async () => {
+    const { decide, factory, provider } = changingFactory()
+    const flag = factory({ defaultValue: false, key: "beta" })
+    const cache = createGateCache()
+    await cache.prefetch(flag)
+
+    await act(() => {
+      provider.emit(["other"])
+      return Promise.resolve()
+    })
+    await cache.prefetch(flag)
+    expect(decide).toHaveBeenCalledTimes(1)
+
+    await act(() => {
+      provider.emit()
+      return Promise.resolve()
+    })
+    await cache.prefetch(flag)
     expect(decide).toHaveBeenCalledTimes(2)
   })
 
