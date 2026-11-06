@@ -23,6 +23,10 @@ function requireText(value: string) {
   return value.trim() !== "" || "Enter a value."
 }
 
+function trim(value: string) {
+  return value.trim()
+}
+
 export function registerNewPackageGenerator(plop: PlopTypes.NodePlopAPI) {
   const repositoryRoot = plop.getDestBasePath()
 
@@ -51,7 +55,7 @@ export function registerNewPackageGenerator(plop: PlopTypes.NodePlopAPI) {
           type: "addMany",
         },
         () => {
-          execFileSync("pnpm", ["install"], { cwd: repositoryRoot })
+          execFileSync("pnpm", ["install"], { cwd: repositoryRoot, stdio: "inherit" })
 
           return `Installed dependencies. Add @${root.name}/${name} to the package table in README.md.`
         },
@@ -76,12 +80,14 @@ export function registerNewPackageGenerator(plop: PlopTypes.NodePlopAPI) {
         },
       },
       {
+        filter: trim,
         message: "Which emoji starts the README header?",
         name: "emoji",
         type: "input",
         validate: requireText,
       },
       {
+        filter: trim,
         message: "What does the package do, in one sentence?",
         name: "description",
         type: "input",
