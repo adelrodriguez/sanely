@@ -79,27 +79,13 @@ export function connect<Context = void>(
   closed: Promise<ChannelError>
   transport: Transport<CallOptions>
 } {
-  const source: Wire =
+  // A wire that is already here has nothing buffered, so nothing to withdraw.
+  const { wire: source, withdraw } =
     "send" in wire
-      ? wire
-      : deferWire(
-          wire,
-          (reason) => {
-            close(reason)
-          },
-          // A queued request whose caller already gave up (timed out, aborted) must not reach
-          // the peer once the wire arrives — the reply would be dropped, but the peer's resolver
-          // would still run. A queued cancel always belongs to such a request, so it goes too.
-          (data) => {
-            const message = parseMessage(data)
-
-            if (message?.kind === "req") {
-              return pending.has(message.id)
-            }
-
-            return message?.kind !== "cancel"
-          }
-        )
+      ? { wire, withdraw: (): boolean => false }
+      : deferWire(wire, (reason) => {
+          close(reason)
+        })
   const {
     context,
     expose,
@@ -193,6 +179,8 @@ export function connect<Context = void>(
 
         const id = nextId
         nextId += 1
+        // Kept by identity, so `cancelRemote` can withdraw it from a pending wire's buffer.
+        const request = { id, kind: "req", path, payload }
 
         const cleanup = (): void => {
           pending.delete(id)
@@ -201,7 +189,7 @@ export function connect<Context = void>(
         }
         const onCallAbort = (): void => {
           cleanup()
-          cancelRemote(id)
+          cancelRemote(request)
           // oxlint-disable-next-line prefer-promise-reject-errors -- an abort rejects with the caller's own reason, as fetch does
           reject(callSignal?.reason)
         }
@@ -209,7 +197,7 @@ export function connect<Context = void>(
         const timer = Number.isFinite(timeoutMs)
           ? setTimeout(() => {
               cleanup()
-              cancelRemote(id)
+              cancelRemote(request)
               reject(new ChannelError({ code: "timeout", path, timeoutMs }))
             }, timeoutMs)
           : undefined
@@ -229,7 +217,7 @@ export function connect<Context = void>(
         })
 
         try {
-          source.send({ id, kind: "req", path, payload })
+          source.send(request)
         } catch (error) {
           // A synchronously-throwing send (DataCloneError on a non-cloneable
           // payload) rejects the caller; don't leak the pending entry.
@@ -239,14 +227,16 @@ export function connect<Context = void>(
       }),
   }
 
-  // Best effort: if the pipe is gone, so is the peer's reason to keep working.
-  function cancelRemote(id: number): void {
-    if (closed) {
+  // Best effort: if the pipe is gone, so is the peer's reason to keep working. A request still
+  // buffered on a pending wire is withdrawn instead: the peer never saw it, so it needs no cancel,
+  // and the buffer must not keep its payload until the wire arrives.
+  function cancelRemote(request: { id: number }): void {
+    if (closed || withdraw(request)) {
       return
     }
 
     try {
-      source.send({ id, kind: "cancel" })
+      source.send({ id: request.id, kind: "cancel" })
     } catch {
       // Same as a lost reply: nothing to recover, and nobody awaits this.
     }

@@ -269,7 +269,7 @@ Turns a `Wire` into a transport for calling the peer, and serves the peer's call
 
 A call's `signal` rejects that call with `signal.reason` and drops its late reply. When a call is aborted or hits `timeoutMs`, `connect` tells the peer, and the peer aborts the `signal` its resolver received.
 
-`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out is never sent. If the promise rejects, the session closes with the rejection as its reason.
+`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason.
 
 When the session closes, every pending call and every later call rejects with a `ChannelError` with code `closed` and the reason as `cause`. This end stops serving and aborts every resolver it is running.
 
