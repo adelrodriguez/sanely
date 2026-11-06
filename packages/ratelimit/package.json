@@ -1,0 +1,55 @@
+{
+  "name": "@sanely/ratelimit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Atomic rate limiting for Redis and other stores",
+  "keywords": [],
+  "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/ratelimit#readme",
+  "bugs": {
+    "url": "https://github.com/adelrodriguez/sanely/issues"
+  },
+  "license": "MIT",
+  "author": "Adel Rodríguez",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adelrodriguez/sanely.git",
+    "directory": "packages/ratelimit"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "imports": {
+    "#*": "./src/*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:debug": "tsdown --no-minify --sourcemap",
+    "build:verify": "node ../../scripts/verify-build.ts",
+    "dev": "tsdown --no-minify --sourcemap --watch",
+    "test": "vitest run",
+    "test:compat": "node ../../scripts/compat-smoke.mjs",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
