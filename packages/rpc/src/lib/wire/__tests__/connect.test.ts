@@ -893,6 +893,54 @@ describe("connect over a pending wire", () => {
     expect(sent).toEqual([])
   })
 
+  // A wire's `send` can run code that ends another queued call, such as an abort or a close. The
+  // calls that still wait in the buffer must stay withdrawable until they are sent.
+  test.each([
+    [
+      "aborts the queued call",
+      (_client: ReturnType<typeof connect>, controller: AbortController) => {
+        controller.abort()
+      },
+    ],
+    [
+      "closes the session",
+      (client: ReturnType<typeof connect>) => {
+        client.close()
+      },
+    ],
+  ])("does not send a queued request when the first send %s", async (_name, end) => {
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending, { timeoutMs: Number.POSITIVE_INFINITY })
+    const controller = new AbortController()
+    const calls = [
+      Promise.resolve(client.transport("first", { name: "first" })),
+      Promise.resolve(
+        client.transport("second", { name: "second" }, { signal: controller.signal })
+      ),
+    ]
+    const settled = Promise.allSettled(calls)
+    const listeners: unknown[] = []
+    const sent: string[] = []
+
+    deliver({
+      onMessage: (listener) => {
+        listeners.push(listener)
+      },
+      send: (data) => {
+        sent.push(JSON.stringify(data))
+        end(client, controller)
+      },
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toContain('"first"')
+    client.close()
+    await settled
+  })
+
   test("releases the payload of a queued call that timed out", async () => {
     const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: 1 })
     const { failure, payload } = callWithPayload(client.transport)
