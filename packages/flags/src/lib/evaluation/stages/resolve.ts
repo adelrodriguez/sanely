@@ -37,6 +37,40 @@ function reportCacheError<TIdentity extends Identity>(
   })
 }
 
+/**
+ * Queues one store operation behind the earlier operations for the same key. A failed operation is
+ * reported and does not stop the operations after it.
+ */
+function mutateStore<TIdentity extends Identity>(
+  config: ResolvedConfig<TIdentity>,
+  context: Pick<HookContext<TIdentity>, "flagKey" | "identity">,
+  key: string,
+  operation: "delete" | "set",
+  mutation: () => Promise<unknown> | undefined
+): void {
+  const { mutations } = config.state
+  const queue = mutations.get(key) ?? { deletes: 0, tail: Promise.resolve() }
+  if (operation === "delete") {
+    queue.deletes += 1
+  }
+  const tail = queue.tail
+    .then(mutation)
+    .catch((error: unknown) => {
+      reportCacheError(config, context, operation, key, error)
+    })
+    .then(() => {
+      if (operation === "delete") {
+        queue.deletes -= 1
+      }
+      if (queue.tail === tail) {
+        mutations.delete(key)
+      }
+      return null
+    })
+  queue.tail = tail
+  mutations.set(key, queue)
+}
+
 function deleteCacheEntry<TIdentity extends Identity>(
   config: ResolvedConfig<TIdentity>,
   context: Pick<HookContext<TIdentity>, "flagKey" | "identity">,
@@ -46,12 +80,7 @@ function deleteCacheEntry<TIdentity extends Identity>(
   if (!store.delete) {
     return
   }
-  void Promise.resolve()
-    .then(() => store.delete?.(key))
-    .catch((error: unknown) => {
-      reportCacheError(config, context, "delete", key, error)
-      return null
-    })
+  mutateStore(config, context, key, "delete", () => store.delete?.(key))
 }
 
 function indexCacheKey<TIdentity extends Identity>(
@@ -147,6 +176,10 @@ async function consultStore<TIdentity extends Identity, T extends string[]>(
 ): Promise<StoreConsultation> {
   const { state } = config
   const generationBeforeRead = state.writes.generation
+  // The delete for an earlier change has not completed, so the store can hold a stale decision.
+  if (state.mutations.get(key)?.deletes) {
+    return { generation: generationBeforeRead }
+  }
 
   let cached: Decision | null | undefined
   try {
@@ -178,17 +211,11 @@ function writeThrough<TIdentity extends Identity>(
   key: string,
   decision: Decision
 ): void {
-  void Promise.resolve()
-    .then(() => {
-      if (config.state.writes.generation !== generation) {
-        return
-      }
-      return store.set(key, decision)
-    })
-    .catch((error: unknown) => {
-      reportCacheError(config, context, "set", key, error)
-      return null
-    })
+  // The generation check runs when the write starts, after the earlier operations for this key. A
+  // change during the write queues its delete after the write.
+  mutateStore(config, context, key, "set", () =>
+    config.state.writes.generation === generation ? store.set(key, decision) : undefined
+  )
 }
 
 /**

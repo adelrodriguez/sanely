@@ -12,12 +12,24 @@ export type PendingResolution = {
 }
 
 /**
+ * The store writes and deletes for one cache key. A store can complete concurrent operations in any
+ * order, so a write that started before a change could land after the delete for that change. The
+ * operations for one key run one at a time instead, in the order they were issued. `deletes` counts
+ * the deletes that have not completed: until they do, the store can still hold a stale decision.
+ */
+export type StoreMutations = {
+  deletes: number
+  tail: Promise<unknown>
+}
+
+/**
  * Decision memory for one gate factory: in-flight coalesced provider calls plus cache invalidation
  * bookkeeping. Created once per factory so gates from different factories never share state, even
  * when built from the same config object.
  */
 export type ResolutionState = {
   keysByFlag: Map<string, Map<string, Identity | null>>
+  mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
   // The invalidation listener never leaves the change broadcaster, so its unsubscribe function is
   // intentionally not retained.
@@ -31,6 +43,7 @@ export type ResolutionState = {
 export function createResolutionState(): ResolutionState {
   return {
     keysByFlag: new Map(),
+    mutations: new Map(),
     pending: new Map(),
     subscription: { attached: false },
     writes: { generation: 0 },
