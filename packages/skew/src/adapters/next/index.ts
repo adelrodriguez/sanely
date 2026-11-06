@@ -17,6 +17,10 @@ import { serializeDescriptor } from "#lib/protocol/descriptor.ts"
 
 export type { DeploymentIdOption, DeploymentPlatform } from "#adapters/shared.ts"
 
+// The Pages Router loads a package from node_modules without bundling it, so Next would not
+// replace the `process.env.CRISPEN_NEXT_*` reads in this package. Next bundles a transpiled package.
+const PACKAGE_NAME = "@sanely/skew"
+
 export interface CrispenNextOptions {
   readonly deploymentId?: DeploymentIdOption
   readonly endpoint?: string
@@ -109,6 +113,7 @@ export function withCrispen(
               ...(resolvedConfig.headers === undefined ? [] : await resolvedConfig.headers()),
               descriptorHeader,
             ],
+      transpilePackages: [...new Set([...(resolvedConfig.transpilePackages ?? []), PACKAGE_NAME])],
     }
   }
 }

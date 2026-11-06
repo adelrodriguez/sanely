@@ -45,15 +45,48 @@ This guide adds an update notice to a Next.js app. The notice appears when a new
 
    The folder name starts with `%5F`, the encoded `_`, because Next.js treats an `app` folder that starts with `_` as private.
 
-   For the Pages Router, render `CrispenScript` in `pages/_document.tsx`, and create `pages/_crispen/deployment.json.ts`:
+   For the Pages Router, the Pages Router runs API handlers only from `pages/api`. Set `endpoint` in `next.config.ts` to the handler's path:
+
+   ```ts
+   export default withCrispen(
+     {
+       // Your Next.js config.
+     },
+     { endpoint: "/api/crispen/deployment.json" }
+   )
+   ```
+
+   Then create `pages/api/crispen/deployment.json.ts`:
 
    ```ts
    export { crispenPagesHandler as default } from "@sanely/skew/next"
    ```
 
+   Call `CrispenScript` in the `<body>` of `pages/_document.tsx`:
+
+   ```tsx
+   import { CrispenScript } from "@sanely/skew/next"
+   import { Head, Html, Main, NextScript } from "next/document"
+
+   export default function Document() {
+     return (
+       <Html lang="en">
+         <Head />
+         <body>
+           {CrispenScript()}
+           <Main />
+           <NextScript />
+         </body>
+       </Html>
+     )
+   }
+   ```
+
+   Write `{CrispenScript()}`, not `<CrispenScript />`. Next.js finds a `beforeInteractive` script in `_document` only when the `<Script>` element is there directly.
+
 4. Add the `UpdateNotice` component from [How to add Crispen to a Vite app](./add-crispen-to-a-vite-app.md), step 3. Add `"use client"` at the top of its file.
 
-5. Run `next build` and `next start`. Make sure that `/_crispen/deployment.json` returns JSON with an `id`.
+5. Run `next build` and `next start`. Make sure that the descriptor returns JSON with an `id`: `/_crispen/deployment.json` for the App Router, or `/api/crispen/deployment.json` for the Pages Router.
 
 The adapter detects the deployment ID on Vercel, Cloudflare Pages, Netlify, and GitHub Actions. On another host, see [How to set the deployment ID](./set-the-deployment-id.md).
 
@@ -72,6 +105,6 @@ Next.js does not apply `headers()` rules to a static export. Add the cache rule 
 Vercel skew protection does not pin a `fetch` from client code by default, so the descriptor request reaches the live deployment. If your app sets the `__vdpl` cookie, Vercel pins every request, and the old deployment answers the descriptor request. In that case, do one of these:
 
 - Set `endpoint` to an origin that Vercel does not pin.
-- Exclude `/_crispen/deployment.json` from the cookie.
+- Exclude the descriptor path, such as `/_crispen/deployment.json`, from the cookie.
 
 [The descriptor request must reach the live deployment](../explanation/how-crispen-detects-a-stale-client.md#the-descriptor-request-must-reach-the-live-deployment) explains why.

@@ -77,13 +77,14 @@ Wraps a Next.js config object or config function.
 - It adds two values to `env`, `CRISPEN_NEXT_EMBED` and `CRISPEN_NEXT_DESCRIPTOR`. Both are empty in `next dev`.
 - For a local endpoint, it adds a `headers()` rule that sets `Cache-Control: no-store` on the endpoint. It keeps your own `headers()` rules first.
 - It adds `basePath` in front of a local endpoint.
+- It adds `@sanely/skew` to `transpilePackages`, so that Next.js bundles the package and puts the `env` values in it. Without this, the Pages Router loads the package from `node_modules` unchanged, and the embed and the descriptor are empty.
 - If `options.deploymentId` is not set, it uses the Next.js `deploymentId` config value as the strategy. It never sets the Next.js `deploymentId`, because that value controls host skew protection.
 
 Next.js does not apply `headers()` rules with `output: "export"`. Add the cache rule on your host.
 
 ### `CrispenScript`
 
-A component that writes the embed with `next/script` and `strategy="beforeInteractive"`. It renders nothing in `next dev`. Put it in the root layout (App Router) or in `pages/_document` (Pages Router).
+A component that writes the embed with `next/script` and `strategy="beforeInteractive"`. It renders nothing in `next dev`. In the App Router, render `<CrispenScript />` in the root layout. In the Pages Router, write `{CrispenScript()}` in the `<body>` of `pages/_document`: Next.js finds a `beforeInteractive` script in `_document` only when the `<Script>` element is there directly, not inside another component.
 
 ### `GET`
 
@@ -91,6 +92,6 @@ An App Router route handler that returns the descriptor with `Cache-Control: no-
 
 ### `crispenPagesHandler`
 
-A Pages Router API handler with the same response as `GET`.
+A Pages Router API handler with the same response as `GET`. The Pages Router runs API handlers only from `pages/api`, so set `endpoint` to the handler's path, such as `/api/crispen/deployment.json`.
 
 Exported types: `CrispenNextOptions`, `DeploymentIdOption`, `DeploymentPlatform`, `NextConfigContext`, `NextConfigExport`, and `NextConfigFunction`.
