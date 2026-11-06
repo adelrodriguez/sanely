@@ -20,6 +20,8 @@ ubiquitous language in these files.
   `pnpm turbo run test --filter @sanely/try`.
 - Adamantite runs once over the whole repository. Put rules for one package in an
   `overrides` entry in `oxlint.config.ts` with a `packages/<name>/` glob.
+- A package's `tsconfig.json` only extends `@tooling/tsconfig/library.json`. Change compiler
+  options in `tooling/tsconfig/`, not in a package.
 - Packages share tool versions through the catalog in `pnpm-workspace.yaml`. Use `catalog:` for
   a tool that every package uses.
 

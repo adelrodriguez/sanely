@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - tooling/*
 
 # Every package builds and tests with the same tool versions.
 catalog:
