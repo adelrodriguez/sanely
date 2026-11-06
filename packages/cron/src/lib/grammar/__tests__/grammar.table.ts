@@ -613,6 +613,20 @@ export const GRAMMAR = [
     phrase: "at 9:30",
     strict: false,
   },
+  // The lowercase names of `Object.prototype` members are not shortcuts. Normalization makes every
+  // other member name lowercase, so these two are the only ones that can reach the shortcut lookup.
+  {
+    error: `"constructor" is not a valid start of a phrase`,
+    lenient: false,
+    phrase: "constructor",
+    strict: false,
+  },
+  {
+    error: `"__proto__" is not a valid start of a phrase`,
+    lenient: false,
+    phrase: "__proto__",
+    strict: false,
+  },
   {
     error: `"every" is not a day`,
     lenient: false,
