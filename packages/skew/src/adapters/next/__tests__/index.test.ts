@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse, NextConfig } from "next"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { copyFile, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
+import { copyFile, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { join } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -96,6 +96,19 @@ describe("next adapter", () => {
         source: "/_crispen/deployment.json",
       },
     ])
+  })
+
+  it("bundles this package so that Next inlines the embed and descriptor", async () => {
+    const packageJson: { readonly name: string } = JSON.parse(
+      await readFile(join(process.cwd(), "package.json"), "utf8")
+    )
+    const wrapped = await resolveNextConfig(
+      withCrispen({ transpilePackages: ["user-package", packageJson.name] })
+    )
+    const plain = await resolveNextConfig(withCrispen())
+
+    expect(wrapped.transpilePackages).toStrictEqual(["user-package", packageJson.name])
+    expect(plain.transpilePackages).toStrictEqual([packageJson.name])
   })
 
   it("composes with an async phase-aware user config", async () => {
@@ -258,81 +271,116 @@ describe("next adapter", () => {
 
   it("embeds and serves a descriptor from a real Next build", async () => {
     expect.assertions(5)
-    const root = await mkdtemp(join(process.cwd(), ".next-adapter-test-"))
-    // Build a copy of the package into the fixture. A build into the package's own `dist/` would
-    // clean it while other tasks read it.
-    const packageRoot = join(root, "node_modules/@sanely/skew")
 
-    try {
-      await mkdir(packageRoot, { recursive: true })
-      await copyFile(join(process.cwd(), "package.json"), join(packageRoot, "package.json"))
-      await run(["pnpm", "exec", "tsdown", "--out-dir", join(packageRoot, "dist")], process.cwd())
-      await mkdir(join(root, "app/%5Fcrispen/deployment.json"), {
-        recursive: true,
-      })
-      await Promise.all([
-        writeFile(
-          join(root, "package.json"),
-          '{"name":"next-adapter-fixture","private":true,"type":"module"}'
-        ),
-        writeFile(
-          join(root, "next.config.mjs"),
-          'import { withCrispen } from "@sanely/skew/next"\nexport default withCrispen({ basePath: "/app" }, { deploymentId: "A" })\n'
-        ),
-        writeFile(
-          join(root, "app/layout.tsx"),
-          'import { CrispenScript } from "@sanely/skew/next"\nexport default function Layout({ children }: { children: React.ReactNode }) { return <html><body><CrispenScript />{children}</body></html> }\n'
-        ),
-        writeFile(
-          join(root, "app/page.tsx"),
-          "export default function Page() { return <main>Fixture</main> }\n"
-        ),
-        writeFile(
-          join(root, "app/%5Fcrispen/deployment.json/route.ts"),
-          'export { GET } from "@sanely/skew/next"\nexport const dynamic = "force-static"\n'
-        ),
-        symlink(join(process.cwd(), "node_modules/next"), join(root, "node_modules/next")),
-        symlink(join(process.cwd(), "node_modules/react"), join(root, "node_modules/react")),
-        symlink(
-          join(process.cwd(), "node_modules/react-dom"),
-          join(root, "node_modules/react-dom")
-        ),
-      ])
-
-      await run([join(process.cwd(), "node_modules/.bin/next"), "build", "--turbopack"], root)
-      const port = await findAvailablePort()
-      const server = spawn(
-        join(process.cwd(), "node_modules/.bin/next"),
-        ["start", "--port", String(port)],
-        { cwd: root, stdio: "ignore" }
-      )
-      const serverExit = once(server, "exit")
-
-      try {
-        await waitForServer(port)
-        const [htmlResponse, descriptorResponse] = await Promise.all([
-          fetch(`http://127.0.0.1:${port}/app/`),
-          fetch(`http://127.0.0.1:${port}/app/_crispen/deployment.json`),
-        ])
-        const [html, descriptor] = await Promise.all([
-          htmlResponse.text(),
-          descriptorResponse.text(),
+    await serveNextFixture(
+      {
+        "app/%5Fcrispen/deployment.json/route.ts":
+          'export { GET } from "@sanely/skew/next"\nexport const dynamic = "force-static"\n',
+        "app/layout.tsx":
+          'import { CrispenScript } from "@sanely/skew/next"\nexport default function Layout({ children }: { children: React.ReactNode }) { return <html><body><CrispenScript />{children}</body></html> }\n',
+        "app/page.tsx": "export default function Page() { return <main>Fixture</main> }\n",
+        "next.config.mjs":
+          'import { withCrispen } from "@sanely/skew/next"\nexport default withCrispen({ basePath: "/app" }, { deploymentId: "A" })\n',
+      },
+      async (origin) => {
+        const [html, descriptorResponse] = await Promise.all([
+          fetch(`${origin}/app/`).then((response) => response.text()),
+          fetch(`${origin}/app/_crispen/deployment.json`),
         ])
 
         expect(html).toContain("globalThis.__CRISPEN__")
         expect(html).toContain('\\"id\\":\\"A\\"')
         expect(html).toContain("/app/_crispen/deployment.json")
         expect(descriptorResponse.headers.get("Cache-Control")).toBe("no-store")
-        expect(parseDescriptor(descriptor).id).toBe("A")
-      } finally {
-        server.kill()
-        await serverExit
+        expect(parseDescriptor(await descriptorResponse.text()).id).toBe("A")
       }
-    } finally {
-      await rm(root, { force: true, recursive: true })
-    }
+    )
+  }, 60_000)
+
+  // The Pages Router serves an API handler only from `pages/api`, so the endpoint points there. Next
+  // finds a `beforeInteractive` script in `_document` only as a direct element, so the document
+  // calls `CrispenScript` instead of rendering it as a component.
+  it("embeds and serves a descriptor from a real Pages Router build", async () => {
+    expect.assertions(4)
+
+    await serveNextFixture(
+      {
+        "next.config.mjs":
+          'import { withCrispen } from "@sanely/skew/next"\nexport default withCrispen({}, { deploymentId: "A", endpoint: "/api/crispen/deployment.json" })\n',
+        "pages/_document.tsx":
+          'import { Head, Html, Main, NextScript } from "next/document"\nimport { CrispenScript } from "@sanely/skew/next"\nexport default function Document() { return <Html><Head /><body>{CrispenScript()}<Main /><NextScript /></body></Html> }\n',
+        "pages/api/crispen/deployment.json.ts":
+          'export { crispenPagesHandler as default } from "@sanely/skew/next"\n',
+        "pages/index.tsx": "export default function Page() { return <main>Fixture</main> }\n",
+      },
+      async (origin) => {
+        const [html, descriptorResponse] = await Promise.all([
+          fetch(`${origin}/`).then((response) => response.text()),
+          fetch(`${origin}/api/crispen/deployment.json`),
+        ])
+
+        expect(html).toContain("globalThis.__CRISPEN__")
+        expect(html).toContain("/api/crispen/deployment.json")
+        expect(descriptorResponse.headers.get("Cache-Control")).toBe("no-store")
+        expect(parseDescriptor(await descriptorResponse.text()).id).toBe("A")
+      }
+    )
   }, 60_000)
 })
+
+/**
+ * Builds a Next app from `files` with a fresh build of this package, starts it, and calls `check`
+ * with the app's origin. The fixture links `next`, `react`, and `react-dom` from this package.
+ */
+async function serveNextFixture(
+  files: Readonly<Record<string, string>>,
+  check: (origin: string) => Promise<void>
+): Promise<void> {
+  const root = await mkdtemp(join(process.cwd(), ".next-adapter-test-"))
+  // Build a copy of the package into the fixture. A build into the package's own `dist/` would
+  // clean it while other tasks read it.
+  const packageRoot = join(root, "node_modules/@sanely/skew")
+
+  try {
+    await mkdir(packageRoot, { recursive: true })
+    await copyFile(join(process.cwd(), "package.json"), join(packageRoot, "package.json"))
+    await run(["pnpm", "exec", "tsdown", "--out-dir", join(packageRoot, "dist")], process.cwd())
+    const fixtureFiles = {
+      ...files,
+      "package.json": '{"name":"next-adapter-fixture","private":true,"type":"module"}',
+    }
+    await Promise.all(
+      Object.keys(fixtureFiles).map((path) => mkdir(join(root, path, ".."), { recursive: true }))
+    )
+    await Promise.all([
+      ...Object.entries(fixtureFiles).map(([path, content]) =>
+        writeFile(join(root, path), content)
+      ),
+      ...["next", "react", "react-dom"].map((name) =>
+        symlink(join(process.cwd(), "node_modules", name), join(root, "node_modules", name))
+      ),
+    ])
+
+    await run([join(process.cwd(), "node_modules/.bin/next"), "build", "--turbopack"], root)
+    const port = await findAvailablePort()
+    const server = spawn(
+      join(process.cwd(), "node_modules/.bin/next"),
+      ["start", "--port", String(port)],
+      { cwd: root, stdio: "ignore" }
+    )
+    const serverExit = once(server, "exit")
+
+    try {
+      await waitForServer(port)
+      await check(`http://127.0.0.1:${port}`)
+    } finally {
+      server.kill()
+      await serverExit
+    }
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+}
 
 function restoreEnvironment(previousEnvironment: Map<string, string | undefined>): void {
   for (const [key, value] of previousEnvironment) {
@@ -384,11 +432,10 @@ async function run([executable, ...arguments_]: [string, ...string[]], cwd: stri
 }
 
 async function waitForServer(port: number, attempts = 100): Promise<void> {
+  // Any response means that the server listens. Each fixture checks its own routes.
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/app/`)
-    if (response.ok) {
-      return
-    }
+    await fetch(`http://127.0.0.1:${port}/`)
+    return
   } catch {
     // The server is still starting.
   }
