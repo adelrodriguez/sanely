@@ -136,9 +136,23 @@ function identityKey(identity: Identity | undefined): string {
   return identity === undefined ? IDENTIFY_SENTINEL : serializeKey(identity, "identity")
 }
 
+// Evaluators with one flag key can differ in shape, default, and timeout, so a batch entry belongs
+// to its exact evaluators in order. A new array of the same evaluators reads the same entry.
+const evaluatorIds = new WeakMap<object, number>()
+let nextEvaluatorId = 0
+
+function evaluatorId(flag: object): number {
+  let id = evaluatorIds.get(flag)
+  if (id === undefined) {
+    id = nextEvaluatorId
+    nextEvaluatorId += 1
+    evaluatorIds.set(flag, id)
+  }
+  return id
+}
+
 function batchKey(flags: readonly AnyGateEvaluator[], identity?: Identity): string {
-  const keys = flags.map((flag) => getEvaluatorRecord(flag)?.options.key ?? "")
-  return serializeKey([keys, identityKey(identity)], "cacheKey")
+  return serializeKey([flags.map((flag) => evaluatorId(flag)), identityKey(identity)], "cacheKey")
 }
 
 function getBucket(cache: InternalGateCache, flag: object): Bucket {
