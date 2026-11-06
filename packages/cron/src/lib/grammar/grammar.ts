@@ -1,4 +1,5 @@
 import type { Schedule } from "#lib/schedule/schedule.ts"
+import type { Shortcut } from "#lib/vocabulary/types.ts"
 import { createSchedule, range } from "#lib/schedule/schedule.ts"
 import {
   DAY_GROUPS,
@@ -24,12 +25,16 @@ interface ClockTime {
 
 const TIME_FORMATS = "Use H:MM or HH:MM (24-hour), H:MMam or H:MMpm, noon, or midnight"
 
-const SHORTCUT_SCHEDULES: Readonly<Record<string, Partial<Schedule>>> = {
-  daily: { hour: [0], minute: [0] },
-  hourly: { minute: [0] },
-  monthly: { dayOfMonth: [1], hour: [0], minute: [0] },
-  weekly: { dayOfWeek: [0], hour: [0], minute: [0] },
-}
+// A Map, so that a lookup never finds a member of `Object.prototype`, such as "constructor". The
+// `satisfies` check gives every shortcut a schedule and accepts no other key.
+const SHORTCUT_SCHEDULES: ReadonlyMap<string, Partial<Schedule>> = new Map(
+  Object.entries({
+    daily: { hour: [0], minute: [0] },
+    hourly: { minute: [0] },
+    monthly: { dayOfMonth: [1], hour: [0], minute: [0] },
+    weekly: { dayOfWeek: [0], hour: [0], minute: [0] },
+  } satisfies Record<Shortcut, Partial<Schedule>>)
+)
 
 const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUPS.map((group) => group.singular).join(", ")}, or ${DAY_GROUPS.map((group) => group.plural).join(", ")}`
 
@@ -335,7 +340,7 @@ function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
 function parseTokens(cursor: Cursor): Partial<Schedule> {
   const first = cursor.next() ?? ""
 
-  const shortcut = SHORTCUT_SCHEDULES[first]
+  const shortcut = SHORTCUT_SCHEDULES.get(first)
   if (shortcut) {
     cursor.expectEnd()
     return shortcut
