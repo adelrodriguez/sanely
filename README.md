@@ -38,6 +38,7 @@ Each package is a skeleton until its code moves here from the repository it repl
 - Tests sit in a `__tests__/` folder beside the file they test, with the same name. `src/__tests__/types.test-d.ts` tests the public types with `expectTypeOf`.
 - `scripts/` holds the build checks that every package shares.
 - `turbo/generators/` holds the `new-package` generator. Its templates are the starter for every package.
+- `tooling/tsconfig/` holds the TypeScript configurations. Each package's `tsconfig.json` extends `@tooling/tsconfig/library.json`, and the root `tsconfig.json` extends `@tooling/tsconfig/base.json`.
 
 ## Scripts
 

@@ -43,6 +43,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",

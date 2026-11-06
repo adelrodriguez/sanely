@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
+    "@tooling/tsconfig": "workspace:*",
     "@turbo/gen": "2.11.10",
     "@types/node": "catalog:",
     "adamantite": "0.45.0",

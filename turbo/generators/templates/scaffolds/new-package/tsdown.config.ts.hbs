@@ -9,5 +9,4 @@ export default defineConfig({
   outDir: "dist",
   platform: "node",
   sourcemap: false,
-  tsconfig: "tsconfig.build.json",
 })
