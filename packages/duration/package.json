@@ -1,9 +1,17 @@
 {
   "name": "@sanely/duration",
   "version": "0.0.1",
-  "private": true,
   "description": "Parse human-readable time expressions into any unit, and format durations into human-readable strings",
-  "keywords": [],
+  "keywords": [
+    "convert",
+    "duration",
+    "format",
+    "human-readable",
+    "milliseconds",
+    "ms",
+    "parse",
+    "time"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/duration#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -46,6 +54,7 @@
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "fast-check": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
