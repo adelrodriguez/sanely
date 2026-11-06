@@ -13,6 +13,7 @@ import { failingStore, recordingStore } from "./stores.ts"
 type Chain = readonly [Limiter, Limiter]
 
 const threePerMinute = fixedWindow({ limit: 3, window: 60_000 })
+const onePerMinute = fixedWindow({ limit: 1, window: 60_000 })
 
 describe("rateLimit", () => {
   it("returns the counts of an allowed request", async () => {
@@ -257,6 +258,52 @@ describe("clear", () => {
       remaining: 2,
       success: true,
     })
+  })
+
+  it("forgets a denial that the store makes while the clear waits", async () => {
+    const memory = memoryStore()
+    const paused = Promise.withResolvers<undefined>()
+    const store: Store = {
+      clear: async (key) => {
+        await paused.promise
+        return memory.clear(key)
+      },
+      consume: memory.consume,
+    }
+    const limiter = buildLimiter({ store })({ algorithm: onePerMinute, name: "x" })
+    await rateLimit(limiter, "k")
+
+    const clearing = clear(limiter, "k")
+    await expect(rateLimit(limiter, "k")).resolves.toMatchObject({
+      reason: "store",
+      success: false,
+    })
+    paused.resolve()
+    await clearing
+
+    expect(await rateLimit(limiter, "k")).toMatchObject({ reason: "store", success: true })
+  })
+
+  it("forgets a denial that the store answers after the clear", async () => {
+    const memory = memoryStore()
+    const paused = Promise.withResolvers<undefined>()
+    const store: Store = {
+      clear: memory.clear,
+      consume: async (request) => {
+        const result = await memory.consume(request)
+        if (!result.success) await paused.promise
+        return result
+      },
+    }
+    const limiter = buildLimiter({ store })({ algorithm: onePerMinute, name: "x" })
+    await rateLimit(limiter, "k")
+
+    const denied = rateLimit(limiter, "k")
+    await clear(limiter, "k")
+    paused.resolve()
+    await expect(denied).resolves.toMatchObject({ reason: "store", success: false })
+
+    expect(await rateLimit(limiter, "k")).toMatchObject({ reason: "store", success: true })
   })
 
   it("rejects with StoreError when the store fails", async () => {
