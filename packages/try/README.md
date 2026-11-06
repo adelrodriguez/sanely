@@ -587,6 +587,8 @@ const summary = await try$.gen(function* (use) {
 // summary is string | UnhandledException
 ```
 
+When every step is synchronous, `gen(...)` returns its result directly. When a step can return a promise, the result type is `R | Promise<R>`. `gen(...)` stays synchronous until it reaches a promise, so a failure before that step, or a skipped async step, returns a plain value. Always `await` that result, and do not call `.then()` on it.
+
 `gen(...)` detects failures with `instanceof Error`. A failure value that is not an `Error` instance resumes into the generator as a success value. That happens when a `catch` maps to a plain object, or when an error crosses a realm boundary. Map failures to `Error` subclasses when you compose with `gen(...)`.
 
 ### disposer
