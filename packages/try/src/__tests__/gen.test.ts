@@ -11,6 +11,10 @@ class ProjectNotFoundError extends Error {
   override name = "ProjectNotFoundError"
 }
 
+function checkShouldLoadProject(): boolean {
+  return false
+}
+
 describe("gen", () => {
   it("returns sync success value when all yielded values are sync", () => {
     fc.assert(
@@ -64,6 +68,30 @@ describe("gen", () => {
 
     expect(result).toBe(userError)
     expect(events).toEqual(["finally"])
+  })
+
+  it("returns a sync Error when it short-circuits before the first async yield", () => {
+    const userError = new UserNotFoundError("missing")
+    const findUser = (): number | UserNotFoundError => userError
+
+    const result = try$.gen(function* (use) {
+      const userId = yield* use(findUser())
+      return yield* use(Promise.resolve(userId))
+    })
+
+    expect(result).toBe(userError)
+  })
+
+  it("returns a sync value when it skips a conditional async yield", () => {
+    const result = try$.gen(function* (use) {
+      if (checkShouldLoadProject()) {
+        void (yield* use(Promise.resolve(1)))
+      }
+
+      return 42
+    })
+
+    expect(result).toBe(42)
   })
 
   it("awaits yielded promises and returns async success", async () => {

@@ -371,7 +371,7 @@ class PermissionDeniedError extends Error {
   expectTypeOf(result).toEqualTypeOf<number | UserNotFoundError>()
 }
 
-// Returns a Promise union from gen() when yielded values include a Promise.
+// Returns a value or a Promise from gen() when yielded values include a Promise.
 {
   const result = try$.gen(function* (use) {
     const userId = yield* use(Promise.resolve(Math.random() > 0.5 ? 1 : new UserNotFoundError("u")))
@@ -383,7 +383,34 @@ class PermissionDeniedError extends Error {
     return project
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<string | UserNotFoundError | ProjectNotFoundError>>()
+  type Outcome = string | UserNotFoundError | ProjectNotFoundError
+
+  expectTypeOf(result).toEqualTypeOf<Outcome | Promise<Outcome>>()
+}
+
+// Keeps a sync result in the gen() type when a sync Error short-circuits before an async yield.
+{
+  const result = try$.gen(function* (use) {
+    const userId = yield* use(Math.random() > 0.5 ? 1 : new UserNotFoundError("missing"))
+    return yield* use(Promise.resolve(`project-${userId}`))
+  })
+
+  expectTypeOf(result).toEqualTypeOf<
+    string | UserNotFoundError | Promise<string | UserNotFoundError>
+  >()
+}
+
+// Keeps a sync result in the gen() type when a conditional async yield is skipped.
+{
+  const result = try$.gen(function* (use) {
+    if (Math.random() > 0.5) {
+      void (yield* use(Promise.resolve(1)))
+    }
+
+    return 42
+  })
+
+  expectTypeOf(result).toEqualTypeOf<number | Promise<number>>()
 }
 
 // Keeps explicit returned error values in the gen() result union.
@@ -404,7 +431,9 @@ class PermissionDeniedError extends Error {
     return Promise.resolve(Math.random() > 0.5 ? "ok" : new ProjectNotFoundError("missing"))
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<string | ProjectNotFoundError>>()
+  expectTypeOf(result).toEqualTypeOf<
+    string | ProjectNotFoundError | Promise<string | ProjectNotFoundError>
+  >()
 }
 
 // Accumulates error unions when gen() composes multiple run() functions.
@@ -437,11 +466,14 @@ class PermissionDeniedError extends Error {
     return `${user.id}:${project.id}`
   })
 
-  expectTypeOf(result).toEqualTypeOf<
-    Promise<
-      string | UserNotFoundError | PermissionDeniedError | ProjectNotFoundError | UnhandledException
-    >
-  >()
+  type Outcome =
+    | string
+    | UserNotFoundError
+    | PermissionDeniedError
+    | ProjectNotFoundError
+    | UnhandledException
+
+  expectTypeOf(result).toEqualTypeOf<Outcome | Promise<Outcome>>()
 }
 
 // Infers all() result types from task return types.
