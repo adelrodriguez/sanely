@@ -1,5 +1,5 @@
 import type { Transport } from "#lib/core/transport.ts"
-import type { Router } from "#lib/server/router.ts"
+import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { isRecord } from "#lib/core/guards.ts"
 import type { Wire } from "./types"
@@ -27,13 +27,27 @@ type CallOptions = {
   signal?: AbortSignal
 }
 
+// `connect` passes `context` to every dispatch it serves, so it demands `context` as `dispatch`
+// does: required unless the context type is `void`. The optional `context` below is where
+// `Context` is inferred from when the options give no router.
+type ConnectOptions<Context> = ExposeOptions & {
+  context?: Context
+  router?: Router<Context>
+  signal?: AbortSignal
+  /**
+   * Bounds each outgoing call. Defaults to 30 seconds; `Infinity` disables it.
+   */
+  timeoutMs?: number
+} & Pick<DispatchOptions<Context>, "context">
+
 /**
  * Wires one end of a duplex pipe into typedport: serves incoming requests through `router` (omit it
  * for a call-only end) and returns a `Transport` for calling the peer, with request/response
  * correlation handled internally. Fully symmetric — call it on both ends with the roles swapped.
  *
  * A pipe is one peer, so `context` is per-connection: whatever identity the edge established (the
- * session, the window) is passed to every dispatch this end serves.
+ * session, the window) is passed to every dispatch this end serves. It is required when the
+ * router's context type isn't `void`.
  *
  * Failures this end serves are hidden from the peer exactly as `toWire` hides them: caller-fault
  * codes cross intact, everything else crosses as code `internal` and goes to `onHidden`. A trusted
@@ -59,15 +73,7 @@ type CallOptions = {
  */
 export function connect<Context = void>(
   wire: Wire | Promise<Wire>,
-  options: ExposeOptions & {
-    context?: Context
-    router?: Router<Context>
-    signal?: AbortSignal
-    /**
-     * Bounds each outgoing call. Defaults to 30 seconds; `Infinity` disables it.
-     */
-    timeoutMs?: number
-  } = {}
+  options?: ConnectOptions<Context>
 ): {
   close: (reason?: unknown) => void
   closed: Promise<ChannelError>
@@ -94,7 +100,14 @@ export function connect<Context = void>(
             return message?.kind !== "cancel"
           }
         )
-  const { context, router, signal, timeoutMs = DEFAULT_TIMEOUT_MS, ...exposure } = options
+  const {
+    context,
+    expose,
+    onHidden,
+    router,
+    signal,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  } = options ?? {}
   // oxlint-disable-next-line typescript/consistent-type-assertions -- `Router<Context>`'s rest tuple is a conditional TypeScript cannot resolve for a generic Context
   const dispatch = router?.dispatch as
     | ((
@@ -249,11 +262,11 @@ export function connect<Context = void>(
           () => dispatch(message.path, message.payload, { context, signal: controller.signal })
         : Promise.reject(new ChannelError({ code: "no-router" })),
       {
-        expose: exposure.expose,
+        expose,
         // A resolver that failed because the caller cancelled is not a failure worth logging.
         onHidden: (error) => {
           if (!controller.signal.aborted) {
-            exposure.onHidden?.(error)
+            onHidden?.(error)
           }
         },
       }
