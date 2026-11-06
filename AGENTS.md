@@ -15,6 +15,9 @@ ubiquitous language in these files.
 - Every package starts at version `0.0.1` and is private, so Changesets does not publish it.
   When the package is ready to publish, remove `private` from its `package.json` without a
   changeset. After the merge, `release.yml` publishes `0.0.1`.
+- A package can keep its own build and compatibility checks in `packages/<name>/scripts/`. Its
+  `build:verify` and `test:compat` scripts then run those checks instead of the shared ones in
+  `scripts/`. CI runs each package's `test:compat` on the floor in its `engines.node`.
 - Turborepo runs `build`, `test`, `test:compat`, and `build:verify` in each package and caches
   the results. Run them from the root, such as `pnpm run test`, or for one package with
   `pnpm turbo run test --filter @sanely/try`.
@@ -38,7 +41,7 @@ Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Use the single-context domain-doc layout. See `docs/agents/domain.md`.
+Use the multi-context domain-doc layout, with one context for each package. See `docs/agents/domain.md`.
 
 ## Changesets
 
