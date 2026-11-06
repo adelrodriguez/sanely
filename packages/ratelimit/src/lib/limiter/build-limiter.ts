@@ -167,6 +167,10 @@ export function buildLimiter<Supported extends Algorithm>({
     const limit = capacityOf(algorithm)
     const window = windowOf(algorithm)
     const watch = storeTimer(timeout)
+    // Counts the clears that ended. A denial that the store answers across the end of a clear can
+    // be older than the clear, so the limiter does not remember it. This skips denials for every
+    // key, not only the cleared one, which is safe: the next request asks the store.
+    let clears = 0
 
     async function keyFor(input: Input) {
       return keyOf(`${namespace}${name}`, await identify(input))
@@ -194,16 +198,21 @@ export function buildLimiter<Supported extends Algorithm>({
 
         clear: async (input) => {
           const key = await keyFor(input)
-          blocks?.clear(key)
 
           try {
             await watch(store.clear(key))
           } catch (error) {
             throw new StoreError(error)
+          } finally {
+            // Forget the key after the store call, because the store can deny a request while it
+            // clears.
+            clears += 1
+            blocks?.clear(key)
           }
         },
 
         consume: async (key, cost) => {
+          const clearsBefore = clears
           let result: StoreResult
 
           try {
@@ -220,7 +229,7 @@ export function buildLimiter<Supported extends Algorithm>({
             return { ...counts(result), mode, name, reason: "dryRun", success: true }
           }
 
-          blocks?.block(key, cost, result)
+          if (clears === clearsBefore) blocks?.block(key, cost, result)
 
           return { ...counts(result), name, reason: "store", success: false }
         },
