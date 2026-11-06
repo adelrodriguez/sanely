@@ -7,7 +7,12 @@ import type {
   Identity,
 } from "#lib/types/index.ts"
 import { DuplicateBatchKeyError } from "#lib/shared/errors.ts"
-import { createEvaluationSignal, raceWithSignal } from "#lib/shared/signals.ts"
+import {
+  createEvaluationSignal,
+  createSharedSignal,
+  raceWithSignal,
+  type SharedSignal,
+} from "#lib/shared/signals.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
 import { executeGateDetails, type GateSource } from "./engine"
 
@@ -19,14 +24,16 @@ export type BatchEntry = {
 /**
  * One `decideMany` call shared by every evaluation that needed provider work in the same tick.
  * Entries join the open round; the round closes when its timer fires, so evaluations that resolve
- * from cache never delay or join it.
+ * from cache never delay or join it. Each entry joins `shared` with its provider signal, so the
+ * call stops only when every entry has left, and not when the batch returns: an entry can lead a
+ * coalesced call that an evaluation outside the batch still waits for.
  */
 type FlushRound = {
   keys: string[]
   promise: Promise<Record<string, Decision>>
   reject: (error: Error) => void
   resolve: (decisions: Record<string, Decision>) => void
-  timer: ReturnType<typeof setTimeout>
+  shared: SharedSignal
 }
 
 export async function executeGateBatch<TIdentity extends Identity>(
@@ -53,8 +60,7 @@ export async function executeGateBatch<TIdentity extends Identity>(
     ? undefined
     : Math.max(...(effectiveTimeouts as number[]))
   const batchTimeout = createEvaluationSignal(callOptions?.signal, batchTimeoutMs)
-  const batchController = new AbortController()
-  const signal = AbortSignal.any([batchTimeout.signal, batchController.signal])
+  const { signal } = batchTimeout
   const entrySignals = new Map(
     entries.map((entry) => [
       entry.flag,
@@ -82,19 +88,28 @@ export async function executeGateBatch<TIdentity extends Identity>(
 
   const flushRound = async (current: FlushRound): Promise<void> => {
     round = undefined
+    // The provider signal also aborts when the round settles, so the provider can release its work.
+    const settled = new AbortController()
+    const roundSignal = AbortSignal.any([current.shared.signal, settled.signal])
     try {
       current.resolve(
         await raceWithSignal(
-          () => config.decideMany?.(current.keys, identity, { signal }) ?? {},
-          signal
+          () => config.decideMany?.(current.keys, identity, { signal: roundSignal }) ?? {},
+          roundSignal
         )
       )
     } catch (error) {
       current.reject(normalizeError(error))
+    } finally {
+      current.shared.release()
+      settled.abort()
     }
   }
 
-  const joinFlushRound = (key: string): Promise<Record<string, Decision>> => {
+  const joinFlushRound = (
+    key: string,
+    providerSignal: AbortSignal
+  ): Promise<Record<string, Decision>> => {
     if (!round) {
       const { promise, reject, resolve } = Promise.withResolvers<Record<string, Decision>>()
       void promise.catch(() => null)
@@ -103,13 +118,15 @@ export async function executeGateBatch<TIdentity extends Identity>(
         promise,
         reject,
         resolve,
-        timer: setTimeout(() => {
-          void flushRound(current)
-        }, 0),
+        shared: createSharedSignal(),
       }
+      setTimeout(() => {
+        void flushRound(current)
+      }, 0)
       round = current
     }
     round.keys.push(key)
+    round.shared.join(providerSignal)
     return round.promise
   }
 
@@ -117,7 +134,7 @@ export async function executeGateBatch<TIdentity extends Identity>(
   // a coalesced follower. Those evaluations share one `decideMany` call for each flush round.
   const source: GateSource<TIdentity> = {
     async decide(key, identity, options) {
-      const decisions = await joinFlushRound(key)
+      const decisions = await joinFlushRound(key, options.signal)
       const batched = Object.hasOwn(decisions, key) ? decisions[key] : undefined
       if (batched) {
         return batched
@@ -148,10 +165,6 @@ export async function executeGateBatch<TIdentity extends Identity>(
     )
     return new Map(settled.map(({ details, flag }) => [flag, details]))
   } finally {
-    if (round) {
-      clearTimeout(round.timer)
-    }
-    batchController.abort()
     batchTimeout.cleanup()
   }
 }

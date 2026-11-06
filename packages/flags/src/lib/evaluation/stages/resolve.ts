@@ -13,7 +13,7 @@ import type {
 import { validateDecision } from "#lib/gate/decision.ts"
 import { getEvaluationKey } from "#lib/gate/evaluation-key.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
-import { raceWithSignal } from "#lib/shared/signals.ts"
+import { createSharedSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
 
 export type DecisionResolution = {
@@ -192,16 +192,51 @@ function writeThrough<TIdentity extends Identity>(
 }
 
 /**
+ * Starts the provider call that concurrent evaluations with one evaluation key share, and registers
+ * it as pending until it settles. The call runs on a shared signal, not on the signal of the
+ * evaluation that started it, so it stops only when every evaluation that joined it has left.
+ */
+function startSharedCall<TIdentity extends Identity>(
+  config: ResolvedConfig<TIdentity>,
+  context: HookContext<TIdentity>,
+  key: string,
+  provider: (signal: AbortSignal) => MaybePromise<Decision>
+): PendingResolution {
+  const { state } = config
+  // Attach before the registration, so a change notification can drop this call.
+  attachInvalidationSubscription(config, context, key)
+  const shared = createSharedSignal()
+  const promise = raceWithSignal(() => provider(shared.signal), shared.signal).catch(
+    (error: unknown) => {
+      throw normalizeError(error)
+    }
+  )
+  const call: PendingResolution = { flagKey: context.flagKey, promise, shared }
+  state.pending.set(key, call)
+  const settle = () => {
+    shared.release()
+    if (state.pending.get(key) === call) {
+      state.pending.delete(key)
+    }
+  }
+  void promise.then(settle, settle)
+  return call
+}
+
+/**
  * Resolves one decision through the factory's memory: join an in-flight coalesced call, fall back
  * to the cache store, and otherwise lead the provider call — sharing the decision with followers
  * and writing it through to the store. Owns decision validation on every path; a decision that
  * leaves this function satisfies the evaluation's gate shape.
+ *
+ * `provider` receives the signal for the provider work. It is the evaluation's own signal, except
+ * for a coalesced call, where it is the call's shared signal.
  */
 export async function resolveDecision<TIdentity extends Identity, T extends string[]>(
   config: ResolvedConfig<TIdentity>,
   context: HookContext<TIdentity>,
   options: GateOptions<T>,
-  provider: () => MaybePromise<Decision>,
+  provider: (signal: AbortSignal) => MaybePromise<Decision>,
   signal: AbortSignal
 ): Promise<DecisionResolution> {
   const { coalesce, state } = config
@@ -216,7 +251,7 @@ export async function resolveDecision<TIdentity extends Identity, T extends stri
   }
 
   if (key === undefined || (!store && !coalesce)) {
-    const decision = await raceWithSignal(provider, signal)
+    const decision = await raceWithSignal(() => provider(signal), signal)
     validateDecision(decision, options)
     return { decision, source: "provider" }
   }
@@ -235,45 +270,31 @@ export async function resolveDecision<TIdentity extends Identity, T extends stri
     write = { generation: consultation.generation, store }
   }
 
-  // The in-flight check and leadership registration must stay in one synchronous block: an await
-  // between them lets two concurrent evaluations both miss the pending map and both lead.
-  let lead: PendingResolution | undefined
-  if (coalesce) {
-    const existing = state.pending.get(key)
-    if (existing) {
-      const decision = await raceWithSignal(() => existing.promise, signal)
-      validateDecision(decision, options)
-      return { decision, source: "provider" }
-    }
-    const request = Promise.withResolvers<Decision>()
-    lead = {
-      flagKey: context.flagKey,
-      promise: request.promise,
-      reject: request.reject,
-      resolve: request.resolve,
-    }
-    void lead.promise.catch(() => null)
-    // Attach before registering leadership: nothing may throw between the pending registration
-    // and the provider try/finally, or the entry orphans and later evaluations join it forever.
-    attachInvalidationSubscription(config, context, key)
-    state.pending.set(key, lead)
-  }
-
-  try {
-    const decision = await raceWithSignal(provider, signal)
-    lead?.resolve(decision)
+  if (!coalesce) {
+    const decision = await raceWithSignal(() => provider(signal), signal)
     validateDecision(decision, options)
     if (write) {
       writeThrough(config, context, write.store, write.generation, key, decision)
     }
     return { decision, source: "provider" }
-  } catch (error) {
-    const resolutionError = normalizeError(error)
-    lead?.reject(resolutionError)
-    throw resolutionError
-  } finally {
-    if (lead && state.pending.get(key) === lead) {
-      state.pending.delete(key)
-    }
   }
+
+  // The in-flight check, the leadership registration, and the join must stay in one synchronous
+  // block: an await between them lets two concurrent evaluations both miss the pending map and
+  // both lead, or lets the shared call stop before this evaluation joins it.
+  const existing = state.pending.get(key)
+  const call =
+    existing && !existing.shared.signal.aborted
+      ? existing
+      : startSharedCall(config, context, key, provider)
+  call.shared.join(signal)
+
+  // Each evaluation waits on its own signal: leaving never cancels the call for the others.
+  const decision = await raceWithSignal(() => call.promise, signal)
+  validateDecision(decision, options)
+  // The leader writes the decision it fetched. Followers reuse it.
+  if (write && call !== existing) {
+    writeThrough(config, context, write.store, write.generation, key, decision)
+  }
+  return { decision, source: "provider" }
 }

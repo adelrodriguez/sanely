@@ -133,7 +133,7 @@ export async function executeGateDetails<
       config,
       hookContext,
       options,
-      () => source.decide(evaluation.key, identity, { signal }),
+      (providerSignal) => source.decide(evaluation.key, identity, { signal: providerSignal }),
       signal
     )
     const { decision } = resolution

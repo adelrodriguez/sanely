@@ -1,10 +1,14 @@
+import type { SharedSignal } from "#lib/shared/signals.ts"
 import type { Decision, Identity } from "#lib/types/index.ts"
 
+/**
+ * One in-flight provider call that concurrent evaluations with one evaluation key share. Every
+ * evaluation that waits for it joins `shared`, and the call stops only when all of them have left.
+ */
 export type PendingResolution = {
   flagKey: string
   promise: Promise<Decision>
-  reject: (error: Error) => void
-  resolve: (decision: Decision) => void
+  shared: SharedSignal
 }
 
 /**

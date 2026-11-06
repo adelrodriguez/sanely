@@ -47,6 +47,58 @@ export function createEvaluationSignal(
   }
 }
 
+/**
+ * The signal for work that several callers share. Each caller joins with its own signal. The shared
+ * signal aborts only when every caller that joined has aborted, with the reason of the last one, so
+ * one caller's cancellation or deadline never stops the work for the others. `release` detaches the
+ * listeners after the work settles.
+ */
+export type SharedSignal = {
+  join(signal: AbortSignal): void
+  release(): void
+  signal: AbortSignal
+}
+
+export function createSharedSignal(): SharedSignal {
+  const controller = new AbortController()
+  const releases = new Set<() => void>()
+  let active = 0
+
+  return {
+    join(signal) {
+      if (controller.signal.aborted) {
+        return
+      }
+      if (signal.aborted) {
+        if (active === 0) {
+          controller.abort(signal.reason)
+        }
+        return
+      }
+      active += 1
+      const leave = () => {
+        releases.delete(release)
+        active -= 1
+        if (active === 0) {
+          controller.abort(signal.reason)
+        }
+      }
+      const release = () => {
+        signal.removeEventListener("abort", leave)
+      }
+      signal.addEventListener("abort", leave, { once: true })
+      releases.add(release)
+    },
+    release() {
+      for (const release of releases) {
+        release()
+      }
+      releases.clear()
+    },
+    signal: controller.signal,
+  }
+}
+
 export async function raceWithSignal<T>(
   operation: () => T | Promise<T>,
   signal: AbortSignal
