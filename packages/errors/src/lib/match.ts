@@ -23,7 +23,7 @@ type MatchTagsResult<E extends Fault, H> =
 
 export function dispatchTag(
   err: Fault,
-  tag: PropertyKey,
+  tag: string,
   handler: (err: never) => unknown,
   fallback?: (err: never) => unknown
 ): unknown {

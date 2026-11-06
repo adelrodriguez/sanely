@@ -19,6 +19,9 @@ type CreateArgs<Ctor extends AnyFaultCtor> =
     ? [fields?: Exclude<ConstructorFields<Ctor>, undefined>]
     : [fields: ConstructorFields<Ctor>]
 
+// JavaScript stores a numeric object key as a string, so the registry key 1 holds the tag "1".
+type RegistryTag<M extends Record<string, AnyFaultCtor>> = `${Extract<keyof M, string | number>}`
+
 type RegistryMatchHandlers<M extends Record<string, AnyFaultCtor>> = Partial<{
   [K in keyof M]: (fault: InstanceType<M[K]>) => unknown
 }>
@@ -45,7 +48,7 @@ export type FaultRegistry<M extends Record<string, AnyFaultCtor>> = {
    * `undefined` at runtime.
    */
   readonly Type: InstanceType<M[keyof M]>
-  readonly tags: ReadonlyArray<keyof M>
+  readonly tags: ReadonlyArray<RegistryTag<M>>
   create<K extends keyof M>(tag: K, ...args: CreateArgs<M[K]>): InstanceType<M[K]>
   wrap(cause: unknown): {
     as<K extends keyof M>(tag: K, ...args: CreateArgs<M[K]>): InstanceType<M[K]>
@@ -156,7 +159,7 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
     fallback?: (err: unknown) => unknown
   ): unknown {
     if (!is(err)) return fallback?.(err)
-    return dispatchTag(err, tag, handler, fallback)
+    return dispatchTag(err, String(tag), handler, fallback)
   }
 
   function matchTags(
@@ -170,7 +173,8 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
   }
 
   const instance: Omit<FaultRegistry<M>, "Type"> = {
-    tags,
+    // Safe: the entries are the string forms of M's keys, and each one matched its ctor tag above.
+    tags: tags as Array<RegistryTag<M>>,
 
     create,
 
