@@ -1,0 +1,127 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  id-token: write # Required for OIDC
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      # Every required workflow runs on the same push, so all of them check the commit that this
+      # workflow releases.
+      - name: Wait for required workflows
+        id: required-workflows
+        uses: actions/github-script@v9
+        env:
+          REQUIRED_WORKFLOWS: '["adamantite", "test", "build"]'
+        with:
+          script: |
+            const requiredWorkflows = JSON.parse(process.env.REQUIRED_WORKFLOWS);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = context.sha;
+            const timeoutMs = 15 * 60 * 1000;
+            const pollMs = 15 * 1000;
+            const startedAt = Date.now();
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            while (Date.now() - startedAt < timeoutMs) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                event: "push",
+                head_sha: sha,
+                per_page: 100,
+              });
+
+              const latestRuns = new Map();
+
+              for (const run of data.workflow_runs) {
+                if (!requiredWorkflows.includes(run.name)) {
+                  continue;
+                }
+
+                const existingRun = latestRuns.get(run.name);
+
+                if (!existingRun || new Date(run.run_started_at) > new Date(existingRun.run_started_at)) {
+                  latestRuns.set(run.name, run);
+                }
+              }
+
+              const missingWorkflows = requiredWorkflows.filter((name) => !latestRuns.has(name));
+
+              if (missingWorkflows.length > 0) {
+                core.info(`Waiting for workflows to start: ${missingWorkflows.join(", ")}`);
+                await sleep(pollMs);
+                continue;
+              }
+
+              const runs = [...latestRuns.values()];
+              const incompleteRuns = runs.filter((run) => run.status !== "completed");
+
+              if (incompleteRuns.length > 0) {
+                core.info(`Waiting for workflows to finish: ${incompleteRuns.map((run) => run.name).join(", ")}`);
+                await sleep(pollMs);
+                continue;
+              }
+
+              const failedRuns = runs.filter((run) => run.conclusion !== "success");
+
+              if (failedRuns.length > 0) {
+                core.setFailed(`Required workflows failed: ${failedRuns.map((run) => `${run.name} (${run.conclusion})`).join(", ")}`);
+                return;
+              }
+
+              return;
+            }
+
+            core.setFailed(`Timed out waiting for required workflows for ${sha}`);
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build project
+        run: pnpm run build
+
+      # Keep npm authentication configuration scoped to the publish step.
+      - name: Setup npm registry
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v2
+        with:
+          publish-script: pnpm run release
+          pr-title: "chore: release"
+          commit-message: "chore: release"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

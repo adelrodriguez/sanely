@@ -1,0 +1,43 @@
+{
+  "name": "sanely",
+  "private": true,
+  "description": "TypeScript libraries with sane defaults",
+  "homepage": "https://github.com/adelrodriguez/sanely#readme",
+  "bugs": {
+    "url": "https://github.com/adelrodriguez/sanely/issues"
+  },
+  "license": "MIT",
+  "author": "Adel Rodríguez",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adelrodriguez/sanely.git"
+  },
+  "type": "module",
+  "scripts": {
+    "analyze": "adamantite analyze",
+    "build": "turbo run build",
+    "build:verify": "turbo run build:verify",
+    "bump:deps": "pnpm update --interactive --recursive",
+    "check": "adamantite check",
+    "dev": "turbo run dev",
+    "fix": "adamantite fix",
+    "new-package": "node scripts/new-package.ts",
+    "release": "changeset publish",
+    "test": "turbo run test",
+    "test:compat": "turbo run test:compat",
+    "version": "changeset version && pnpm run fix"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3",
+    "@types/node": "catalog:",
+    "adamantite": "0.45.0",
+    "knip": "6.42.0",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "sherif": "1.13.0",
+    "turbo": "2.11.10",
+    "typescript": "catalog:"
+  },
+  "packageManager": "pnpm@12.9.1"
+}

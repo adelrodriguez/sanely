@@ -1,0 +1,16 @@
+{
+  "extends": "adamantite/typescript",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node"]
+  }
+}
