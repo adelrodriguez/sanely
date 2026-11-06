@@ -43,6 +43,30 @@ function never<T>(): Promise<T> {
   })
 }
 
+/**
+ * Runs `scenario`, waits one macrotask so Node.js can report unobserved rejections, and returns
+ * every unhandled rejection reason seen in that window. `scenario` must restore real timers.
+ */
+async function collectUnhandledRejections(scenario: () => Promise<void>): Promise<unknown[]> {
+  const unhandled: unknown[] = []
+  const onUnhandled = (reason: unknown) => {
+    unhandled.push(reason)
+  }
+
+  process.on("unhandledRejection", onUnhandled)
+
+  try {
+    await scenario()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+  } finally {
+    process.off("unhandledRejection", onUnhandled)
+  }
+
+  return unhandled
+}
+
 describe("runSync", () => {
   describe("function form", () => {
     it("returns value when function succeeds", () => {
@@ -814,6 +838,57 @@ describe("timeout and cancellation behavior", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("observes a rejected promise returned after sync work passes the deadline", async () => {
+    const lateFailure = new Error("late failure")
+    let result: unknown
+
+    const unhandled = await collectUnhandledRejections(async () => {
+      vi.useFakeTimers()
+
+      try {
+        result = await try$.timeout(5).run(() => {
+          // The deadline passes before the fake timer can fire.
+          vi.setSystemTime(Date.now() + 10)
+          return Promise.reject(lateFailure)
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    expect(result).toBeInstanceOf(TimeoutError)
+    expect(unhandled).toEqual([])
+  })
+
+  it("observes a pending promise that rejects after the deadline fires", async () => {
+    const lateFailure = new Error("late failure")
+    let result: unknown
+
+    const unhandled = await collectUnhandledRejections(async () => {
+      vi.useFakeTimers()
+
+      try {
+        let rejectLate!: (error: Error) => void
+
+        const pending = try$.timeout(5).run(
+          () =>
+            new Promise<string>((_resolve, reject) => {
+              rejectLate = reject
+            })
+        )
+
+        await vi.advanceTimersByTimeAsync(5)
+        result = await pending
+        rejectLate(lateFailure)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    expect(result).toBeInstanceOf(TimeoutError)
+    expect(unhandled).toEqual([])
   })
 })
 
