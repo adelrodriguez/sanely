@@ -145,7 +145,8 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   void phrases
 }
 
-// Reduces an array of CronPhrase values without a "too complex" error (ADR 0005).
+// Reduces an array of CronPhrase values without a "too complex" error. The open slots keep the
+// union small enough.
 {
   const phrases: CronPhrase[] = ["hourly", "daily"]
   const [first = "hourly", second = "daily"] = phrases
@@ -154,7 +155,8 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(pair).toExtend<CronPhrase[]>()
 }
 
-// Documents known limitation: CronPhrase does not check times and interval clauses (ADR 0005).
+// Documents a known limitation: CronPhrase does not check times and interval clauses. `cron` and
+// `ValidateCronPhrase` check them.
 {
   expectTypeOf<"every day at 25:00">().toExtend<CronPhrase>()
   expectTypeOf<"every 15 minutes on frday">().toExtend<CronPhrase>()
