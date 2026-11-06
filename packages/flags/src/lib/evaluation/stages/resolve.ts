@@ -213,9 +213,15 @@ function writeThrough<TIdentity extends Identity>(
 ): void {
   // The generation check runs when the write starts, after the earlier operations for this key. A
   // change during the write queues its delete after the write.
-  mutateStore(config, context, key, "set", () =>
-    config.state.writes.generation === generation ? store.set(key, decision) : undefined
-  )
+  mutateStore(config, context, key, "set", () => {
+    if (config.state.writes.generation !== generation) {
+      return
+    }
+    // A change during the read removed this key from the index, so index it again for the decision
+    // that this write stores.
+    indexCacheKey(config, context, store, key)
+    return store.set(key, decision)
+  })
 }
 
 /**
