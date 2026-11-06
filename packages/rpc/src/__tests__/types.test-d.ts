@@ -267,6 +267,30 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- only routers can be merged
   mergeRouters({ channels: ["ping"] })
+
+  // @ts-expect-error -- connect needs the router's context when the options omit it
+  connect(wire, { router: meRouter })
+
+  // @ts-expect-error -- connect needs a union context when the options omit it
+  connect(wire, { router: sessionRouter })
+
+  const numberInput = defineContract({ read: channel({ input: z.number(), output: z.string() }) })
+  const numberOutput = defineContract({ read: channel({ input: z.string(), output: z.number() }) })
+  const stringRead = defineContract({ read: channel({ input: z.string(), output: z.string() }) })
+  const upperCase = implement(stringRead).read(({ input }) => input.toUpperCase())
+
+  // @ts-expect-error -- a fragment for a string input cannot fill a number-input slot at the same path
+  createRouter(numberInput, { read: upperCase })
+
+  // @ts-expect-error -- a fragment that returns a string cannot fill a number-output slot at the same path
+  createRouter(numberOutput, { read: upperCase })
+
+  const senderUpperCase = implement(stringRead)
+    .$context<Sender>()
+    .read(({ input }) => input.toUpperCase())
+
+  // @ts-expect-error -- a context-fixed factory also checks the fragment's input
+  createRouter.$context<Sender>()(numberInput, { read: senderUpperCase })
 }
 
 // Suppress unused function warning — this exists only for type checking

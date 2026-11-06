@@ -1,5 +1,8 @@
+import { setFlagsFromString } from "node:v8"
+import { runInNewContext } from "node:vm"
 import { describe, expect, test, vi } from "vitest"
 import * as z from "zod"
+import type { Transport } from "#lib/core/transport.ts"
 import type { Wire } from "#lib/wire/types.ts"
 import { createClient } from "#lib/client/client.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
@@ -7,6 +10,38 @@ import { ChannelError } from "#lib/core/error.ts"
 import { createRouter } from "#lib/server/router.ts"
 import { connect } from "#lib/wire/connect.ts"
 import { fromWire, toWire } from "#lib/wire/envelope.ts"
+
+setFlagsFromString("--expose-gc")
+
+// A weak reference keeps its target until the current task ends, so collect in the next one. A new
+// context has the `gc` global that the flag exposes, and it collects the whole heap.
+async function collectGarbage(): Promise<void> {
+  await new Promise((resolve) => {
+    setImmediate(resolve)
+  })
+
+  runInNewContext("gc()")
+}
+
+// Calls with a payload that only the call itself holds, and watches it through a weak reference.
+// `failure` settles with the call's error code or message and drops the error, as a caller that
+// handled it would: until its stack is read, an error keeps the frames it was created in, and so
+// whatever their closures hold.
+function callWithPayload(
+  transport: Transport<{ signal?: AbortSignal }>,
+  options?: { signal?: AbortSignal }
+): { failure: Promise<string>; payload: WeakRef<object> } {
+  const payload = { file: "upload.bin" }
+  const call = Promise.resolve(transport("upload", payload, options))
+
+  return {
+    failure: call.then(
+      () => "settled",
+      (error: unknown) => (error instanceof ChannelError ? error.code : String(error))
+    ),
+    payload: new WeakRef(payload),
+  }
+}
 
 // An in-memory duplex pipe. Cloning every message (as postMessage would)
 // asserts the protocol survives serializing boundaries, not shared references.
@@ -856,6 +891,44 @@ describe("connect over a pending wire", () => {
     // not run a resolver for a call nobody is waiting on.
     expect(attached).toHaveLength(1)
     expect(sent).toEqual([])
+  })
+
+  test("releases the payload of a queued call that timed out", async () => {
+    const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: 1 })
+    const { failure, payload } = callWithPayload(client.transport)
+
+    await expect(failure).resolves.toBe("timeout")
+    await collectGarbage()
+
+    expect(payload.deref()).toBeUndefined()
+    client.close()
+  })
+
+  test("releases the payload of a queued call that was aborted", async () => {
+    const client = connect(Promise.withResolvers<Wire>().promise)
+    const controller = new AbortController()
+    const { failure, payload } = callWithPayload(client.transport, { signal: controller.signal })
+
+    controller.abort(new Error("gave up"))
+
+    await expect(failure).resolves.toBe("Error: gave up")
+    await collectGarbage()
+
+    expect(payload.deref()).toBeUndefined()
+    client.close()
+  })
+
+  test("releases queued payloads when the session closes", async () => {
+    const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: Infinity })
+    const { failure, payload } = callWithPayload(client.transport)
+
+    client.close()
+
+    await expect(failure).resolves.toBe("closed")
+    await collectGarbage()
+
+    expect(payload.deref()).toBeUndefined()
+    expect(client.transport).toBeTypeOf("function")
   })
 
   test("a rejected wire promise closes the connection with the reason as cause", async () => {
