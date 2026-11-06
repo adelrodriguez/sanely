@@ -1,5 +1,5 @@
 <div align="center">
-  <h1 align="center">🦥 faultier</h1>
+  <h1 align="center">🦥 <code>@sanely/errors</code></h1>
 
   <p align="center">
     <strong>Structured, extensible, type-safe error handling for TypeScript</strong>
@@ -7,486 +7,93 @@
 
   <p align="center">
     <a href="https://www.npmjs.com/package/@sanely/errors"><img src="https://img.shields.io/npm/v/@sanely/errors" alt="npm version" /></a>
-    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
   </p>
 </div>
 
-Create, classify, and extend errors with type-safe tags and structured context. Define your fault types as classes, group them in registries, and use them throughout your application with full TypeScript support for error classification and associated metadata.
+`@sanely/errors` gives each error in your app a class, a string tag, and typed fields. You group the classes in a registry, and then create, wrap, match, and serialize them by tag.
 
 ```ts
-import * as Faultier from "@sanely/errors"
+import { Tagged } from "@sanely/errors"
 
-class NotFoundError extends Faultier.Tagged("NotFoundError")<{ id: string }>() {}
+class NotFoundError extends Tagged("NotFoundError")<{ id: string }>() {}
+
 const fault = new NotFoundError({ id: "123" }).withDescription(
   "User not found",
   "DB query returned 0 rows"
 )
+
 fault._tag // "NotFoundError"
 fault.id // "123"
-fault.message // "User not found"           — user-facing
-fault.details // "DB query returned 0 rows" — for logs
+fault.message // "User not found", for the user
+fault.details // "DB query returned 0 rows", for logs
 ```
-
-<details>
-<summary>Table of Contents</summary>
-
-- [Features](#features)
-- [Installation](#installation)
-- [Core Concepts](#core-concepts)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-  - [Tagged Faults](#tagged-faults)
-  - [Error Chaining](#error-chaining)
-  - [Registries](#registries)
-  - [Handling Faults](#handling-faults)
-  - [Serialization](#serialization)
-- [API Reference](#api-reference)
-- [Common Recipes](#common-recipes)
-- [When not to use Faultier](#when-not-to-use-faultier)
-- [Contributing](#contributing)
-- [Acknowledgments](#acknowledgments)
-- [License](#license)
-
-</details>
 
 ## Features
 
-- **Tagged subclasses** — Define fault types as real classes with `_tag` discriminants
-- **Typed context** — Associate structured fields with each fault type
-- **Dual messages** — Separate `details` for logs from user-facing `message`
-- **Error chaining** — Wrap and re-throw errors while preserving the full cause chain
-- **Registries** — Group fault types into scoped unions with `create`, `wrap`, and `match` APIs
-- **Serializable** — Convert faults to wire format and reconstruct them
-- **Instanceof support** — Use `instanceof` checks with your fault subclasses
-- **No dependencies** — Zero runtime dependencies
+- **Tagged subclasses.** Each fault type is a real class with a `_tag` discriminant, so `instanceof` works.
+- **Typed fields.** Each fault type has its own structured fields.
+- **Two messages.** `message` is for the user, and `details` is for logs.
+- **Cause chains.** Wrap and throw again, and keep the full chain of causes.
+- **Registries.** Group fault types into a union with `create`, `wrap`, and `match` methods.
+- **Serialization.** Convert a fault to a plain object, send it, and build it again on the other side.
+- **No runtime dependencies.**
 
-## Installation
-
-Faultier requires TypeScript 5.4 or newer.
+## Install
 
 ```bash
-# bun
-bun add @sanely/errors
-
-# npm
 npm install @sanely/errors
-
-# yarn
-yarn add @sanely/errors
-
-# pnpm
-pnpm add @sanely/errors
 ```
 
-## Core Concepts
+The package needs TypeScript 5.4 or later, and Node.js 20 or later.
 
-| Term         | Meaning                                                                           |
-| ------------ | --------------------------------------------------------------------------------- |
-| **Fault**    | Base error class. Every faultier error extends it.                                |
-| **Tag**      | A string discriminant (`_tag`) on each fault, used for matching.                  |
-| **message**  | User-facing description ("User not found").                                       |
-| **details**  | Internal/diagnostic info for logs ("DB query returned 0 rows").                   |
-| **meta**     | Arbitrary structured metadata (`{ traceId, requestId, ... }`).                    |
-| **context**  | The merged `meta` from every fault in a cause chain (head wins on key conflicts). |
-| **Registry** | A scoped group of fault classes with `create`, `wrap`, and `match` helpers.       |
+## Get started
 
-Not sure if Faultier is a good fit for your project? See [When not to use Faultier](#when-not-to-use-faultier).
-
-## Quick Start
-
-Define tagged fault classes and throw/catch them with full type safety:
+Define fault classes, group them in a registry, and match them by tag:
 
 ```ts
-import * as Faultier from "@sanely/errors"
+import { Tagged, registry } from "@sanely/errors"
 
-class NotFoundError extends Faultier.Tagged("NotFoundError")<{ id: string }>() {}
-class DatabaseError extends Faultier.Tagged("DatabaseError")() {}
+class NotFoundError extends Tagged("NotFoundError")<{ id: string }>() {}
+class DatabaseError extends Tagged("DatabaseError")() {}
 
-const AppFault = Faultier.registry({ NotFoundError, DatabaseError })
+const AppFault = registry({ NotFoundError, DatabaseError })
 
 try {
   throw AppFault.create("NotFoundError", { id: "123" }).withMessage("User not found")
-} catch (err) {
-  AppFault.matchTags(err, {
-    NotFoundError: (fault) => console.log(fault.id), // "123" — fully typed
+} catch (error) {
+  AppFault.matchTags(error, {
+    NotFoundError: (fault) => console.log(fault.id), // "123", typed as string
     DatabaseError: () => console.log("db failed"),
   })
 }
 ```
 
-In a real application, you'd use registries to create and wrap errors across your codebase:
+## Documentation
 
-```ts
-async function getUser(id: string) {
-  let row: { id: string; name: string } | undefined
+How-to guides:
 
-  try {
-    row = await db.query("SELECT * FROM users WHERE id = ?", [id])
-  } catch (err) {
-    throw AppFault.wrap(err).as("DatabaseError")
-  }
+- [How to define fault types and group them in a registry](docs/how-to/define-fault-types.md)
+- [How to wrap an error and read its cause chain](docs/how-to/wrap-and-read-causes.md)
+- [How to handle faults by tag](docs/how-to/handle-faults-by-tag.md)
+- [How to send faults across a boundary](docs/how-to/send-faults-across-a-boundary.md)
 
-  if (!row) {
-    throw AppFault.create("NotFoundError", { id })
-  }
+Reference:
 
-  return row
-}
-```
+- [`@sanely/errors` reference](docs/reference.md)
 
-## Usage
+Explanation:
 
-### Tagged Faults
+- [About faults, registries, and the wire format](docs/explanation/about-faults.md)
 
-Use `Tagged(tag)` to create strongly typed fault subclasses with `_tag` as the discriminant.
-
-```ts
-import * as Faultier from "@sanely/errors"
-
-// With typed fields
-class ValidationError extends Faultier.Tagged("ValidationError")<{
-  field: string
-}>() {}
-
-const e = new ValidationError({ field: "email" })
-
-// Without fields
-class TimeoutError extends Faultier.Tagged("TimeoutError")() {}
-
-const t = new TimeoutError()
-```
-
-`Tagged("Tag")<Fields>()` uses two calls because TypeScript cannot partially infer generic
-arguments: the first call infers the tag literal, and the second accepts an optional field type.
-The empty second call creates a fault without custom fields.
-
-All tagged faults extend `Fault` and support fluent setters:
-
-```ts
-const fault = new ValidationError({ field: "email" })
-  .withDescription("Invalid email format", "Validation failed for user signup")
-  .withMeta({ traceId: "trace-123" })
-  .withCause(originalError)
-```
-
-### Error Chaining
-
-Faults preserve the full error chain from head (latest) to leaf (root cause):
-
-```ts
-const root = new Error("db down")
-const inner = new TimeoutError()
-  .withDescription("Service unavailable", "Upstream timeout after 30s")
-  .withCause(root)
-const outer = new NotFoundError({ resource: "user", id: "123" })
-  .withDescription("User not found", "Lookup failed after retries")
-  .withCause(inner)
-
-outer.unwrap() // [outer, inner, root] — full chain as array
-outer.getTags() // ["NotFoundError", "TimeoutError"] — all tags in chain
-outer.getContext() // merged metadata from all faults (head wins on conflicts)
-```
-
-The chain follows native `Error.cause` links too, so a root cause nested inside a plain `Error` is still reachable.
-
-To get a typed fault out of the chain, search from the head by class or by registry tag. The
-registry version matches like `registry.is`, by the registered constructor, so a foreign fault
-with the same tag is skipped:
-
-```ts
-Faultier.findCause(outer, TimeoutError) // inner, typed as TimeoutError | undefined
-AppFault.findCause(err, "NotFoundError") // NotFoundError | undefined
-```
-
-Use `flatten()` to convert a cause chain to a string:
-
-```ts
-outer.flatten()
-// "User not found -> Service unavailable -> db down"
-
-outer.flatten({ field: "details" })
-// "Lookup failed after retries -> Upstream timeout after 30s"
-
-outer.flatten({
-  field: "details",
-  separator: " | ",
-  formatter: (v) => v.toUpperCase(),
-})
-// "LOOKUP FAILED AFTER RETRIES | UPSTREAM TIMEOUT AFTER 30S"
-```
-
-`flatten()` accepts an options object:
-
-| Option      | Type                        | Default     | Description                           |
-| ----------- | --------------------------- | ----------- | ------------------------------------- |
-| `field`     | `"message" \| "details"`    | `"message"` | Which field to collect from the chain |
-| `separator` | `string`                    | `" -> "`    | Join separator between values         |
-| `formatter` | `(value: string) => string` | trim        | Transform each value before joining   |
-
-When `field` is `"message"` (default), non-Fault nodes in the chain are included (via `Error.message` or string coercion). Consecutive duplicate values are deduplicated. When `field` is `"details"`, only Fault nodes with a defined `details` field are included.
-
-### Registries
-
-Registries give you a scoped API for a union of fault types:
-
-```ts
-const AuthFault = Faultier.registry({ NotFoundError, TimeoutError })
-
-// Create faults by tag
-const fault = AuthFault.create("NotFoundError", { resource: "user", id: "123" })
-
-// Wrap existing errors
-const wrapped = AuthFault.wrap(new Error("connection reset")).as("TimeoutError")
-
-// Union of every fault in the registry: NotFoundError | TimeoutError
-type AuthError = typeof AuthFault.Type
-```
-
-Merge registries into a larger union:
-
-```ts
-const AppFault = Faultier.merge(AuthFault, BillingFault)
-```
-
-Conflicting duplicate tags (same tag, different constructor) throw
-`RegistryMergeConflictError`, available from `@sanely/errors/errors`.
-
-### Handling Faults
-
-#### Single Tag Matching
-
-Use the standalone `matchTag` when you already have a typed Fault union. Its fallback
-excludes the matched type:
-
-```ts
-const result = Faultier.matchTag(
-  error,
-  "TimeoutError",
-  () => "retry",
-  () => "ignore"
-)
-```
-
-Use the registry method for `unknown` input. It invokes handlers only for instances of
-the registered constructor, even when another Fault uses the same tag:
-
-```ts
-const result = AuthFault.matchTag(
-  error,
-  "TimeoutError",
-  () => "retry",
-  () => "ignore"
-)
-```
-
-#### Multiple Tag Matching
-
-The same distinction applies to `matchTags`. Standalone matching operates on a typed
-union and recognizes exhaustive handler maps:
-
-```ts
-const result = Faultier.matchTags(error, {
-  NotFoundError: (fault) => ({ status: 404 }),
-  TimeoutError: (fault) => ({ status: 503 }),
-})
-```
-
-Registry matching accepts `unknown`, checks registry membership first, and therefore
-keeps `undefined` in the return type when no fallback is provided. Registry fallbacks
-receive the original value as `unknown`.
-
-### Serialization
-
-Fault instances serialize to a plain object with `__faultier: true`:
-
-```ts
-const json = outer.toSerializable()
-
-// Serialize any caught value (Fault, Error, or unknown thrown value)
-const caught = Faultier.toSerializable(err)
-
-// Generic reconstruction (no subclass restoration)
-const generic = Faultier.fromSerializable(json)
-
-// Registry reconstruction (restores registered subclasses)
-const restored = AuthFault.fromSerializable(json)
-```
-
-`Faultier.toSerializable(err)` and `registry.toSerializable(err)` support Fault instances, native `Error`, and non-Error thrown values (serialized as `UnknownThrown`).
-
-Both `fromSerializable` functions validate the envelope and throw `InvalidPayloadError` from
-`@sanely/errors/errors` when it is malformed; its `reason` says which check failed.
-
-Registry reconstruction calls `new Class(payloadFields)`, so a registered class's
-constructor must take its fields object as its only parameter. `registry()` rejects other
-signatures at compile time. A constructor with that signature can still derive a default
-message or normalize fields, and both run again on revive. For call-site sugar, add a
-static factory instead of changing the constructor:
-
-```ts
-class UserNotFound extends Faultier.Tagged("UserNotFound")<{ id: string }>() {
-  constructor(fields: { id: string }) {
-    super(fields)
-    this.message = `User ${fields.id} not found`
-  }
-
-  static forId(id: string) {
-    return new UserNotFound({ id })
-  }
-}
-```
-
-The check covers the signature only. On revive an instance holds exactly what its
-constructor builds from the payload fields, so state the constructor does not receive is
-not restored: fields stored under different names, fields a parameterless constructor
-fills in itself, and class fields initialised outside the constructor argument. Keep
-constructor input and stored fields the same shape.
-
-The wire format uses the JSON-safe `SerializableValue` type. `withMeta` and `Tagged`
-payload fields are type-constrained at construction; thrown causes are normalized to
-JSON-safe values during serialization. Meta and payload values are not deep runtime
-validated: their serializability is a documented type contract. `undefined` values are
-preserved in the wire object itself; JSON transports drop `undefined` object properties
-and convert `undefined` array elements to `null`, while structured-clone-style transports
-preserve them.
-
-A single reserved-key rule applies everywhere: a key is reserved when it is a wire
-envelope key (`__faultier`, `_tag`, `name`, `message`, `details`, `meta`, `stack`,
-`cause`) or would shadow anything on Fault's prototype chain — Fault methods
-(`withMeta`, `withCause`, `unwrap`, `flatten`, ...) and inherited built-ins
-(`constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`,
-`isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`,
-`__defineSetter__`, `__lookupGetter__`, `__lookupSetter__`). `Tagged` constructors
-reject reserved field names with `ReservedFieldError`; deserialization preserves
-colliding wire keys with a `__payload_` prefix instead (repeated when needed to
-avoid overwriting an existing payload field), since wire data from other sources
-must not be dropped.
-
-## API Reference
-
-### Fault Instance
-
-| Method                               | Description                                                   |
-| ------------------------------------ | ------------------------------------------------------------- |
-| `message`                            | User-facing message ("what happened")                         |
-| `details`                            | Technical/diagnostic context for developers and logs          |
-| `withMessage(message)`               | Set user-facing message (fluent)                              |
-| `withDetails(details)`               | Set technical details (fluent)                                |
-| `withDescription(message, details?)` | Set both message and details (fluent)                         |
-| `withMeta(meta)`                     | Set structured metadata, merges with existing (fluent)        |
-| `withCause(cause)`                   | Chain a cause (fluent)                                        |
-| `unwrap()`                           | Cause chain as array `[head, ..., leaf]`                      |
-| `getTags()`                          | `_tag` values from all Faults in the chain                    |
-| `getContext()`                       | Merged metadata from all Faults (head wins on conflicts)      |
-| `flatten(options?)`                  | Cause chain to string (see [Error Chaining](#error-chaining)) |
-| `toSerializable()`                   | Serialize to wire format                                      |
-
-### Registry
-
-| Method                                     | Description                                                  |
-| ------------------------------------------ | ------------------------------------------------------------ |
-| `tags`                                     | Registered tags in deterministic order                       |
-| `typeof registry.Type`                     | Union of the registry's fault types (type-only)              |
-| `create(tag, fields?)`                     | Create a fault by tag                                        |
-| `wrap(error).as(tag, fields?)`             | Wrap an existing error as a tagged fault                     |
-| `is(error)`                                | Type guard for any fault in the registry                     |
-| `findCause(error, tag)`                    | First registered fault with `tag` in the chain, or undefined |
-| `matchTag(error, tag, handler, fallback?)` | Single tag matching                                          |
-| `matchTags(error, handlers, fallback?)`    | Multiple tag matching                                        |
-| `toSerializable(error)`                    | Serialize any error (Fault, Error, or unknown thrown value)  |
-| `fromSerializable(data)`                   | Reconstruct a fault, restoring registered subclasses         |
-
-### Top-level (`Faultier.*`)
-
-| Method                       | Description                                                   |
-| ---------------------------- | ------------------------------------------------------------- |
-| `Tagged(tag)<Fields>()`      | Create a tagged Fault subclass with `_tag` as discriminant    |
-| `registry({ ...ctors })`     | Create a scoped fault registry from tagged constructors       |
-| `merge(a, b, ...rest)`       | Merge registries into one union (throws on conflicting tags)  |
-| `matchTag(...)`              | Match one tag in a typed Fault union                          |
-| `matchTags(...)`             | Match several tags in a typed Fault union                     |
-| `isFault(value)`             | Type guard for Fault instances (not cross-realm safe)         |
-| `findCause(error, Class)`    | First chain node that is an instance of `Class`, or undefined |
-| `isSerializableFault(value)` | Type guard for well-formed wire payloads (causes included)    |
-| `toSerializable(error)`      | Serialize any error (Fault, Error, or unknown thrown value)   |
-| `fromSerializable(data)`     | Reconstruct a generic Fault (no subclass restoration)         |
-
-### Exports
-
-**`@sanely/errors`:** `Fault`, `Tagged`, `registry`, `merge`, `matchTag`, `matchTags`, `isFault`, `isSerializableFault`, `findCause`, `toSerializable`, `fromSerializable`
-
-**`@sanely/errors/errors`:** `ReservedFieldError`, `RegistryTagMismatchError`, `RegistryMergeConflictError`, `InvalidPayloadError`
-
-**`@sanely/errors/types`:** `FaultRegistry`, `FlattenOptions`, `FlattenField`, `TagOf`, `ByTag`, `SerializableValue`, `SerializableFault`, `SerializableCause`
-
-```ts
-import type { FaultRegistry, SerializableFault } from "@sanely/errors/types"
-import { RegistryMergeConflictError } from "@sanely/errors/errors"
-```
-
-## Common Recipes
-
-### Map faults to HTTP status codes
-
-```ts
-function toHttpStatus(err: unknown) {
-  return AppFault.matchTags(
-    err,
-    {
-      NotFoundError: () => 404,
-      ValidationError: () => 422,
-      DatabaseError: () => 503,
-    },
-    () => 500
-  )
-}
-```
-
-### Wrap unknown errors safely
-
-```ts
-try {
-  await riskyOperation()
-} catch (err) {
-  // Wraps anything — Error instances, strings, even undefined
-  throw AppFault.wrap(err).as("DatabaseError")
-}
-```
-
-### Serialize across a boundary
-
-```ts
-// Server: serialize any error for the wire
-const payload = AppFault.toSerializable(err)
-res.json(payload)
-
-// Client: reconstruct with subclass restoration
-const fault = AppFault.fromSerializable(payload)
-fault instanceof NotFoundError // true (if registered)
-```
-
-## Notes
-
-- Cause chains are capped at 100 levels (`MAX_CAUSE_DEPTH`) in traversal, serialization, and deserialization to prevent stack overflow.
-- Reserved constructor field names in `Tagged` throw `ReservedFieldError` from `@sanely/errors/errors`. This covers wire envelope keys, Fault methods, and inherited prototype members (`constructor`, `toString`, `__proto__`, ...) — see [Serialization](#serialization) for the full rule.
-
-## When not to use Faultier
-
-- **Small scripts or one-off CLIs** — plain `throw new Error()` is fine when you don't need classification.
-- **You already have a tagged error solution** — if your codebase already uses a library with `_tag` discriminants (e.g., Effect errors), adding Faultier would be redundant.
-- **You don't want to maintain an error taxonomy** — Faultier works best when your team commits to defining and evolving a set of fault classes. If that feels like too much overhead, it probably is.
-- **Very high-volume failure paths** — class instantiation per error is negligible for normal use, but may matter if errors are part of expected control flow at high frequency (e.g., validation in a tight loop).
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+To work on the package, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgments
 
-This project is inspired by the [Fault](https://github.com/Southclaws/fault) library.
+The package is inspired by the [Fault](https://github.com/Southclaws/fault) library.
 
-Made with [🥐 `pastry`](https://github.com/adelrodriguez/pastry)
+Made with [🥐 `pastry`](https://github.com/adelrodriguez/pastry).
 
 ## License
 
-[MIT](LICENSE)
+MIT. See [LICENSE](../../LICENSE).

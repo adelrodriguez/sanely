@@ -1,216 +1,70 @@
-# Contributing to Faultier
+# Contributing to `@sanely/errors`
 
-Thank you for your interest in contributing to Faultier! This document provides guidelines and instructions for contributing to the project.
+The package lives in `packages/errors` of the [sanely](https://github.com/adelrodriguez/sanely) monorepo. It uses pnpm and the Node.js version in the root `.node-version` (24).
 
-## Development Setup
+## Set up
 
-### Prerequisites
+Clone the repository and install the dependencies at the repository root:
 
-- [Node.js](https://nodejs.org) 26 or higher
-- [pnpm](https://pnpm.io) 11 or higher
-- TypeScript 5.4 or higher
-
-### Installation
-
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/your-username/sanely.git
-   cd sanely
-   ```
-3. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-## Project Structure
-
+```bash
+git clone https://github.com/adelrodriguez/sanely.git
+cd sanely
+pnpm install
 ```
+
+## Know the layout
+
+```text
 src/
-├── index.ts          # Core runtime entry point
-├── errors.ts         # faultier/errors entry point
-├── types.ts          # faultier/types entry point
-├── __tests__/        # Public entry-point and type-contract tests
-└── lib/              # Internal implementation modules
-    ├── __tests__/    # Unit tests for the sibling implementation modules
-    ├── fault.ts
-    ├── tagged.ts
-    ├── registry.ts
-    ├── match.ts
-    ├── reviver.ts
-    ├── errors.ts
-    └── wire.ts
+├── index.ts          # The @sanely/errors entry point
+├── errors.ts         # The @sanely/errors/errors entry point
+├── types.ts          # The @sanely/errors/types entry point
+├── __tests__/        # Tests of the public entry points and types
+└── lib/              # The implementation
+    ├── __tests__/    # Unit tests of the files in lib/
+    ├── errors.ts     # The error classes of the package
+    ├── fault.ts      # Fault, isFault, findCause, and serialization
+    ├── match.ts      # Tag matching
+    ├── registry.ts   # registry and merge
+    ├── reviver.ts    # Wire format validation and deserialization
+    ├── tagged.ts     # Tagged
+    └── wire.ts       # The wire format types, reserved keys, and payload fields
 ```
 
-See [`GLOSSARY.md`](GLOSSARY.md) for the domain glossary, behavioral model, and detailed module responsibilities.
+[`GLOSSARY.md`](GLOSSARY.md) defines the terms of the package and its behavior.
 
-## Development Workflow
+## Run the checks
 
-### Running Tests
+Run the package commands in `packages/errors`, and the workspace commands from any folder. CI runs the same checks.
 
-```bash
-# Run all tests
-pnpm test
+| Command                             | What it does                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm --workspace-root run check`   | Check formatting, lint, and types, including `src/__tests__/types.test-d.ts`.                      |
+| `pnpm --workspace-root run fix`     | Apply safe lint fixes and format all files.                                                        |
+| `pnpm --workspace-root run analyze` | Find unused files, exports, and dependencies.                                                      |
+| `pnpm run test`                     | Run the unit tests.                                                                                |
+| `pnpm run test:watch`               | Run the unit tests in watch mode.                                                                  |
+| `pnpm run test:coverage`            | Run the unit tests with coverage.                                                                  |
+| `pnpm run build`                    | Build the package into `dist/`.                                                                    |
+| `pnpm run dev`                      | Build the package in watch mode.                                                                   |
+| `pnpm run build:verify`             | Pack and install the built package, then check its entry points, class identity, and declarations. |
+| `pnpm run test:compat`              | Run the built package with the globals of the `engines.node` floor.                                |
 
-# Watch mode for development
-pnpm run test:watch
+## Write tests
 
-# With coverage
-pnpm run test:coverage
-```
+- A `__tests__/` folder tests only the files in its parent folder.
+- Public tests live in `src/__tests__/`, and import only from `src/index.ts`, `src/errors.ts`, or `src/types.ts`.
+- Unit tests for `src/lib/` live in `src/lib/__tests__/`, and import only from `src/lib/`.
+- A change to a public type needs a type test in `src/__tests__/types.test-d.ts`. Write it with `expectTypeOf` from `vitest`. `pnpm --workspace-root run check` runs the type tests, and Vitest does not.
 
-### Code Quality
+## Add a changeset
 
-```bash
-# Check linting, formatting, and types
-pnpm --workspace-root run check
+Add a changeset when your change affects package users. See the Changesets section of the root [`AGENTS.md`](../../AGENTS.md).
 
-# Apply formatting and auto-fix linting issues
-pnpm --workspace-root run fix
+## Report a problem
 
-# Find unused code and dependencies
-pnpm --workspace-root run analyze
-```
-
-All checks must pass before submitting a PR.
-
-### Building
-
-```bash
-# Build the package
-pnpm run build
-
-# Watch mode
-pnpm run dev
-
-# Build and verify all published entry points
-pnpm run build:verify
-```
-
-## Making Changes
-
-### Branch Naming
-
-- `feat/description` - New features
-- `fix/description` - Bug fixes
-- `docs/description` - Documentation changes
-- `refactor/description` - Code refactoring
-
-### Commit Messages
-
-Write clear, concise commit messages that describe what changed and why:
-
-```
-feat: add support for custom error serialization
-
-Allows users to define custom serialization logic for context objects.
-```
-
-### Code Style
-
-- Follow TypeScript best practices
-- Use meaningful variable and function names
-- Add JSDoc comments for public APIs
-- Use the configured Adamantite, Oxfmt, and Oxlint tooling
-- Prefer `unknown` and narrowing over `any`
-- Keep justified suppressions as narrow as possible
-
-### Testing
-
-- Add tests for new features
-- Update tests when modifying existing functionality
-- Ensure all tests pass before submitting
-- A `__tests__/` directory tests only the files in its parent directory
-- Public tests live in `src/__tests__/` and import only from `src/index.ts`, `src/errors.ts`, or `src/types.ts`
-- Unit tests for `src/lib/` modules live in `src/lib/__tests__/` and import only from `src/lib/`
-- Public API type changes require coverage in `src/__tests__/types.test-d.ts`
-- Write type assertions with `expectTypeOf` from `vitest`
-- Type assertions are checked by `pnpm --workspace-root run check`, not Vitest
-
-## Changesets Workflow
-
-This project uses [Changesets](https://github.com/changesets/changesets) for version management and changelog generation.
-
-### When to Add a Changeset
-
-Add a changeset for any user-facing changes:
-
-- New features
-- Bug fixes
-- Breaking changes
-- Deprecations
-
-Skip changesets for:
-
-- Documentation updates
-- Internal refactoring without behavior changes
-- Test updates
-
-### Creating a Changeset
-
-```bash
-pnpm exec changeset
-```
-
-Follow the prompts to:
-
-1. Select the type of change (major, minor, patch)
-2. Write a summary of the change
-
-The changeset file will be created in `.changeset/` and should be committed with your PR.
-
-#### Change Types
-
-- **Major** (breaking changes): API changes that require user code updates
-- **Minor** (new features): Backwards-compatible new functionality
-- **Patch** (bug fixes): Backwards-compatible bug fixes
-
-Choose a major bump only when the breaking release has been explicitly planned and approved.
-
-## Submitting a Pull Request
-
-### Before Submitting
-
-Ensure your PR meets these requirements:
-
-- [ ] Code follows the project's style guidelines
-- [ ] All tests pass (`pnpm test`)
-- [ ] Linting, formatting, and type checking pass (`pnpm --workspace-root run check`)
-- [ ] Package verification passes for entrypoint/build changes (`pnpm run build:verify`)
-- [ ] Changeset added (if applicable)
-- [ ] Documentation updated (if needed)
-
-### PR Process
-
-1. Push your changes to your fork
-2. Create a pull request against the `main` branch
-3. Fill out the PR template with:
-   - Description of changes
-   - Motivation and context
-   - Breaking changes (if any)
-   - Related issues
-4. Wait for CI checks to pass
-5. Address review feedback
-
-### CI Checks
-
-Pull requests must pass:
-
-- **Lint** - Code style and formatting
-- **Typecheck** - TypeScript compilation
-- **Test** - All test suites
-- **Package verification** - Built entrypoints and declarations resolve for consumers
-
-## Getting Help
-
-- Open an [issue](https://github.com/adelrodriguez/faultier/issues) for bug reports or feature requests
-- Check existing issues before creating a new one
-- Provide as much context as possible
-
-## Code of Conduct
-
-Be respectful, inclusive, and constructive in all interactions. We're here to build great software together.
+Open an issue at [adelrodriguez/sanely](https://github.com/adelrodriguez/sanely/issues). Search the open issues first.
 
 ## License
 
-By contributing to Faultier, you agree that your contributions will be licensed under the MIT License.
+The package uses the MIT license. See [LICENSE](../../LICENSE).

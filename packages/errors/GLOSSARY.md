@@ -1,4 +1,4 @@
-# Faultier Context
+# `@sanely/errors` Context
 
 ## Domain Glossary
 
@@ -27,7 +27,7 @@
 ## Public Entrypoints
 
 - `@sanely/errors`: Core runtime API (`Fault`, `Tagged`, registries, matching, and generic deserialization).
-- `@sanely/errors/errors`: Faultier's own error classes.
+- `@sanely/errors/errors`: The package's own error classes.
 - `@sanely/errors/types`: Public type-only contracts.
 
 ## Codebase Map
@@ -35,8 +35,8 @@
 ```text
 src/
 ├── index.ts                  # Core runtime entrypoint
-├── errors.ts                 # faultier/errors
-├── types.ts                  # faultier/types
+├── errors.ts                 # @sanely/errors/errors
+├── types.ts                  # @sanely/errors/types
 ├── __tests__/                # Public API, type, entrypoint, and metadata tests
 └── lib/
     ├── errors.ts             # Library error classes
