@@ -629,6 +629,46 @@ describe("first-class cache", () => {
     deletion.resolve(null)
   })
 
+  test("deletes a decision written after a read that spanned a change", async () => {
+    const stored = new Map<string, Decision>()
+    const firstRead = createDeferred<Decision | null>()
+    const firstReadStarted = createDeferred<null>()
+    const written = createDeferred<null>()
+    let reads = 0
+    const { decide, evaluator, provider } = changingGate({
+      delete: (key) => Promise.resolve(stored.delete(key)),
+      get: (key) => {
+        reads += 1
+        if (reads === 1) {
+          firstReadStarted.resolve(null)
+          return firstRead.promise
+        }
+        return Promise.resolve(stored.get(key))
+      },
+      set: (key, value) => {
+        stored.set(key, value)
+        written.resolve(null)
+        return Promise.resolve()
+      },
+    })
+
+    const evaluation = evaluator()
+    await firstReadStarted.promise
+    provider.notify({ keys: ["beta-access"] })
+    firstRead.resolve(null)
+    expect(await evaluation).toBe(true)
+    await written.promise
+    expect(stored.size).toBe(1)
+
+    provider.value = false
+    provider.notify({ keys: ["beta-access"] })
+    await flushBackground()
+
+    expect(stored.size).toBe(0)
+    expect(await evaluator.details()).toMatchObject({ source: "provider", value: false })
+    expect(decide).toHaveBeenCalledTimes(2)
+  })
+
   test("does not read or write the cache for an anonymous identity", async () => {
     const get = vi.fn(() => Promise.resolve<Decision | null>(null))
     const set = vi.fn(() => Promise.resolve())
