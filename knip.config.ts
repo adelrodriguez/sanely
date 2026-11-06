@@ -7,7 +7,7 @@ export default {
   workspaces: {
     ".": {
       entry: ["scripts/*.{mjs,ts}"],
-      project: ["scripts/**/*.{mjs,ts}"],
+      project: ["scripts/**/*.{mjs,ts}", "turbo/generators/**/*.ts"],
     },
     "packages/*": {
       entry: ["src/__tests__/types.test-d.ts"],
