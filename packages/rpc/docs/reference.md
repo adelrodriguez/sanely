@@ -102,10 +102,10 @@ If `signal` aborts, `dispatch` rejects with `signal.reason`, even if the resolve
 
 Returns a builder with the same shape as the contract. Each leaf on the builder is a function that takes a resolver and returns a `Fragment` for that leaf.
 
-| Member             | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `$context<T>()`    | Returns the same builder with the context type set to `T`                 |
-| `<leaf>(resolver)` | Returns a `Fragment` that carries the leaf's dotted path and context type |
+| Member             | Description                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `$context<T>()`    | Returns the same builder with the context type set to `T`                                          |
+| `<leaf>(resolver)` | Returns a `Fragment` that carries the leaf's dotted path, context type, and input and output types |
 
 `isFragment(value)` returns `true` for a fragment.
 

@@ -5,22 +5,38 @@ import { SetupError } from "#lib/core/setup-error.ts"
 import type { Resolver, ResolverArgs } from "./types"
 
 /**
- * One implemented leaf: the dotted path it serves, the resolver, and (as a phantom on the resolver)
- * the context it was built against. Produced by calling a leaf on an {@link implement} builder;
- * consumed by `createRouter`, where the path brand must agree with the fragment's position in the
- * handler tree — so a fragment for another leaf, or another contract, cannot occupy a slot even
- * when names collide.
+ * One implemented leaf: the dotted path it serves and the resolver, whose type carries the context
+ * it was built against and the leaf's input and result types. Produced by calling a leaf on an
+ * {@link implement} builder; consumed by `createRouter`, where the path brand must agree with the
+ * fragment's position in the handler tree and the resolver must accept that slot's input and return
+ * what its output accepts. A fragment for another leaf cannot occupy a slot, and neither can a
+ * fragment for another contract whose leaf at the same path has other schema types.
  */
-export type Fragment<Path extends string = string, Context = never> = {
+export type Fragment<
+  Path extends string = string,
+  Context = never,
+  Input = never,
+  Result = unknown,
+> = {
   _kind: "fragment"
   $path: Path
-  $resolver: (args: ResolverArgs<never, Context>) => unknown
+  $resolver: (args: ResolverArgs<Input, Context>) => Result
 }
 
 /**
- * The widest fragment: every concrete `Fragment<P, C>` is assignable to it (contravariance).
+ * The widest fragment: every concrete `Fragment<P, C, I, R>` is assignable to it (contravariance).
  */
 type AnyFragment = Fragment
+
+/**
+ * The fragment for one leaf at `Path`, with the input and result types read off its
+ * {@link Resolver}. The builder returns it and the handler tree demands it, so the two agree exactly
+ * when the leaves do.
+ */
+type LeafFragment<Leaf, Path extends string, Context> =
+  Resolver<Leaf, Context> extends (args: ResolverArgs<infer Input, Context>) => infer Result
+    ? Fragment<Path, Context, Input, Result>
+    : never
 
 /**
  * Mirrors the contract tree: every branch is a sub-implementer, every leaf is a fragment factory.
@@ -30,7 +46,9 @@ type AnyFragment = Fragment
  */
 export type Implementer<Tree, Context = void, Prefix extends string = ""> = {
   [Key in keyof Tree & string]: Tree[Key] extends Channel
-    ? (resolver: Resolver<Tree[Key], Context>) => Fragment<Join<Prefix, Key>, Context>
+    ? (
+        resolver: Resolver<Tree[Key], Context>
+      ) => LeafFragment<Tree[Key], Join<Prefix, Key>, Context>
     : Implementer<Tree[Key], Context, Join<Prefix, Key>>
 } & {
   /**
@@ -81,11 +99,11 @@ export function isFragment(node: unknown): node is Fragment {
 /**
  * The implementation shape a contract demands: the same tree with a fragment at every leaf. Missing
  * leaves are missing properties (TypeScript names them in the error), and each slot demands the
- * fragment whose path brand matches the position.
+ * fragment whose path brand matches the position and whose resolver fits the leaf's schemas.
  */
 export type FragmentTree<Tree, Context, Prefix extends string = ""> = {
   [Key in keyof Tree & string]: Tree[Key] extends Channel
-    ? Fragment<Join<Prefix, Key>, Context>
+    ? LeafFragment<Tree[Key], Join<Prefix, Key>, Context>
     : FragmentTree<Tree[Key], Context, Join<Prefix, Key>>
 }
 
