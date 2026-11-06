@@ -222,6 +222,44 @@ describe("React integration", () => {
     expect(decideMany).toHaveBeenCalledTimes(1)
   })
 
+  it("keeps batches of different evaluators with one flag key apart", async () => {
+    const decideMany = vi.fn((keys: readonly string[]) =>
+      Object.fromEntries(keys.map((key) => [key, decision.boolean(true)]))
+    )
+    const factory = buildGate({
+      decide: () => decision.boolean(true),
+      decideMany,
+      identify: () => ({ distinctId: "core" }),
+    })
+    const booleanFlag = factory({ defaultValue: false, key: "shared" })
+    const variantFlag = factory({
+      defaultValue: "light",
+      key: "shared",
+      variants: ["light", "dark"],
+    })
+    const cache = createGateCache()
+    await cache.prefetchBatch([booleanFlag])
+    await cache.prefetchBatch([booleanFlag])
+    expect(decideMany).toHaveBeenCalledTimes(1)
+    function Consumer() {
+      const [value] = useGateBatch([variantFlag])
+      return <span>{String(value)}</span>
+    }
+    await renderAsync(
+      <GateProvider cache={cache}>
+        <Suspense fallback="loading">
+          <Consumer />
+        </Suspense>
+      </GateProvider>
+    )
+    expect(await screen.findByText("light")).toBeTruthy()
+    expect(decideMany).toHaveBeenCalledTimes(2)
+
+    cache.invalidateBatch([variantFlag])
+    await cache.prefetchBatch([booleanFlag])
+    expect(decideMany).toHaveBeenCalledTimes(2)
+  })
+
   it("returns the active cache and isolates bare providers", () => {
     const caches: unknown[] = []
     function Capture() {
