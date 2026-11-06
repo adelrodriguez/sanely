@@ -9,6 +9,9 @@ catalog:
   typescript: 7.0.2
   vitest: 5.1.0
 
+allowBuilds:
+  esbuild: true
+
 minimumReleaseAgeExclude:
   - adamantite
   - packref

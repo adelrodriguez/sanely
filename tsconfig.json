@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["scripts", "*.config.ts"],
+  "include": ["scripts", "turbo", "*.config.ts"],
   "exclude": ["node_modules", ".packref"]
 }
