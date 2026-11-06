@@ -4,7 +4,10 @@ import * as api from "#index.ts"
 describe("public entry", () => {
   it("should export the public functions and the error", () => {
     expect(Object.keys(api).toSorted()).toEqual([
+      "HOUR_INTERVALS",
       "InvalidCronPhraseError",
+      "MINUTE_INTERVALS",
+      "WEEKDAYS",
       "cron",
       "isCronPhrase",
       "isValidCronPhrase",

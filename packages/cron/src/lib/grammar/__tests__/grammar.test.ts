@@ -21,7 +21,7 @@ describe("parseStrict", () => {
         const result = parseStrict(row.phrase)
 
         expect(result.ok).toBe(true)
-        if (result.ok) expect(toStandardCron(result.schedule)).toBe(row.cron)
+        if (result.ok) expect(toStandardCron(result.fields)).toBe(row.cron)
       })
     } else {
       it(`should reject ${JSON.stringify(row.phrase)}${reason ? ` with "${reason}"` : ""}`, () => {
@@ -38,7 +38,7 @@ describe("parseStrict", () => {
       const result = parseStrict(row.phrase)
       if (!result.ok) continue
 
-      const { dayOfMonth, dayOfWeek } = result.schedule
+      const { dayOfMonth, dayOfWeek } = result.fields
       expect(dayOfMonth.length === 31 || dayOfWeek.length === 7, row.phrase).toBe(true)
     }
   })

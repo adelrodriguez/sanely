@@ -1,7 +1,7 @@
 import { DAY_GROUPS, DAYS, UNITS } from "#lib/vocabulary/words.ts"
 
 const DAY_BY_ALIAS: ReadonlyMap<string, string> = new Map(
-  DAYS.flatMap((day) => day.aliases.map((alias) => [alias, day.name] as const))
+  Object.entries(DAYS).flatMap(([name, day]) => day.aliases.map((alias) => [alias, name] as const))
 )
 
 const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof UNITS)[number]> = new Map(
@@ -9,7 +9,7 @@ const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof UNITS)[number]> = new Map(
 )
 
 const GROUP_BY_WORD: ReadonlyMap<string, (typeof DAY_GROUPS)[number]> = new Map(
-  DAY_GROUPS.flatMap((group) => [[group.singular, group] as const, [group.plural, group] as const])
+  DAY_GROUPS.flatMap((group) => [[group.singular, group] as const, [group.name, group] as const])
 )
 
 // A number with a unit alias and no space, such as "15m".
@@ -29,7 +29,7 @@ function mapWord(word: string, previous: string | undefined): string {
 
   const group = GROUP_BY_WORD.get(word)
   if (group && previous === "every") return group.singular
-  if (group && previous === "on") return group.plural
+  if (group && previous === "on") return group.name
 
   return DAY_BY_ALIAS.get(word) ?? word
 }

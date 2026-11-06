@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { GrammarRow } from "#lib/grammar/__tests__/grammar.table.ts"
-import type { CronPhrase } from "#lib/grammar/types.ts"
+import type { CronPhrase } from "#lib/schedule/schedule.ts"
 import { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
 import { cron } from "#lib/phrase/cron.ts"
 import { InvalidCronPhraseError } from "#lib/phrase/errors.ts"

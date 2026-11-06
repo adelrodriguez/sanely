@@ -1,19 +1,4 @@
-/**
- * A day name, in the strict form. The language lists days Monday first.
- *
- * Note: in a cron phrase, the day group `weekday` means Monday to Friday. This type is the set of
- * all seven day names.
- */
-export type Weekday =
-  | "monday"
-  | "tuesday"
-  | "wednesday"
-  | "thursday"
-  | "friday"
-  | "saturday"
-  | "sunday"
-
-type CalendarOrder = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+import type { DAY_GROUPS, DayOfMonth, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS } from "./words"
 
 // Every subset of the days, in calendar order. 2^7 = 128 tuples, with the empty tuple.
 type Subsets<T extends readonly string[]> = T extends readonly [
@@ -23,64 +8,58 @@ type Subsets<T extends readonly string[]> = T extends readonly [
   ? Subsets<Rest> | [Head, ...Subsets<Rest>]
   : []
 
-// The list format: "monday", "monday and friday", "monday, wednesday and friday".
-type FormatList<T extends readonly string[]> = T extends readonly [infer Only extends string]
+/**
+ * The list format of a cron phrase: `"monday"`, `"monday and friday"`, `"monday, wednesday and
+ * friday"`.
+ */
+export type FormatList<T extends readonly string[]> = T extends readonly [infer Only extends string]
   ? Only
   : T extends readonly [infer First extends string, infer Last extends string]
     ? `${First} and ${Last}`
     : T extends readonly [infer First extends string, ...infer Rest extends string[]]
       ? `${First}, ${FormatList<Rest>}`
-      : never
+      : ""
 
 /**
  * A list of one or more day names in calendar order, such as `"monday, wednesday and friday"`.
  * There are 127 lists.
  */
-export type DayNameList = FormatList<Exclude<Subsets<CalendarOrder>, []>>
+export type DayNameList = FormatList<Exclude<Subsets<typeof WEEKDAYS>, []>>
+
+type DayGroupRow = (typeof DAY_GROUPS)[number]
 
 /**
- * The day set that follows `every`, such as `"weekday"` or `"monday and friday"`.
+ * The day set of a cron phrase. After `every` a day group is singular (`"weekday"`), and after `on`
+ * it is plural (`"weekdays"`).
  */
-export type DaySet = DayNameList | "weekday" | "weekend"
+export type PhraseDaySet<Context extends "every" | "on"> =
+  | DayNameList
+  | (Context extends "every" ? DayGroupRow["singular"] : DayGroupRow["name"])
+
+// Each member of a union of numbers with its suffix.
+type WithSuffix<N extends number> = N extends unknown
+  ? `${N}` extends "11" | "12" | "13"
+    ? `${N}th`
+    : `${N}` extends `${string}1`
+      ? `${N}st`
+      : `${N}` extends `${string}2`
+        ? `${N}nd`
+        : `${N}` extends `${string}3`
+          ? `${N}rd`
+          : `${N}th`
+  : never
 
 /**
- * The day set that follows `on`, such as `"weekdays"` or `"monday and friday"`.
+ * A day of the month in a cron phrase, from `"1st"` to `"28th"`.
  */
-export type OnDaySet = DayNameList | "weekdays" | "weekends"
+export type Ordinal = WithSuffix<DayOfMonth>
 
-/**
- * A minute interval with an exact cron. The interval of 1 is spelled `every minute`.
- */
-export type MinuteInterval = 2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30
+// The reason text for a list of choices: "2, 3, or 4".
+type JoinChoices<T extends readonly number[]> = T extends readonly [infer Last extends number]
+  ? `or ${Last}`
+  : T extends readonly [infer First extends number, ...infer Rest extends number[]]
+    ? `${First}, ${JoinChoices<Rest>}`
+    : ""
 
-/**
- * An hour interval with an exact cron. The interval of 1 is spelled `every hour`.
- */
-export type HourInterval = 2 | 3 | 4 | 6 | 8 | 12
-
-type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-
-type OrdinalNumber =
-  | Exclude<Digit, "0">
-  | `1${Digit}`
-  | `2${"0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8"}`
-
-type WithSuffix<N extends string> = N extends "11" | "12" | "13"
-  ? `${N}th`
-  : N extends `${string}1`
-    ? `${N}st`
-    : N extends `${string}2`
-      ? `${N}nd`
-      : N extends `${string}3`
-        ? `${N}rd`
-        : `${N}th`
-
-/**
- * A day of the month, from `"1st"` to `"28th"`.
- */
-export type Ordinal = WithSuffix<OrdinalNumber>
-
-/**
- * A shortcut phrase.
- */
-export type Shortcut = "hourly" | "daily" | "weekly" | "monthly"
+export type MinuteChoices = `Use ${JoinChoices<typeof MINUTE_INTERVALS>}`
+export type HourChoices = `Use ${JoinChoices<typeof HOUR_INTERVALS>}`

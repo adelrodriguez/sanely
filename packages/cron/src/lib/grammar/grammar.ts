@@ -1,21 +1,24 @@
-import type { Schedule } from "#lib/schedule/schedule.ts"
-import type { Shortcut } from "#lib/vocabulary/types.ts"
-import { createSchedule, range } from "#lib/schedule/schedule.ts"
+import type { Fields } from "#lib/fields/fields.ts"
+import type { Shortcut } from "#lib/vocabulary/words.ts"
+import { createFields, range } from "#lib/fields/fields.ts"
 import {
   DAY_GROUPS,
   DAYS,
   HOUR_INTERVALS,
-  MAX_ORDINAL,
+  LAST_DAY_OF_MONTH as MAX_ORDINAL,
   MINUTE_INTERVALS,
+  WEEKDAYS,
   formatChoices,
   getOrdinalSuffix,
+  isOneOf,
+  isWeekday,
 } from "#lib/vocabulary/words.ts"
 
 /**
  * The result of a parse: a schedule, or a reason that names the part of the phrase that failed.
  */
 export type GrammarResult =
-  | { readonly ok: true; readonly schedule: Schedule }
+  | { readonly ok: true; readonly fields: Fields }
   | { readonly ok: false; readonly reason: string }
 
 interface ClockTime {
@@ -27,16 +30,16 @@ const TIME_FORMATS = "Use H:MM or HH:MM (24-hour), H:MMam or H:MMpm, noon, or mi
 
 // A Map, so that a lookup never finds a member of `Object.prototype`, such as "constructor". The
 // `satisfies` check gives every shortcut a schedule and accepts no other key.
-const SHORTCUT_SCHEDULES: ReadonlyMap<string, Partial<Schedule>> = new Map(
+const SHORTCUT_SCHEDULES: ReadonlyMap<string, Partial<Fields>> = new Map(
   Object.entries({
     daily: { hour: [0], minute: [0] },
     hourly: { minute: [0] },
     monthly: { dayOfMonth: [1], hour: [0], minute: [0] },
     weekly: { dayOfWeek: [0], hour: [0], minute: [0] },
-  } satisfies Record<Shortcut, Partial<Schedule>>)
+  } satisfies Record<Shortcut, Partial<Fields>>)
 )
 
-const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUPS.map((group) => group.singular).join(", ")}, or ${DAY_GROUPS.map((group) => group.plural).join(", ")}`
+const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUPS.map((group) => group.singular).join(", ")}, or ${DAY_GROUPS.map((group) => group.name).join(", ")}`
 
 class GrammarError extends Error {
   override name = "GrammarError"
@@ -100,7 +103,7 @@ function parseInterval(token: string, unit: "minutes" | "hours"): number {
       ? [60, MINUTE_INTERVALS, "every minute", "every hour"]
       : [24, HOUR_INTERVALS, "every hour", "every day at midnight"]
 
-  if (intervals.includes(value)) return value
+  if (isOneOf(intervals, value)) return value
   if (value === 1) fail(`use "${single}" for an interval of 1 ${unit.slice(0, -1)}`)
   if (value === cycle) fail(`use "${next}" for an interval of ${cycle} ${unit}`)
 
@@ -165,26 +168,26 @@ function parseDayList(words: readonly string[]): number[] {
     .map((word) => (word.endsWith(",") ? word.slice(0, -1) : word))
 
   for (const name of names) {
-    if (DAY_GROUPS.some((group) => group.singular === name || group.plural === name)) {
+    if (DAY_GROUPS.some((group) => group.singular === name || group.name === name)) {
       fail(`"${name}" cannot be part of a list of days`)
     }
-    if (!DAYS.some((day) => day.name === name)) fail(`"${name}" is not a day. ${DAY_SET_HINT}`)
+    if (!isWeekday(name)) fail(`"${name}" is not a day. ${DAY_SET_HINT}`)
   }
 
   const duplicate = names.find((name, index) => names.indexOf(name) !== index)
   if (duplicate) fail(`"${duplicate}" is in the list more than one time`)
 
-  const indexes = names.map((name) => DAYS.findIndex((day) => day.name === name))
+  const indexes = names.filter((name) => isWeekday(name)).map((name) => WEEKDAYS.indexOf(name))
   const sorted = indexes.toSorted((a, b) => a - b)
   if (sorted.some((index, position) => index !== indexes[position])) {
     fail(
-      `list the days in calendar order, Monday first: "${formatDayList(sorted.map((index) => DAYS[index]?.name ?? ""))}"`
+      `list the days in calendar order, Monday first: "${formatDayList(sorted.map((index) => WEEKDAYS[index] ?? ""))}"`
     )
   }
 
   if (words.join(" ") !== formatDayList(names)) fail(`write the list as "${formatDayList(names)}"`)
 
-  return indexes.map((index) => DAYS[index]?.cron ?? 0)
+  return names.filter((name) => isWeekday(name)).map((name) => DAYS[name].cron)
 }
 
 // A day set ends at the end of the phrase or at one of the stop words.
@@ -200,17 +203,17 @@ function parseDaySet(
   if (words.length === 0) fail(`expected a day set after "${before}"`)
 
   const [only] = words
-  const group = DAY_GROUPS.find((entry) => entry.singular === only || entry.plural === only)
+  const group = DAY_GROUPS.find((entry) => entry.singular === only || entry.name === only)
   if (words.length === 1 && group) {
-    const expected = context === "every" ? group.singular : group.plural
+    const expected = context === "every" ? group.singular : group.name
     if (only !== expected) fail(`use "${expected}" after "${context}"`)
-    return [...group.cron]
+    return group.days.map((day) => DAYS[day].cron)
   }
 
   return parseDayList(words)
 }
 
-function parseMinuteInterval(cursor: Cursor, interval: number): Partial<Schedule> {
+function parseMinuteInterval(cursor: Cursor, interval: number): Partial<Fields> {
   const fields: { minute: number[]; hour?: number[]; dayOfWeek?: number[] } = {
     minute: range(0, 59, interval),
   }
@@ -247,7 +250,7 @@ function parseMinuteInterval(cursor: Cursor, interval: number): Partial<Schedule
   return fields
 }
 
-function parseHourInterval(cursor: Cursor, interval: number): Partial<Schedule> {
+function parseHourInterval(cursor: Cursor, interval: number): Partial<Fields> {
   const fields: { minute: number[]; hour: number[]; dayOfWeek?: number[] } = {
     hour: range(0, 23, interval),
     minute: [0],
@@ -274,7 +277,7 @@ function parseAt(cursor: Cursor): ClockTime {
   return time
 }
 
-function parseEvery(cursor: Cursor): Partial<Schedule> {
+function parseEvery(cursor: Cursor): Partial<Fields> {
   const token = cursor.peek()
   if (token === undefined) fail(`expected an interval, "day", or a day set after "every"`)
 
@@ -314,7 +317,7 @@ function parseEvery(cursor: Cursor): Partial<Schedule> {
   return { dayOfWeek, hour: [hour], minute: [minute] }
 }
 
-function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
+function parseDayOfMonth(cursor: Cursor): Partial<Fields> {
   cursor.expect("the")
 
   const token = cursor.next()
@@ -337,7 +340,7 @@ function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
   return { dayOfMonth: [day], hour: [hour], minute: [minute] }
 }
 
-function parseTokens(cursor: Cursor): Partial<Schedule> {
+function parseTokens(cursor: Cursor): Partial<Fields> {
   const first = cursor.next() ?? ""
 
   const shortcut = SHORTCUT_SCHEDULES.get(first)
@@ -370,7 +373,7 @@ export function parseStrict(phrase: string): GrammarResult {
   }
 
   try {
-    return { ok: true, schedule: createSchedule(parseTokens(new Cursor(tokens))) }
+    return { fields: createFields(parseTokens(new Cursor(tokens))), ok: true }
   } catch (error) {
     if (error instanceof GrammarError) return { ok: false, reason: error.message }
     throw error
