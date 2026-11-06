@@ -890,6 +890,21 @@ describe("timeout and cancellation behavior", () => {
     expect(result).toBeInstanceOf(TimeoutError)
     expect(unhandled).toEqual([])
   })
+
+  it("returns CancellationError without running try when the signal was aborted with a TimeoutError reason", async () => {
+    // A parent deadline aborts its signal with a TimeoutError, for example a task's $signal.
+    const reason = new TimeoutError("parent deadline")
+    let calls = 0
+
+    const result = await try$.signal(AbortSignal.abort(reason)).run(() => {
+      calls += 1
+      return calls
+    })
+
+    expect(result).toBeInstanceOf(CancellationError)
+    expect((result as CancellationError).cause).toBe(reason)
+    expect(calls).toBe(0)
+  })
 })
 
 describe("wrap behavior", () => {

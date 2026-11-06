@@ -677,6 +677,29 @@ describe("all", () => {
     expect(taskCalls).toBe(0)
   })
 
+  it("rejects before running tasks when the signal was aborted with a TimeoutError reason", async () => {
+    // A parent deadline aborts its signal with a TimeoutError, for example a task's $signal.
+    const reason = new TimeoutError("parent deadline")
+    let taskCalls = 0
+
+    const error = await try$
+      .signal(AbortSignal.abort(reason))
+      .all({
+        a() {
+          taskCalls += 1
+          return 1
+        },
+      })
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error: unknown) => error
+      )
+
+    expect(error).toBeInstanceOf(CancellationError)
+    expect((error as CancellationError).cause).toBe(reason)
+    expect(taskCalls).toBe(0)
+  })
+
   it("aborts the task signal and rejects with CancellationError when the builder signal aborts", async () => {
     const controller = new AbortController()
     const reason = new Error("stop")
