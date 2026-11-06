@@ -710,6 +710,179 @@ describe("request coalescing", () => {
     expect(followerDetails.error?.message).toBe("follower stopped")
   })
 
+  test("keeps the shared provider call for a follower when the leader cancels", async () => {
+    const provider = createDeferred<Decision>()
+    const providerSignal = createDeferred<AbortSignal | undefined>()
+    const decide = vi.fn((_key: string, _identity: unknown, options?: { signal?: AbortSignal }) => {
+      providerSignal.resolve(options?.signal)
+      return provider.promise
+    })
+    const followerJoined = createDeferred<null>()
+    let keyReads = 0
+    const gate = buildGate({
+      decide,
+      // The second key read is the follower's, in the same synchronous step as its join.
+      evaluationKey: (context) => {
+        keyReads += 1
+        if (keyReads === 2) followerJoined.resolve(null)
+        return context.flagKey
+      },
+      identify: () => ({ distinctId: "user123" }),
+    })
+    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const controller = new AbortController()
+    const reason = new Error("leader stopped")
+
+    const leader = evaluator.details({ signal: controller.signal })
+    const signal = await providerSignal.promise
+    const follower = evaluator.details()
+    await followerJoined.promise
+    controller.abort(reason)
+    provider.resolve({ type: "boolean", value: true })
+
+    expect(await leader).toEqual({
+      error: reason,
+      flagKey: "beta-access",
+      source: "default",
+      value: false,
+    })
+    expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
+    expect(signal?.aborted).toBe(false)
+    expect(decide).toHaveBeenCalledTimes(1)
+  })
+
+  test("keeps the shared provider call for a follower with a later deadline", async () => {
+    vi.useFakeTimers()
+    try {
+      const provider = createDeferred<Decision>()
+      const providerStarted = createDeferred<null>()
+      const decide = vi.fn(
+        (_key: string, _identity: unknown, options?: { signal?: AbortSignal }) => {
+          providerStarted.resolve(null)
+          return new Promise<Decision>((resolve, reject) => {
+            options?.signal?.addEventListener("abort", () => {
+              reject(new Error("provider stopped"))
+            })
+            void provider.promise.then(resolve)
+          })
+        }
+      )
+      const followerJoined = createDeferred<null>()
+      let keyReads = 0
+      const gate = buildGate({
+        decide,
+        evaluationKey: (context) => {
+          keyReads += 1
+          if (keyReads === 2) followerJoined.resolve(null)
+          return context.flagKey
+        },
+        identify: () => ({ distinctId: "user123" }),
+      })
+      const fast = gate({ defaultValue: false, key: "beta-access", timeoutMs: 10 })
+      const slow = gate({ defaultValue: false, key: "beta-access", timeoutMs: 1000 })
+
+      const leader = fast.details()
+      await providerStarted.promise
+      const follower = slow.details()
+      await followerJoined.promise
+      await vi.advanceTimersByTimeAsync(10)
+      const leaderDetails = await leader
+      expect(leaderDetails.source).toBe("default")
+      expect(leaderDetails.error).toBeInstanceOf(GateTimeoutError)
+
+      provider.resolve({ type: "boolean", value: true })
+      expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
+      expect(decide).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test("cancels the shared provider call once every caller has cancelled", async () => {
+    const providerSignal = createDeferred<AbortSignal | undefined>()
+    const decide = vi.fn(
+      (
+        _key: string,
+        _identity: unknown,
+        options?: { signal?: AbortSignal }
+      ): Decision | Promise<Decision> => {
+        if (decide.mock.calls.length > 1) {
+          return { type: "boolean", value: true }
+        }
+        providerSignal.resolve(options?.signal)
+        return createDeferred<Decision>().promise
+      }
+    )
+    const followerJoined = createDeferred<null>()
+    let keyReads = 0
+    const gate = buildGate({
+      decide,
+      evaluationKey: (context) => {
+        keyReads += 1
+        if (keyReads === 2) followerJoined.resolve(null)
+        return context.flagKey
+      },
+      identify: () => ({ distinctId: "user123" }),
+    })
+    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const leaderController = new AbortController()
+    const followerController = new AbortController()
+
+    const leader = evaluator.details({ signal: leaderController.signal })
+    const signal = await providerSignal.promise
+    const follower = evaluator.details({ signal: followerController.signal })
+    await followerJoined.promise
+
+    leaderController.abort(new Error("leader stopped"))
+    expect(signal?.aborted).toBe(false)
+    followerController.abort(new Error("follower stopped"))
+    expect(signal?.aborted).toBe(true)
+
+    const [leaderDetails, followerDetails] = await Promise.all([leader, follower])
+    expect(leaderDetails.source).toBe("default")
+    expect(followerDetails.source).toBe("default")
+    expect(await evaluator()).toBe(true)
+    expect(decide).toHaveBeenCalledTimes(2)
+  })
+
+  test("keeps a batch's shared provider call for an outside follower when the batch cancels", async () => {
+    const batchProvider = createDeferred<Record<string, Decision>>()
+    const providerSignal = createDeferred<AbortSignal | undefined>()
+    const decideMany = vi.fn(
+      (_keys: readonly string[], _identity: unknown, options?: { signal?: AbortSignal }) => {
+        providerSignal.resolve(options?.signal)
+        return batchProvider.promise
+      }
+    )
+    const followerJoined = createDeferred<null>()
+    let keyReads = 0
+    const gate = buildGate({
+      decide: () => ({ type: "boolean", value: false }),
+      decideMany,
+      evaluationKey: (context) => {
+        keyReads += 1
+        if (keyReads === 2) followerJoined.resolve(null)
+        return context.flagKey
+      },
+      identify: () => ({ distinctId: "user123" }),
+    })
+    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const controller = new AbortController()
+
+    const batch = gate.batch([evaluator], { signal: controller.signal })
+    const signal = await providerSignal.promise
+    const follower = evaluator.details()
+    await followerJoined.promise
+    controller.abort(new Error("batch stopped"))
+    const batchResult = await batch
+    expect(batchResult.details(evaluator).source).toBe("default")
+    expect(signal?.aborted).toBe(false)
+    batchProvider.resolve({ "beta-access": { type: "boolean", value: true } })
+
+    expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
+    expect(decideMany).toHaveBeenCalledTimes(1)
+  })
+
   test("does not coalesce onto in-flight provider work after invalidation", async () => {
     const first = createDeferred<Decision>()
     let notifyChange: ((change: { keys?: readonly string[] }) => void) | undefined
