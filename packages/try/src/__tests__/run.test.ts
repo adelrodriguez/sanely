@@ -891,6 +891,48 @@ describe("timeout and cancellation behavior", () => {
     expect(unhandled).toEqual([])
   })
 
+  it("returns TimeoutError when async try resolves after the deadline passed", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const result = await try$.timeout(5).run(async () => {
+        await Promise.resolve()
+        // The deadline passes before the fake timer can fire.
+        vi.setSystemTime(Date.now() + 10)
+        return 42
+      })
+
+      expect(result).toBeInstanceOf(TimeoutError)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("returns TimeoutError when async catch resolves after the deadline passed", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const failure = new Error("boom")
+
+      const result = await try$.timeout(5).run({
+        catch: async () => {
+          await Promise.resolve()
+          // The deadline passes before the fake timer can fire.
+          vi.setSystemTime(Date.now() + 10)
+          return "mapped" as const
+        },
+        try: () => {
+          throw failure
+        },
+      })
+
+      expect(result).toBeInstanceOf(TimeoutError)
+      expect((result as TimeoutError).cause).toBe(failure)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("returns CancellationError without running try when the signal was aborted with a TimeoutError reason", async () => {
     // A parent deadline aborts its signal with a TimeoutError, for example a task's $signal.
     const reason = new TimeoutError("parent deadline")
