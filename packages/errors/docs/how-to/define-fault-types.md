@@ -32,7 +32,8 @@ This guide shows you how to declare the errors of your app as fault classes, and
 
    ```ts
    throw AppFault.create("NotFoundError", { resource: "user", id: "123" })
-     .withDescription("User not found", "Lookup returned 0 rows")
+     .withMessage("User not found")
+     .withDescription("Lookup returned 0 rows")
      .withMeta({ traceId: "trace-123" })
    ```
 

@@ -33,10 +33,12 @@ The chain goes from the head, the newest fault, to the leaf, the original cause.
 ```ts
 const root = new Error("db down")
 const inner = new TimeoutError()
-  .withDescription("Service unavailable", "Upstream timeout after 30s")
+  .withMessage("Service unavailable")
+  .withDescription("Upstream timeout after 30s")
   .withCause(root)
 const outer = new NotFoundError({ resource: "user", id: "123" })
-  .withDescription("User not found", "Lookup failed after retries")
+  .withMessage("User not found")
+  .withDescription("Lookup failed after retries")
   .withCause(inner)
 
 outer.unwrap() // [outer, inner, root]
@@ -65,10 +67,10 @@ Use `flatten` to join the chain into one string:
 outer.flatten()
 // "User not found -> Service unavailable -> db down"
 
-outer.flatten({ field: "details" })
+outer.flatten({ field: "description" })
 // "Lookup failed after retries -> Upstream timeout after 30s"
 
-outer.flatten({ field: "details", separator: " | ", formatter: (value) => value.toUpperCase() })
+outer.flatten({ field: "description", separator: " | ", formatter: (value) => value.toUpperCase() })
 // "LOOKUP FAILED AFTER RETRIES | UPSTREAM TIMEOUT AFTER 30S"
 ```
 

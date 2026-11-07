@@ -18,22 +18,21 @@ import * as Fault from "@sanely/errors"
 
 class NotFoundError extends Fault.Tagged("NotFoundError")<{ id: string }>() {}
 
-const fault = new NotFoundError({ id: "123" }).withDescription(
-  "User not found",
-  "DB query returned 0 rows"
-)
+const fault = new NotFoundError({ id: "123" })
+  .withMessage("User not found")
+  .withDescription("DB query returned 0 rows")
 
 fault._tag // "NotFoundError"
 fault.id // "123"
 fault.message // "User not found", for the user
-fault.details // "DB query returned 0 rows", for logs
+fault.description // "DB query returned 0 rows", for debugging
 ```
 
 ## Features
 
 - **Tagged subclasses.** Each fault type is a real class with a `_tag` discriminant, so `instanceof` works.
 - **Typed fields.** Each fault type has its own structured fields.
-- **Two messages.** `message` is for the user, and `details` is for logs.
+- **A message and a description.** `message` is for the user. `description` describes the error and what happened, for debugging.
 - **Cause chains.** Wrap and throw again, and keep the full chain of causes.
 - **Registries.** Group fault types into a union with `create`, `wrap`, and `match` methods.
 - **Serialization.** Convert a fault to a plain object, send it, and build it again on the other side.

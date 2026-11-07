@@ -14,35 +14,35 @@ The abstract base class of every fault. It extends `Error`. Create subclasses wi
 
 ### Properties
 
-| Property  | Type                                             | Description                                       |
-| --------- | ------------------------------------------------ | ------------------------------------------------- |
-| `_tag`    | `string`                                         | The tag. Also the value of `name`.                |
-| `message` | `string`                                         | The message for the user. The default is the tag. |
-| `details` | `string \| undefined`                            | The message for logs.                             |
-| `meta`    | `Record<string, SerializableValue> \| undefined` | Structured metadata, such as `{ traceId }`.       |
-| `cause`   | `unknown`                                        | The cause.                                        |
+| Property      | Type                                             | Description                                       |
+| ------------- | ------------------------------------------------ | ------------------------------------------------- |
+| `_tag`        | `string`                                         | The tag. Also the value of `name`.                |
+| `message`     | `string`                                         | The message for the user. The default is the tag. |
+| `description` | `string \| undefined`                            | What happened, for debugging.                     |
+| `meta`        | `Record<string, SerializableValue> \| undefined` | Structured metadata, such as `{ traceId }`.       |
+| `cause`       | `unknown`                                        | The cause.                                        |
 
 ### Methods
 
 Each `with` method changes the fault and returns it, so you can chain the calls.
 
-| Method                               | Description                                                                                             |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `withMessage(message)`               | Sets `message`.                                                                                         |
-| `withDetails(details)`               | Sets `details`.                                                                                         |
-| `withDescription(message, details?)` | Sets `message`, and `details` when you give it.                                                         |
-| `withMeta(meta)`                     | Merges `meta` into the current metadata.                                                                |
-| `withCause(cause)`                   | Sets `cause`. When `cause` is an `Error`, it adds the stack of the cause to `stack` after `Caused by:`. |
-| `unwrap()`                           | Returns the cause chain as an array, from the head to the leaf.                                         |
-| `getTags()`                          | Returns the `_tag` of each fault in the chain.                                                          |
-| `getContext()`                       | Returns the merged `meta` of every fault in the chain. The head wins a conflict.                        |
-| `flatten(options?)`                  | Joins the chain into one string. See [`flatten(options)`](#flattenoptions).                             |
-| `toSerializable()`                   | Returns the [wire format](#wire-format) of the fault.                                                   |
-| `toJSON()`                           | Returns the same value as `toSerializable()`, so `JSON.stringify` writes the wire format.               |
+| Method                         | Description                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `withMessage(message)`         | Sets `message`.                                                                                         |
+| `withDescription(description)` | Sets `description`.                                                                                     |
+| `withMeta(meta)`               | Merges `meta` into the current metadata.                                                                |
+| `withCause(cause)`             | Sets `cause`. When `cause` is an `Error`, it adds the stack of the cause to `stack` after `Caused by:`. |
+| `unwrap()`                     | Returns the cause chain as an array, from the head to the leaf.                                         |
+| `getTags()`                    | Returns the `_tag` of each fault in the chain.                                                          |
+| `getContext()`                 | Returns the merged `meta` of every fault in the chain. The head wins a conflict.                        |
+| `flatten(options?)`            | Joins the chain into one string. See [`flatten(options)`](#flattenoptions).                             |
+| `toSerializable()`             | Returns the [wire format](#wire-format) of the fault.                                                   |
+| `toJSON()`                     | Returns the same value as `toSerializable()`, so `JSON.stringify` writes the wire format.               |
 
 ```ts
 const fault = new ValidationError({ field: "email" })
-  .withDescription("Invalid email format", "Validation failed for user signup")
+  .withMessage("Invalid email format")
+  .withDescription("Validation failed for user signup")
   .withMeta({ traceId: "trace-123" })
   .withCause(originalError)
 ```
@@ -51,13 +51,13 @@ The chain follows the `cause` of each fault and each native `Error`. It stops at
 
 ### `flatten(options)`
 
-| Option      | Type                        | Default     | Description                          |
-| ----------- | --------------------------- | ----------- | ------------------------------------ |
-| `field`     | `"message" \| "details"`    | `"message"` | The field to collect from the chain. |
-| `separator` | `string`                    | `" -> "`    | The string between two values.       |
-| `formatter` | `(value: string) => string` | Trim        | Changes each value before the join.  |
+| Option      | Type                         | Default     | Description                          |
+| ----------- | ---------------------------- | ----------- | ------------------------------------ |
+| `field`     | `"message" \| "description"` | `"message"` | The field to collect from the chain. |
+| `separator` | `string`                     | `" -> "`    | The string between two values.       |
+| `formatter` | `(value: string) => string`  | Trim        | Changes each value before the join.  |
 
-With `field: "message"`, the chain includes values that are not faults, through `Error.message` or a string form of the value. `flatten` removes empty values and a value that is the same as the value before it. With `field: "details"`, the chain includes only faults with `details`, and `flatten` removes only empty values.
+With `field: "message"`, the chain includes values that are not faults, through `Error.message` or a string form of the value. `flatten` removes empty values and a value that is the same as the value before it. With `field: "description"`, the chain includes only faults with a `description`, and `flatten` removes only empty values.
 
 ```ts
 outer.flatten() // "User not found -> Service unavailable -> db down"
@@ -153,16 +153,16 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 `SerializableFault` is a plain object with these fields, and one field for each payload field of the fault:
 
-| Field     | Type                                | Required | Description                                             |
-| --------- | ----------------------------------- | -------- | ------------------------------------------------------- |
-| `__fault` | `true`                              | Yes      | The marker of the wire format.                          |
-| `_tag`    | `string`                            | Yes      | The tag.                                                |
-| `name`    | `string`                            | Yes      | The name.                                               |
-| `message` | `string`                            | No       | The message for the user. The package always writes it. |
-| `details` | `string`                            | No       | The message for logs.                                   |
-| `meta`    | `Record<string, SerializableValue>` | No       | The metadata.                                           |
-| `stack`   | `string`                            | No       | The stack.                                              |
-| `cause`   | `SerializableCause`                 | No       | The cause.                                              |
+| Field         | Type                                | Required | Description                                             |
+| ------------- | ----------------------------------- | -------- | ------------------------------------------------------- |
+| `__fault`     | `true`                              | Yes      | The marker of the wire format.                          |
+| `_tag`        | `string`                            | Yes      | The tag.                                                |
+| `name`        | `string`                            | Yes      | The name.                                               |
+| `message`     | `string`                            | No       | The message for the user. The package always writes it. |
+| `description` | `string`                            | No       | What happened, for debugging.                           |
+| `meta`        | `Record<string, SerializableValue>` | No       | The metadata.                                           |
+| `stack`       | `string`                            | No       | The stack.                                              |
+| `cause`       | `SerializableCause`                 | No       | The cause.                                              |
 
 `SerializableCause` is one of these objects:
 
@@ -178,7 +178,7 @@ Serialization, deserialization, and chain traversal stop after 100 nested causes
 
 A key is reserved when it is one of these:
 
-- A wire format key: `__fault`, `_tag`, `name`, `message`, `details`, `meta`, `stack`, or `cause`.
+- A wire format key: `__fault`, `_tag`, `name`, `message`, `description`, `meta`, `stack`, or `cause`.
 - A name on the prototype chain of `Fault`: the methods of `Fault`, such as `withMeta` and `unwrap`, and the inherited names `constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and `__lookupSetter__`.
 
 A `Tagged` constructor throws `ReservedFieldError` for a reserved field name. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
@@ -202,7 +202,7 @@ The types come from `@sanely/errors/types`:
 | ------------------- | --------------------------------------------------- |
 | `FaultRegistry<M>`  | The value that `registry` and `merge` return.       |
 | `FlattenOptions`    | The options of `flatten`.                           |
-| `FlattenField`      | `"message" \| "details"`.                           |
+| `FlattenField`      | `"message" \| "description"`.                       |
 | `TagOf<E>`          | The tag type of the fault type `E`.                 |
 | `ByTag<E, T>`       | The member of the fault union `E` with the tag `T`. |
 | `SerializableValue` | A JSON-safe value. See [Wire format](#wire-format). |

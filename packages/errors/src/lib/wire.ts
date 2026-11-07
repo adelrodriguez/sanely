@@ -21,7 +21,7 @@ export type SerializableFault = {
   _tag: string
   name: string
   message?: string
-  details?: string
+  description?: string
   meta?: Record<string, SerializableValue>
   stack?: string
   cause?: SerializableCause
@@ -83,7 +83,7 @@ export const RESERVED_FAULT_KEYS: ReadonlySet<string> = new Set<string>([
   "message",
   "stack",
   "meta",
-  "details",
+  "description",
 ])
 
 // defineProperty (not assignment) so a "__proto__" key becomes an own data

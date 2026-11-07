@@ -8,7 +8,7 @@ import {
   type SerializableValue,
 } from "./wire"
 
-export type FlattenField = "message" | "details"
+export type FlattenField = "message" | "description"
 
 export type FlattenOptions = {
   field?: FlattenField
@@ -64,7 +64,7 @@ function serializeFault(fault: Fault, depth: number): SerializableFault {
     name: fault.name,
   }
 
-  if (fault.details !== undefined) serialized.details = fault.details
+  if (fault.description !== undefined) serialized.description = fault.description
   if (fault.meta !== undefined) serialized.meta = fault.meta
   if (fault.stack !== undefined) serialized.stack = fault.stack
 
@@ -104,7 +104,7 @@ export abstract class Fault extends Error {
   readonly _tag: string
   override cause?: unknown
   meta?: Record<string, SerializableValue>
-  details?: string
+  description?: string
 
   protected constructor(tag: string, message?: string) {
     super(message ?? tag)
@@ -123,16 +123,8 @@ export abstract class Fault extends Error {
     return this
   }
 
-  withDetails(details: string): this {
-    this.details = details
-    return this
-  }
-
-  withDescription(message: string, details?: string): this {
-    this.message = message
-    if (details !== undefined) {
-      this.details = details
-    }
+  withDescription(description: string): this {
+    this.description = description
     return this
   }
 
@@ -204,12 +196,13 @@ export abstract class Fault extends Error {
       separator = " -> ",
     } = options ?? {}
 
-    // Details path does not deduplicate — details are typically unique per layer.
-    // Message path deduplicates because wrappers often copy the inner message verbatim.
-    if (field === "details") {
+    // The description path does not deduplicate, because each layer usually describes a
+    // different step. The message path deduplicates, because wrappers often copy the inner
+    // message verbatim.
+    if (field === "description") {
       return this.unwrap()
         .filter((item): item is Fault => item instanceof Fault)
-        .map((item) => item.details)
+        .map((item) => item.description)
         .filter((value): value is string => value !== undefined)
         .map((value) => formatter(value))
         .filter((value) => value !== "")

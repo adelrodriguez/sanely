@@ -204,7 +204,7 @@ const wireCandidateArb = fc.oneof(
       __fault: fc.constant(true),
       _tag: fc.string(),
       cause: causeArb,
-      details: fc.oneof(fc.string(), anythingArb),
+      description: fc.oneof(fc.string(), anythingArb),
       message: fc.oneof(fc.string(), anythingArb),
       meta: fc.dictionary(fc.string(), fc.jsonValue()),
       name: fc.oneof(fc.string(), anythingArb),
@@ -266,7 +266,7 @@ describe("isSerializableFault", () => {
 
         expect(typeof input.name).toBe("string")
         expect(isOptionalString(input.message)).toBe(true)
-        expect(isOptionalString(input.details)).toBe(true)
+        expect(isOptionalString(input.description)).toBe(true)
         expect(isOptionalString(input.stack)).toBe(true)
       })
     )
