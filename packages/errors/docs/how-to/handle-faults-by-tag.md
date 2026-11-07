@@ -37,7 +37,7 @@ To check membership only, use `AppFault.is(error)`.
 
 ## Handle a typed fault union
 
-If the value already has a fault union type, use the standalone `matchTag` and `matchTags`. TypeScript checks that a handler map covers every tag, and the fallback of `matchTag` receives the other types of the union:
+If the value already has a fault union type, use the standalone `matchTag` and `matchTags`. TypeScript narrows each handler to its fault type. `matchTags` accepts a partial handler map, and without a fallback, a tag that has no handler returns `undefined`. The fallback of `matchTag` receives the other types of the union:
 
 ```ts
 import { matchTag, matchTags } from "@sanely/errors"
