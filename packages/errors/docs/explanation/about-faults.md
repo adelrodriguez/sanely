@@ -2,9 +2,9 @@
 
 This page explains the ideas behind `@sanely/errors`: what a fault carries, why registries check classes and not only tags, and why the wire format has the rules that it has.
 
-## A fault carries two messages and two kinds of data
+## A fault carries a message, a description, and two kinds of data
 
-A plain `Error` has one message, and that message often goes to two readers. The user needs a short statement, such as "User not found". The developer who reads the log needs the reason, such as "DB query returned 0 rows". A fault keeps these apart: `message` is for the user, and `details` is for logs.
+A plain `Error` has one message, and that message often goes to two readers. The user needs a short statement, such as "User not found". The developer who debugs the failure needs to know what happened, such as "DB query returned 0 rows". A fault keeps these apart: `message` is for the user, and `description` describes the error and what happened, for debugging.
 
 A fault also carries two kinds of data. Its fields, such as `id`, belong to the kind of failure, and the type of the class declares them. Its `meta`, such as `{ traceId }`, belongs to the place where the failure happened, and any code can add it with `withMeta`. `getContext()` merges the `meta` of every fault in a cause chain. The head wins a conflict, because the newest fault knows the most about the current request.
 

@@ -3,6 +3,8 @@
 ## Domain Glossary
 
 - **Fault**: An `Error` subclass with a stable string `_tag`, fluent context methods, cause-chain helpers, and wire serialization.
+- **Message**: The `message` of a fault, written for the user.
+- **Description**: The `description` of a fault. It describes the error and what happened, for debugging.
 - **Tag**: The string discriminant stored in `_tag`. Tags identify fault variants for matching and registry lookup.
 - **Tagged fault**: A `Fault` subclass created by `Tagged(tag)<Fields>()`. Its constructor fields become typed payload fields.
 - **Registry**: A constructor-identity-scoped collection created by `registry()`. It creates, wraps, matches, serializes, and reconstructs its registered fault union.

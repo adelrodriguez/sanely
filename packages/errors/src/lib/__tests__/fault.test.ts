@@ -140,22 +140,21 @@ describe("Fault", () => {
     })
   })
 
-  it("sets only message with withDescription when details is omitted", () => {
-    const fault = new ExampleFault().withDetails("existing details")
+  it("sets the description and keeps the message", () => {
+    const fault = new ExampleFault().withMessage("User not found")
 
-    fault.withDescription("updated message")
+    fault.withDescription("Lookup returned 0 rows")
 
-    expect(fault.message).toBe("updated message")
-    expect(fault.details).toBe("existing details")
+    expect(fault.message).toBe("User not found")
+    expect(fault.description).toBe("Lookup returned 0 rows")
   })
 
-  it("overwrites existing message and details with withDescription", () => {
-    const fault = new ExampleFault().withMessage("old message").withDetails("old details")
+  it("replaces an earlier description", () => {
+    const fault = new ExampleFault().withDescription("old description")
 
-    fault.withDescription("new message", "new details")
+    fault.withDescription("new description")
 
-    expect(fault.message).toBe("new message")
-    expect(fault.details).toBe("new details")
+    expect(fault.description).toBe("new description")
   })
 
   it("accumulates meta across multiple withMeta calls", () => {
@@ -196,24 +195,24 @@ describe("Fault", () => {
     expect(flattened).toBe("svc")
   })
 
-  it("flattens details when field is details", () => {
+  it("flattens descriptions when field is description", () => {
     class DatabaseError extends Tagged("DatabaseError")() {}
     class ServiceError extends Tagged("ServiceError")() {}
 
-    const leaf = new DatabaseError().withDetails("db details")
-    const head = new ServiceError().withDetails("service details").withCause(leaf)
+    const leaf = new DatabaseError().withDescription("db description")
+    const head = new ServiceError().withDescription("service description").withCause(leaf)
 
-    expect(head.flatten({ field: "details" })).toBe("service details -> db details")
+    expect(head.flatten({ field: "description" })).toBe("service description -> db description")
   })
 
-  it("skips faults without details when flattening details", () => {
+  it("skips faults without a description when flattening descriptions", () => {
     class DatabaseError extends Tagged("DatabaseError")() {}
     class ServiceError extends Tagged("ServiceError")() {}
 
-    const leaf = new DatabaseError().withDetails("db details")
+    const leaf = new DatabaseError().withDescription("db description")
     const head = new ServiceError().withCause(leaf)
 
-    expect(head.flatten({ field: "details" })).toBe("db details")
+    expect(head.flatten({ field: "description" })).toBe("db description")
   })
 
   it("flattens safely when cause contains a circular object", () => {
@@ -260,7 +259,8 @@ describe("Fault", () => {
 
   it("serializes through toJSON when stringified", () => {
     const fault = new ExampleFault()
-      .withDescription("message", "details")
+      .withMessage("message")
+      .withDescription("description")
       .withMeta({ key: "value" })
 
     const json = JSON.stringify(fault)
@@ -269,7 +269,7 @@ describe("Fault", () => {
     expect(parsed).toEqual({
       __fault: true,
       _tag: "ExampleFault",
-      details: "details",
+      description: "description",
       message: "message",
       meta: { key: "value" },
       name: "ExampleFault",

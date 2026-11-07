@@ -77,7 +77,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
       TimeoutError: typeof TimeoutError
     }>
   >()
-  expectTypeOf<FlattenField>().toEqualTypeOf<"details" | "message">()
+  expectTypeOf<FlattenField>().toEqualTypeOf<"description" | "message">()
   expectTypeOf<FlattenOptions["field"]>().toEqualTypeOf<FlattenField | undefined>()
   expectTypeOf<TagOf<AppError>>().toEqualTypeOf<"NotFoundError" | "PaymentError" | "TimeoutError">()
   expectTypeOf<ByTag<AppError, "PaymentError">>().toEqualTypeOf<PaymentError>()
@@ -438,9 +438,8 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 // Preserves subclass type through fluent methods.
 {
   const fault = new NotFoundError({ id: "123" })
-    .withDescription("new message", "new details")
     .withMessage("gone")
-    .withDetails("not here")
+    .withDescription("not here")
     .withMeta({ key: "val" })
     .withCause(new Error("root"))
 
@@ -555,7 +554,7 @@ function _negativeTypeTests() {
 
   const fault = AppFault.create("TimeoutError")
 
-  // @ts-expect-error -- flatten field must be "message" | "details"
+  // @ts-expect-error -- flatten field must be "message" | "description"
   fault.flatten({ field: "bad-field" })
 
   // @ts-expect-error -- metadata values must be JSON-safe SerializableValue values

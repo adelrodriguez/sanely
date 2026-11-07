@@ -43,7 +43,7 @@ describe("Tagged", () => {
       "message",
       "stack",
       "meta",
-      "details",
+      "description",
     ])
     class ProbeError extends Tagged("ProbeError")<Record<string, string>>() {}
 

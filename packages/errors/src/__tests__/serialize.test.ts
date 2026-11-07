@@ -18,7 +18,7 @@ const WIRE_ENVELOPE_KEYS = new Set([
   "message",
   "stack",
   "meta",
-  "details",
+  "description",
 ])
 
 function isReservedMirror(key: string): boolean {
@@ -49,7 +49,7 @@ const tagArb = fc.string({ maxLength: 30, minLength: 1 })
 type FaultSpec = {
   tag: string
   message: string | undefined
-  details: string | undefined
+  description: string | undefined
   meta: Record<string, SerializableValue> | undefined
   payload: Record<string, SerializableValue>
   cause: CauseSpec | undefined
@@ -69,7 +69,7 @@ const { faultSpecArb } = fc.letrec<{ faultSpecArb: FaultSpec; causeSpecArb: Caus
   ),
   faultSpecArb: fc.record({
     cause: fc.option(tie("causeSpecArb"), { nil: undefined }),
-    details: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
+    description: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
     message: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
     meta: fc.option(metaArb, { nil: undefined }),
     payload: payloadArb,
@@ -82,7 +82,7 @@ function buildFault(spec: FaultSpec): Fault {
   const fault = new GeneratedFault(spec.payload)
 
   if (spec.message !== undefined) fault.withMessage(spec.message)
-  if (spec.details !== undefined) fault.withDetails(spec.details)
+  if (spec.description !== undefined) fault.withDescription(spec.description)
   if (spec.meta !== undefined) fault.withMeta(spec.meta)
 
   if (spec.cause !== undefined) {
@@ -119,13 +119,13 @@ describe("toSerializable", () => {
 
     const fault = new NotFoundError({ id: "123", resource: "user" })
       .withMessage("User not found")
-      .withDetails("lookup failed")
+      .withDescription("lookup failed")
       .withMeta({ requestId: "req-1" })
 
     expect(fault.toSerializable()).toStrictEqual({
       __fault: true,
       _tag: "NotFoundError",
-      details: "lookup failed",
+      description: "lookup failed",
       id: "123",
       message: "User not found",
       meta: { requestId: "req-1" },
@@ -325,7 +325,7 @@ describe("isSerializableFault", () => {
   it("returns false when a typed envelope field has the wrong type", () => {
     expect(isSerializableFault({ __fault: true, _tag: "X" })).toBe(false)
     expect(isSerializableFault({ __fault: true, _tag: "X", message: 42, name: "X" })).toBe(false)
-    expect(isSerializableFault({ __fault: true, _tag: "X", details: 1, name: "X" })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: "X", description: 1, name: "X" })).toBe(false)
     expect(isSerializableFault({ __fault: true, _tag: "X", name: "X", stack: false })).toBe(false)
   })
 
@@ -444,7 +444,7 @@ describe("fromSerializable", () => {
     ).toThrow("meta must be an object")
   })
 
-  it("preserves tag, message, details, meta, and payload across any JSON transport round trip", () => {
+  it("preserves tag, message, description, meta, and payload across any JSON transport round trip", () => {
     fc.assert(
       fc.property(faultSpecArb, (spec) => {
         const fault = buildFault(spec)
@@ -452,7 +452,7 @@ describe("fromSerializable", () => {
 
         expect(revived._tag).toBe(fault._tag)
         expect(revived.message).toBe(fault.message)
-        expect(revived.details).toEqual(fault.details)
+        expect(revived.description).toEqual(fault.description)
         expect(revived.meta).toEqual(fault.meta)
 
         const revivedRecord = revived as unknown as Record<string, unknown>

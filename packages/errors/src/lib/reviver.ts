@@ -94,7 +94,7 @@ function isFaultEnvelope(value: unknown, depth: number): value is SerializableFa
     && "name" in value
     && typeof value.name === "string"
     && isOptionalString(Reflect.get(value, "message"))
-    && isOptionalString(Reflect.get(value, "details"))
+    && isOptionalString(Reflect.get(value, "description"))
     && isOptionalString(Reflect.get(value, "stack"))
     && (!("cause" in value)
       || value.cause === undefined
@@ -202,8 +202,8 @@ function restoreDeserializedFields(fault: Fault, json: SerializableFault): void 
     target.message = json.message
   }
 
-  if (typeof json.details === "string") {
-    target.details = json.details
+  if (typeof json.description === "string") {
+    target.description = json.description
   }
 
   if (json.meta !== undefined) {
