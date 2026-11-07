@@ -7,8 +7,8 @@ import {
   formatChoices,
   isOneOf,
 } from "#lib/vocabulary/words.ts"
-import type { Window } from "./schedule"
-import { isWindow } from "./schedule"
+import type { Window } from "./index.ts"
+import { isWindow } from "./index.ts"
 
 /**
  * The keys from the root of a schedule object to the value that failed, such as `["at", "hour"]`. A

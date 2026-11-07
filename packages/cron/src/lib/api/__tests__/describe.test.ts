@@ -1,11 +1,11 @@
 import fc from "fast-check"
 import { describe as group, expect, it } from "vitest"
-import type { Schedule } from "#lib/schedule/schedule.ts"
+import type { Schedule } from "#lib/schedule/index.ts"
 import { cron } from "#lib/api/cron.ts"
 import { describe } from "#lib/api/describe.ts"
 import { InvalidScheduleError } from "#lib/api/errors.ts"
 import { parse } from "#lib/api/parse.ts"
-import { scheduleArb, toCanonical } from "#lib/schedule/__tests__/schedule.arbitrary.ts"
+import { scheduleArb, toCanonical } from "#lib/schedule/__tests__/index.arbitrary.ts"
 
 group("describe", () => {
   it("should write the canonical phrase of a schedule", () => {

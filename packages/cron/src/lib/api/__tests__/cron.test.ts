@@ -1,12 +1,12 @@
 import { Cron } from "croner"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
-import type { GrammarRow } from "#lib/grammar/__tests__/grammar.table.ts"
-import type { CronPhrase, DaySet, Schedule } from "#lib/schedule/schedule.ts"
+import type { GrammarRow } from "#lib/grammar/__tests__/index.table.ts"
+import type { CronPhrase, DaySet, Schedule } from "#lib/schedule/index.ts"
 import { cron } from "#lib/api/cron.ts"
 import { InvalidScheduleError } from "#lib/api/errors.ts"
-import { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
-import { scheduleArb } from "#lib/schedule/__tests__/schedule.arbitrary.ts"
+import { GRAMMAR } from "#lib/grammar/__tests__/index.table.ts"
+import { scheduleArb } from "#lib/schedule/__tests__/index.arbitrary.ts"
 import { HOUR_INTERVALS, MINUTE_INTERVALS } from "#lib/vocabulary/words.ts"
 
 const ROWS: readonly GrammarRow[] = GRAMMAR

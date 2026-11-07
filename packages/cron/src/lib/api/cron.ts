@@ -1,7 +1,7 @@
 import type { ValidateCronPhrase } from "#lib/grammar/types.ts"
-import type { CronExpression, Schedule } from "#lib/schedule/schedule.ts"
-import { toFields } from "#lib/fields/fields.ts"
-import { serialize } from "#lib/serialize/serialize.ts"
+import type { CronExpression, Schedule } from "#lib/schedule/index.ts"
+import { toFields } from "#lib/fields/index.ts"
+import { serialize } from "#lib/serialize/index.ts"
 import { parse } from "./parse"
 
 /**

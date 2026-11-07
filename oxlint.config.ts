@@ -10,11 +10,116 @@ const ratelimitEntryPoints = {
   message: "lib must not import an entry point.",
 }
 
-// Every folder in `packages/cron/src/lib` bans this pattern.
-const cronEntryPoint = {
-  group: ["#index.ts"],
-  message: "lib must not import the public entry point.",
+// Each domain imports itself and only the lower domains in this map.
+const dependencies: Record<string, Record<string, string[]>> = {
+  cron: {
+    api: [
+      "describe",
+      "fields",
+      "grammar",
+      "normalize",
+      "schedule",
+      "serialize",
+      "validate",
+      "vocabulary",
+    ],
+    describe: ["fields", "schedule", "serialize", "vocabulary"],
+    fields: ["schedule", "vocabulary"],
+    grammar: ["fields", "schedule", "serialize", "vocabulary"],
+    normalize: ["describe", "fields", "grammar", "schedule", "serialize", "vocabulary"],
+    schedule: ["vocabulary"],
+    serialize: ["fields", "schedule", "vocabulary"],
+    validate: ["describe", "fields", "grammar", "normalize", "schedule", "serialize", "vocabulary"],
+    vocabulary: [],
+  },
+  duration: {
+    convert: ["expression", "units"],
+    expression: ["units"],
+    format: ["units"],
+    units: [],
+  },
+  flags: {
+    config: ["shared", "types"],
+    evaluation: ["config", "flag", "shared", "types"],
+    "evaluation/stages": ["config", "flag", "shared", "types"],
+    factory: ["config", "evaluation", "flag", "shared", "types"],
+    flag: ["shared", "types"],
+    "promise-cache": [],
+    shared: ["types"],
+    types: [],
+  },
+  rpc: {
+    adapters: ["core", "wire"],
+    client: ["core"],
+    core: [],
+    server: ["core"],
+    wire: ["core", "server"],
+  },
+  try: {
+    builder: ["execution", "orchestration", "policies", "shared"],
+    composition: ["shared"],
+    disposal: [],
+    execution: ["disposal", "policies", "shared"],
+    orchestration: ["disposal", "execution", "policies", "shared"],
+    policies: ["disposal", "shared"],
+    shared: ["disposal"],
+  },
 }
+
+const publicEntries = [
+  "#index.ts",
+  "#errors.ts",
+  "#types.ts",
+  "#wire.ts",
+  "#wire/**",
+  "#hooks/**",
+  "#integrations/**",
+  "#stores/**",
+  "#adapters/**",
+]
+
+type Override = NonNullable<Parameters<typeof defineConfig>[0]["overrides"]>[number]
+
+const domainDefaults = Object.keys(dependencies).map<Override>((name) => ({
+  files: [`packages/${name}/src/lib/**/*.{ts,tsx}`],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: [...publicEntries, "#lib/**"],
+            message: "Declare the domain and its dependencies in oxlint.config.ts.",
+          },
+        ],
+      },
+    ],
+  },
+}))
+
+const domainOverrides = Object.entries(dependencies).flatMap(([name, domains]) =>
+  Object.entries(domains).map<Override>(([domain, lower]) => ({
+    files: [`packages/${name}/src/lib/${domain}/**/*.{ts,tsx}`],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: publicEntries, message: "lib must not import a public entry point." },
+            {
+              group: [
+                "#lib/**",
+                `!#lib/${domain}/**`,
+                ...lower.map((dependency) => `!#lib/${dependency}/**`),
+              ],
+              message: `${domain} imports only its own modules and its declared lower domains.`,
+            },
+          ],
+        },
+      ],
+    },
+  }))
+)
 
 export default defineConfig({
   extends: [core, custom()],
@@ -61,12 +166,6 @@ export default defineConfig({
       files: ["packages/rpc/src/__tests__/types.test-d.ts"],
       rules: { "no-lone-blocks": "off" },
     },
-    // The source builder and its execution modules share recursive type contracts.
-    // Keep runtime cycle checks while preserving those public types during the move.
-    {
-      files: ["packages/try/src/**/*.ts"],
-      rules: { "import/no-cycle": ["error", { ignoreTypes: true }] },
-    },
     {
       files: ["packages/try/src/__tests__/types.test-d.ts"],
       rules: { "no-lone-blocks": "off" },
@@ -98,7 +197,7 @@ export default defineConfig({
     },
     // Code in `src/` imports through `#` subpath imports, never through `../`.
     {
-      files: ["packages/*/src/**/*.ts"],
+      files: ["packages/*/src/**/*.{ts,tsx}"],
       rules: {
         "import/no-relative-parent-imports": "error",
       },
@@ -107,14 +206,14 @@ export default defineConfig({
     // the starter, `shared` is the bottom layer and `greeting` builds on it. Give each new folder
     // its own override that lists the folders above it.
     {
-      files: ["packages/*/src/lib/**/*.ts"],
+      files: ["packages/*/src/lib/**/*.{ts,tsx}"],
       rules: {
         "no-restricted-imports": [
           "error",
           {
             patterns: [
               {
-                group: ["#index.ts"],
+                group: publicEntries,
                 message: "lib must not import the public entry point.",
               },
             ],
@@ -123,14 +222,14 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/*/src/lib/shared/**/*.ts"],
+      files: ["packages/*/src/lib/shared/**/*.{ts,tsx}"],
       rules: {
         "no-restricted-imports": [
           "error",
           {
             patterns: [
               {
-                group: ["#index.ts", "#lib/greeting/**"],
+                group: [...publicEntries, "#lib/**"],
                 message: "shared must not import other lib folders.",
               },
             ],
@@ -138,6 +237,24 @@ export default defineConfig({
         ],
       },
     },
+    ...domainDefaults,
+    ...domainOverrides,
+    ...["hooks", "integrations"].map<Override>((unit) => ({
+      files: [`packages/flags/src/${unit}/**/*.{ts,tsx}`],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: [...publicEntries, `!#${unit}/**`],
+                message: `${unit} imports only its own modules and library domains.`,
+              },
+            ],
+          },
+        ],
+      },
+    })),
     // Dependencies inside `packages/ratelimit/src/lib` point one way, as its docs/architecture.md
     // describes:
     //
@@ -372,204 +489,8 @@ export default defineConfig({
       files: ["packages/skew/src/**/__tests__/**"],
       rules: { "no-restricted-imports": "off" },
     },
-    // Dependencies inside `packages/cron/src/lib` point one way, from the bottom up:
-    //
-    //   vocabulary <- schedule <- fields <- serialize <- grammar  <- normalize <- validate <- api
-    //                                                <- describe
-    //
-    // grammar (phrase to schedule) and describe (schedule to phrase) are siblings and never
-    // import each other. These rules follow the generic `src/lib` rules above, because a later
-    // override replaces the rule options of an earlier one. Each rule repeats `cronEntryPoint`
-    // for that reason. A folder without a rule of its own may import nothing else in lib, and
-    // `api` may import every layer. The last rule lets tests cross these lines.
     {
-      files: ["packages/cron/src/lib/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: ["#lib/**"],
-                message: "This folder has no layer. Add its rule to oxlint.config.ts.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/vocabulary/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: ["#lib/**"],
-                message: "vocabulary imports nothing else in lib.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/schedule/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: ["#lib/**", "!#lib/vocabulary/**"],
-                message: "schedule imports only vocabulary.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/fields/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: ["#lib/**", "!#lib/vocabulary/**", "!#lib/schedule/**"],
-                message: "fields imports only vocabulary and schedule.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/serialize/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: ["#lib/**", "!#lib/vocabulary/**", "!#lib/schedule/**", "!#lib/fields/**"],
-                message: "serialize imports only vocabulary, schedule, and fields.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/grammar/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: [
-                  "#lib/**",
-                  "!#lib/vocabulary/**",
-                  "!#lib/schedule/**",
-                  "!#lib/fields/**",
-                  "!#lib/serialize/**",
-                ],
-                message: "grammar imports only the layers below it, and never describe.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/describe/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: [
-                  "#lib/**",
-                  "!#lib/vocabulary/**",
-                  "!#lib/schedule/**",
-                  "!#lib/fields/**",
-                  "!#lib/serialize/**",
-                ],
-                message: "describe imports only the layers below it, and never grammar.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/normalize/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: [
-                  "#lib/**",
-                  "!#lib/vocabulary/**",
-                  "!#lib/schedule/**",
-                  "!#lib/fields/**",
-                  "!#lib/serialize/**",
-                  "!#lib/grammar/**",
-                  "!#lib/describe/**",
-                ],
-                message: "normalize imports only the layers below it.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/validate/**/*.ts"],
-      rules: {
-        "no-restricted-imports": [
-          "error",
-          {
-            patterns: [
-              cronEntryPoint,
-              {
-                group: [
-                  "#lib/**",
-                  "!#lib/vocabulary/**",
-                  "!#lib/schedule/**",
-                  "!#lib/fields/**",
-                  "!#lib/serialize/**",
-                  "!#lib/grammar/**",
-                  "!#lib/describe/**",
-                  "!#lib/normalize/**",
-                ],
-                message: "validate imports only the layers below it.",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      files: ["packages/cron/src/lib/api/**/*.ts"],
-      rules: { "no-restricted-imports": ["error", { patterns: [cronEntryPoint] }] },
-    },
-    {
-      files: ["packages/cron/src/**/__tests__/**"],
+      files: ["packages/*/src/**/__tests__/**"],
       rules: { "no-restricted-imports": "off" },
     },
     {

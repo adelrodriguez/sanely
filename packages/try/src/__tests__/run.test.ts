@@ -19,19 +19,14 @@ function captureScheduledDelays() {
   const values: number[] = []
   const originalSetTimeout = globalThis.setTimeout
 
-  const capturedSetTimeout = Object.assign(
-    <TArgs extends unknown[]>(callback: (...args: TArgs) => void, ms?: number, ...args: TArgs) => {
-      values.push(ms ?? 0)
-      return originalSetTimeout(callback, 0, ...args)
-    },
-    { __promisify__: originalSetTimeout.__promisify__ }
-  )
-
-  globalThis.setTimeout = capturedSetTimeout
+  const timer = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, ms, ...args) => {
+    values.push(ms ?? 0)
+    return originalSetTimeout(callback, 0, ...args)
+  })
 
   return {
     restore() {
-      globalThis.setTimeout = originalSetTimeout
+      timer.mockRestore()
     },
     values,
   }

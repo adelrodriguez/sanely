@@ -14,24 +14,8 @@ pnpm install
 
 ## Know the layout
 
-```text
-src/
-├── index.ts          # The @sanely/errors entry point
-├── errors.ts         # The @sanely/errors/errors entry point
-├── types.ts          # The @sanely/errors/types entry point
-├── __tests__/        # Tests of the public entry points and types
-└── lib/              # The implementation
-    ├── __tests__/    # Unit tests of the files in lib/
-    ├── errors.ts     # The error classes of the package
-    ├── fault.ts      # Fault, isFault, findCause, and serialization
-    ├── match.ts      # Tag matching
-    ├── registry.ts   # registry and merge
-    ├── reviver.ts    # Wire format validation and deserialization
-    ├── tagged.ts     # Tagged
-    └── wire.ts       # The wire format types, reserved keys, and payload fields
-```
-
-[`GLOSSARY.md`](GLOSSARY.md) defines the terms of the package and its behavior.
+Read the [architecture](docs/architecture.md) for source ownership and dependencies.
+Read the [testing guide](docs/testing.md) for test placement and package checks.
 
 ## Run the checks
 
@@ -52,14 +36,11 @@ Run the package commands in `packages/errors`, and the workspace commands from a
 
 ## Write tests
 
-- A `__tests__/` folder tests only the files in its parent folder.
-- Public tests live in `src/__tests__/`, and import only from `src/index.ts`, `src/errors.ts`, or `src/types.ts`.
-- Unit tests for `src/lib/` live in `src/lib/__tests__/`, and import only from `src/lib/`.
-- A change to a public type needs a type test in `src/__tests__/types.test-d.ts`. Write it with `expectTypeOf` from `vitest`. `pnpm --workspace-root run check` runs the type tests, and Vitest does not.
+Follow the [testing guide](docs/testing.md).
 
 ## Add a changeset
 
-Add a changeset when your change affects package users. See the Changesets section of the root [`AGENTS.md`](../../AGENTS.md).
+Add a changeset when your change affects package users. See the root [release guidance](../../CONTRIBUTING.md#prepare-a-release).
 
 ## Report a problem
 

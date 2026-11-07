@@ -1,7 +1,7 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest"
 import type { Deployment, DeploymentSource } from "#lib/protocol/types.ts"
-import { FakeEnvironment, MemoryStorage } from "#__tests__/helpers.ts"
 import { DEFAULT_CHECK_TIMEOUT, createDeploymentMonitor } from "#lib/runtime/monitor.ts"
+import { FakeEnvironment, MemoryStorage } from "./helpers.ts"
 
 const TEST_TIME = 10 ** 3
 

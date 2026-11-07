@@ -1,8 +1,7 @@
-import type { BuilderConfig } from "#lib/builder.ts"
-import type { NonPromise } from "#lib/utils.ts"
-import { Panic, type UnhandledException } from "#lib/errors.ts"
-import { checkIsPromiseLike } from "#lib/utils.ts"
-import type { BaseTryCtx } from "./context"
+import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
+import type { NonPromise } from "#lib/shared/utils.ts"
+import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
+import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 import { BaseExecution, RetryDirective, type RunnerError } from "./base"
 
 export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (
@@ -87,8 +86,7 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
     let currentAttempt = 1
     let retry: RetryDirective | undefined
 
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
-    while (true) {
+    for (;;) {
       const controlBeforeAttempt = this.checkDidControlFail()
 
       if (controlBeforeAttempt) {

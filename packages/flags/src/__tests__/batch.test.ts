@@ -1,9 +1,8 @@
 import { describe, expect, test, vi } from "vitest"
-import type { Decision, Hook, Identity, IdentityValue } from "#lib/types/index.ts"
-import { createFlags } from "#factory.ts"
-import { BatchFlagNotFoundError, FlagTimeoutError } from "#lib/shared/errors.ts"
+import type { Decision, Hook, Identity } from "#index.ts"
+import { createFlags, BatchFlagNotFoundError, FlagTimeoutError } from "#index.ts"
 
-async function expectRejection(promise: Promise<IdentityValue>, message: string): Promise<void> {
+async function expectRejection(promise: Promise<unknown>, message: string): Promise<void> {
   try {
     await promise
   } catch (error) {

@@ -6,7 +6,7 @@ export default defineConfig({
     neverBundle: true,
   },
   dts: true,
-  entry: ["src/index.ts", "src/hooks/index.ts", "src/integrations/react.tsx"],
+  entry: ["src/index.ts", "src/hooks/index.ts", "src/integrations/react/index.tsx"],
   fixedExtension: false,
   format: "esm",
   minify: false,

@@ -1,7 +1,7 @@
-export { createFlags } from "./factory"
-export type { FlagFactory, FlagBatch } from "./factory"
-export { decision } from "./decision"
-export { defineHook } from "./hooks"
+export { createFlags } from "#lib/factory/index.ts"
+export type { FlagFactory, FlagBatch } from "#lib/factory/index.ts"
+export { decision } from "#lib/flag/decision.ts"
+export { defineHook } from "#hooks/index.ts"
 export {
   DecisionTypeMismatchError,
   DuplicateBatchKeyError,

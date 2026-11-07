@@ -1,4 +1,4 @@
-import { RunBuilder } from "./lib/builder"
+import { RunBuilder } from "#lib/builder/index.ts"
 
 const root = new RunBuilder()
 
@@ -12,7 +12,7 @@ export const signal: RunBuilder["signal"] = root.signal.bind(root)
 export const timeout: RunBuilder["timeout"] = root.timeout.bind(root)
 export const wrap: RunBuilder["wrap"] = root.wrap.bind(root)
 
-export { disposer } from "./lib/dispose"
-export { driveGen as gen } from "./lib/gen"
+export { disposer } from "#lib/disposal/index.ts"
+export { driveGen as gen } from "#lib/composition/index.ts"
 
-export { retryOptions } from "./lib/policies/retry"
+export { retryOptions } from "#lib/policies/retry.ts"

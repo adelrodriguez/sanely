@@ -29,46 +29,8 @@ Read [GLOSSARY.md](GLOSSARY.md) before you change behavior or terminology. Use t
 
 ## Layout
 
-```text
-src/
-  index.ts                  Root public API
-  factory.ts                Flag factory and batch construction
-  decision.ts               Decision helpers
-  hooks/                    defineHook, published as @sanely/flags/hooks
-  integrations/react.tsx    React integration, published as @sanely/flags/react
-  lib/
-    evaluation/             Evaluation engine and batch
-      stages/               Hook lifecycle and decision resolution (cache and coalescing)
-    config/                 Resolved factory configuration and its decision memory
-    flag/                   Flag configuration, decision validation, evaluation keys, registry
-    promise-cache/          Promise-cache keys and helpers for integrations
-    shared/                 Errors, signals, and other domain-free helpers
-    types/                  Type contracts, with no runtime code
-  **/__tests__/             Colocated tests
-vitest.config.ts            Test and coverage configuration
-```
-
-The public package entry points are `@sanely/flags`, `@sanely/flags/hooks`, and `@sanely/flags/react`. `dist/` is build output.
-
-Dependencies go in one direction. A module imports only from its own folder or from a lower
-layer:
-
-1. `lib/types/`
-2. `lib/shared/`
-3. `lib/flag/` and `lib/promise-cache/`
-4. `lib/config/`
-5. `lib/evaluation/stages/`
-6. `lib/evaluation/`
-7. `decision.ts`, `factory.ts`, `hooks/`, and `integrations/`
-8. `index.ts`
-
-Folders in the same layer do not import each other.
-
-Import a module outside the current folder through a subpath import with its full file path,
-for example `#lib/types/index.ts` or `#lib/shared/errors.ts`. The `imports` field in
-`package.json` maps `#*` to `src/*`. Use relative imports only inside a folder.
-`src/__tests__/architecture.test.ts` enforces the layers, and the workspace lint config rejects
-`../` imports.
+Read the [architecture](docs/architecture.md) for source ownership and dependencies.
+Read the [testing guide](docs/testing.md) for test placement and package checks.
 
 ## Development commands
 
@@ -92,11 +54,8 @@ script.
 
 ## Make a change
 
-- Keep the flag factory in `src/factory.ts`, the decision helpers in `src/decision.ts`,
-  and the core implementation in `src/lib/`.
-- Keep hooks in `src/hooks/`.
-- Keep the React integration in `src/integrations/react.tsx`.
-- Add or update colocated tests for behavior changes.
+- Follow the [architecture](docs/architecture.md) when you change source ownership.
+- Follow the [testing guide](docs/testing.md) when you change tests.
 - Public API type changes require coverage in `src/__tests__/types.test-d.ts`.
 - Write type assertions with `expectTypeOf` from `vitest`.
 - Type assertions are checked by `pnpm --workspace-root run check`, not Vitest.

@@ -1,5 +1,5 @@
-import type { BuilderConfig } from "#lib/builder.ts"
-import { Panic } from "#lib/errors.ts"
+import type { BuilderConfig } from "#lib/policies/options.ts"
+import { Panic } from "#lib/shared/errors.ts"
 import type {
   InferredTaskContext,
   ResultProxy,

@@ -1,6 +1,6 @@
-import type { CronPhrase, Schedule } from "#lib/schedule/schedule.ts"
-import { writePhrase } from "#lib/describe/describe.ts"
-import { validate } from "#lib/validate/validate.ts"
+import type { CronPhrase, Schedule } from "#lib/schedule/index.ts"
+import { writePhrase } from "#lib/describe/index.ts"
+import { validate } from "#lib/validate/index.ts"
 import { withInput } from "./errors"
 
 /**

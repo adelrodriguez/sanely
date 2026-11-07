@@ -1,6 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./base.json",
+  "compilerOptions": { "lib": ["ESNext", "DOM"] },
   "display": "Library",
   "include": ["${configDir}/src", "${configDir}/scripts", "${configDir}/*.config.ts"]
 }
