@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest"
 import type { Decision, Hook, Identity, IdentityValue } from "#lib/types/index.ts"
 import { buildGate } from "#factory.ts"
-import { BatchFlagNotFoundError } from "#lib/shared/errors.ts"
+import { BatchFlagNotFoundError, GateTimeoutError } from "#lib/shared/errors.ts"
 
 async function expectRejection(promise: Promise<IdentityValue>, message: string): Promise<void> {
   try {
@@ -625,5 +625,73 @@ describe("gate batches", () => {
       firstGate.batch([own, foreign]),
       "Batch flags must be created by this gate factory"
     )
+  })
+
+  test("does not join a flush round whose entries all timed out before the flush", async () => {
+    vi.useFakeTimers()
+    try {
+      const decideMany = vi.fn((keys: readonly string[]) =>
+        Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
+      )
+      // Fake timers that are due at one time run in creation order, with microtasks between them.
+      // Every timer below is due at 1 ms, and they run in this order:
+      // 1. `identified` resolves the identity. `slow` starts its wait, and `fast` opens round A.
+      // 2. The `fast` timeout aborts every entry of round A before round A flushes.
+      // 3. `slow` wakes and needs provider work while round A is still open.
+      // 4. Round A flushes.
+      // 5. `late` wakes and needs provider work. It must join the round that `slow` joined.
+      const identified = new Promise<void>((resolve) => {
+        setTimeout(resolve, 1)
+      })
+      const lateReady = Promise.withResolvers<null>()
+      const gate = buildGate({
+        decide: () => ({ type: "boolean", value: false }),
+        decideMany,
+        // The `slow` key read comes just before `slow` needs provider work, so this timer comes
+        // after the round A flush timer and before any timer that `slow` starts.
+        evaluationKey: (context) => {
+          if (context.flagKey === "slow") {
+            setTimeout(() => {
+              lateReady.resolve(null)
+            }, 0)
+          }
+          return context.flagKey
+        },
+        hooks: [
+          {
+            before: async (context) => {
+              if (context.flagKey === "slow") {
+                await new Promise((resolve) => {
+                  setTimeout(resolve, 0)
+                })
+              }
+              if (context.flagKey === "late") {
+                await lateReady.promise
+              }
+            },
+          },
+        ],
+        identify: async () => {
+          await identified
+          return { distinctId: "user123" }
+        },
+      })
+      const fast = gate({ defaultValue: false, key: "fast", timeoutMs: 1 })
+      const slow = gate({ defaultValue: false, key: "slow", timeoutMs: 1000 })
+      const late = gate({ defaultValue: false, key: "late", timeoutMs: 1000 })
+
+      const pending = gate.batch([fast, slow, late])
+      await vi.advanceTimersByTimeAsync(10)
+      const batch = await pending
+
+      expect(batch.details(fast)).toMatchObject({ source: "default", value: false })
+      expect(batch.details(fast).error).toBeInstanceOf(GateTimeoutError)
+      expect(batch.details(slow)).toEqual({ flagKey: "slow", source: "provider", value: true })
+      expect(batch.details(late)).toEqual({ flagKey: "late", source: "provider", value: true })
+      expect(decideMany).toHaveBeenCalledTimes(1)
+      expect(decideMany.mock.calls[0]?.[0]).toEqual(["slow", "late"])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
