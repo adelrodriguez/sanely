@@ -50,7 +50,7 @@ export class InvalidPayloadError extends Fault {
   readonly reason: string
 
   constructor(args: { reason: string }) {
-    super(InvalidPayloadError._tag, `Invalid Faultier payload: ${args.reason}`)
+    super(InvalidPayloadError._tag, `Invalid fault payload: ${args.reason}`)
     this.reason = args.reason
   }
 }

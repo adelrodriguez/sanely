@@ -14,9 +14,9 @@
 `@sanely/errors` gives each error in your app a class, a string tag, and typed fields. You group the classes in a registry, and then create, wrap, match, and serialize them by tag.
 
 ```ts
-import { Tagged } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
-class NotFoundError extends Tagged("NotFoundError")<{ id: string }>() {}
+class NotFoundError extends Fault.Tagged("NotFoundError")<{ id: string }>() {}
 
 const fault = new NotFoundError({ id: "123" }).withDescription(
   "User not found",
@@ -52,12 +52,12 @@ The package needs TypeScript 5.4 or later, and Node.js 20 or later.
 Define fault classes, group them in a registry, and match them by tag:
 
 ```ts
-import { Tagged, registry } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
-class NotFoundError extends Tagged("NotFoundError")<{ id: string }>() {}
-class DatabaseError extends Tagged("DatabaseError")() {}
+class NotFoundError extends Fault.Tagged("NotFoundError")<{ id: string }>() {}
+class DatabaseError extends Fault.Tagged("DatabaseError")() {}
 
-const AppFault = registry({ NotFoundError, DatabaseError })
+const AppFault = Fault.registry({ NotFoundError, DatabaseError })
 
 try {
   throw AppFault.create("NotFoundError", { id: "123" }).withMessage("User not found")

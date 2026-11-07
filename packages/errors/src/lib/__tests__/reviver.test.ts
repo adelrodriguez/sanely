@@ -56,7 +56,7 @@ const wirePayloadArb = fc
 
 function buildWire(payload: Record<string, unknown>): SerializableFault {
   const wire = {
-    __faultier: true,
+    __fault: true,
     _tag: "HostileError",
     message: "hostile payload",
     name: "HostileError",
@@ -77,10 +77,10 @@ function buildWire(payload: Record<string, unknown>): SerializableFault {
 // Test-side mirror of the envelope validation order, so each input has
 // exactly one expected outcome.
 function expectedRejection(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null) return "expected __faultier: true"
+  if (typeof input !== "object" || input === null) return "expected __fault: true"
 
   const record = input as Record<string, unknown>
-  if (record.__faultier !== true) return "expected __faultier: true"
+  if (record.__fault !== true) return "expected __fault: true"
   if (typeof record._tag !== "string") return "_tag must be a string"
   if (
     "meta" in record
@@ -104,16 +104,16 @@ const anythingArb = fc.anything({
   withTypedArray: true,
 })
 
-// Arbitrary values almost never carry `__faultier: true`, so mix in
+// Arbitrary values almost never carry `__fault: true`, so mix in
 // envelope-shaped objects to exercise the revive branch and each
 // validation guard (marker, _tag, meta) in every run.
 const envelopeArb = fc.record(
   {
-    __faultier: fc.oneof(fc.constant(true), anythingArb),
+    __fault: fc.oneof(fc.constant(true), anythingArb),
     _tag: fc.oneof(fc.string(), anythingArb),
     meta: fc.oneof(fc.dictionary(fc.string(), fc.jsonValue()), anythingArb),
   },
-  { requiredKeys: ["__faultier", "_tag"] }
+  { requiredKeys: ["__fault", "_tag"] }
 )
 
 const payloadCandidateArb = fc.oneof(anythingArb, envelopeArb)
@@ -201,7 +201,7 @@ const wireCandidateArb = fc.oneof(
   payloadCandidateArb,
   fc.record(
     {
-      __faultier: fc.constant(true),
+      __fault: fc.constant(true),
       _tag: fc.string(),
       cause: causeArb,
       details: fc.oneof(fc.string(), anythingArb),
@@ -210,7 +210,7 @@ const wireCandidateArb = fc.oneof(
       name: fc.oneof(fc.string(), anythingArb),
       stack: fc.oneof(fc.string(), anythingArb),
     },
-    { requiredKeys: ["__faultier", "_tag"] }
+    { requiredKeys: ["__fault", "_tag"] }
   )
 )
 
@@ -235,7 +235,7 @@ function isOptionalString(value: unknown): boolean {
 function wrapInFaultEdges(innermost: unknown, edges: number): unknown {
   let wire = innermost
   for (let depth = 0; depth < edges; depth += 1) {
-    wire = { __faultier: true, _tag: "X", cause: { kind: "fault", value: wire }, name: "X" }
+    wire = { __fault: true, _tag: "X", cause: { kind: "fault", value: wire }, name: "X" }
   }
   return wire
 }
@@ -245,7 +245,7 @@ function wrapInErrorEdges(innermost: unknown, edges: number): unknown {
   for (let depth = 0; depth < edges; depth += 1) {
     cause = { cause, kind: "error", message: "m", name: "E" }
   }
-  return { __faultier: true, _tag: "X", cause, name: "X" }
+  return { __fault: true, _tag: "X", cause, name: "X" }
 }
 
 describe("isSerializableFault", () => {
@@ -303,7 +303,7 @@ describe("isSerializableFault", () => {
   })
 
   it("rejects any cause left past the depth budget, valid or not", () => {
-    const leaf = { __faultier: true, _tag: "X", name: "X" }
+    const leaf = { __fault: true, _tag: "X", name: "X" }
 
     expect(isSerializableFault(wrapInFaultEdges(leaf, MAX_CAUSE_DEPTH))).toBe(true)
     expect(

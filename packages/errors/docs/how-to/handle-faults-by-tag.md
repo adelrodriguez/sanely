@@ -40,16 +40,16 @@ To check membership only, use `AppFault.is(error)`.
 If the value already has a fault union type, use the standalone `matchTag` and `matchTags`. TypeScript narrows each handler to its fault type. `matchTags` accepts a partial handler map, and without a fallback, a tag that has no handler returns `undefined`. The fallback of `matchTag` receives the other types of the union:
 
 ```ts
-import { matchTag, matchTags } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
 declare const error: NotFoundError | TimeoutError
 
-const result = matchTags(error, {
+const result = Fault.matchTags(error, {
   NotFoundError: () => ({ status: 404 }),
   TimeoutError: () => ({ status: 503 }),
 })
 
-const action = matchTag(
+const action = Fault.matchTag(
   error,
   "TimeoutError",
   () => "retry",

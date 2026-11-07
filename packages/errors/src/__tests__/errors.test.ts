@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import * as FaultierErrors from "#errors.ts"
+import * as FaultErrors from "#errors.ts"
 
 describe("errors", () => {
   it("exposes only library errors", () => {
-    expect(Object.keys(FaultierErrors).toSorted()).toEqual([
+    expect(Object.keys(FaultErrors).toSorted()).toEqual([
       "InvalidPayloadError",
       "RegistryMergeConflictError",
       "RegistryTagMismatchError",

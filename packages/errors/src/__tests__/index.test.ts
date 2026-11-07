@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import * as Faultier from "#index.ts"
+import * as Fault from "#index.ts"
 
 describe("index", () => {
   it("exposes only the core runtime API from the root", () => {
-    expect(Object.keys(Faultier).toSorted()).toEqual([
+    expect(Object.keys(Fault).toSorted()).toEqual([
       "Fault",
       "Tagged",
       "findCause",

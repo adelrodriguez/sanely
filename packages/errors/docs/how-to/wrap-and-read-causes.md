@@ -49,9 +49,9 @@ outer.getContext() // the meta of every fault in the chain, and the head wins a 
 To get a typed fault from the chain, search by class with `findCause`, or by tag with the registry:
 
 ```ts
-import { findCause } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
-findCause(outer, TimeoutError) // inner, typed as TimeoutError | undefined
+Fault.findCause(outer, TimeoutError) // inner, typed as TimeoutError | undefined
 AppFault.findCause(error, "NotFoundError") // NotFoundError | undefined
 ```
 

@@ -28,9 +28,9 @@ export { findCause } from "./lib/fault"
  *
  * @example
  *   ;```ts
- *   import * as Faultier from "@sanely/errors"
+ *   import * as Fault from "@sanely/errors"
  *
- *   class NotFoundError extends Faultier.Tagged("NotFoundError")<{ resource: string }>() {}
+ *   class NotFoundError extends Fault.Tagged("NotFoundError")<{ resource: string }>() {}
  *   const error = new NotFoundError({ resource: "user" })
  *   ```
  */
@@ -44,10 +44,10 @@ export { Tagged } from "./lib/tagged"
  *
  * @example
  *   ;```ts
- *   import * as Faultier from "@sanely/errors"
+ *   import * as Fault from "@sanely/errors"
  *
- *   class TimeoutError extends Faultier.Tagged("TimeoutError")() {}
- *   const AppFault = Faultier.registry({ TimeoutError })
+ *   class TimeoutError extends Fault.Tagged("TimeoutError")() {}
+ *   const AppFault = Fault.registry({ TimeoutError })
  *
  *   const wrapped = AppFault.wrap(new Error("root")).as("TimeoutError")
  *   ```

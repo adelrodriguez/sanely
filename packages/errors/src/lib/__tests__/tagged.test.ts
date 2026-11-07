@@ -36,7 +36,7 @@ describe("Tagged", () => {
     // Test-side mirror of the internal isReservedKey rule; if the library's
     // rule ever drifts from this, the property fails.
     const wireEnvelopeKeys = new Set([
-      "__faultier",
+      "__fault",
       "_tag",
       "cause",
       "name",

@@ -1,5 +1,5 @@
 /**
- * Public type contracts for Faultier.
+ * Public type contracts for `@sanely/errors`.
  */
 export type { FlattenField, FlattenOptions } from "./lib/fault"
 export type { ByTag, TagOf } from "./lib/match"

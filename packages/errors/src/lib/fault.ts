@@ -57,7 +57,7 @@ function serializeFault(fault: Fault, depth: number): SerializableFault {
   const serializablePayload = payload as Record<string, SerializableValue>
 
   const serialized: SerializableFault = {
-    __faultier: true,
+    __fault: true,
     ...serializablePayload,
     _tag: fault._tag,
     message: fault.message,
@@ -262,7 +262,7 @@ export function toSerializable(value: unknown): SerializableFault {
 
   if (value instanceof Error) {
     return {
-      __faultier: true,
+      __fault: true,
       _tag: "UnknownError",
       cause: toCause(value, 0),
       message: value.message,
@@ -271,7 +271,7 @@ export function toSerializable(value: unknown): SerializableFault {
   }
 
   return {
-    __faultier: true,
+    __fault: true,
     _tag: "UnknownThrown",
     cause: toCause(value, 0),
     message: "UnknownThrown",

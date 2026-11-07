@@ -14,9 +14,9 @@ This guide shows you how to send a fault from a server to a client, or between p
 2. On the receiving side, check the value before you read it, if it comes from a source that you do not control:
 
    ```ts
-   import { isSerializableFault } from "@sanely/errors"
+   import * as Fault from "@sanely/errors"
 
-   if (!isSerializableFault(payload)) {
+   if (!Fault.isSerializableFault(payload)) {
      throw new Error("The response is not a serialized fault")
    }
    ```
@@ -38,9 +38,9 @@ This guide shows you how to send a fault from a server to a client, or between p
 Use the standalone `fromSerializable`. It builds a generic `Fault` with the tag, the messages, the metadata, the fields, and the causes, but not the subclass:
 
 ```ts
-import { fromSerializable } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
-const fault = fromSerializable(payload)
+const fault = Fault.fromSerializable(payload)
 fault._tag // "NotFoundError"
 ```
 

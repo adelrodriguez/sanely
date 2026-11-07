@@ -41,7 +41,7 @@ describe("registry", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     expect(Faults.tags).toEqual(["NotFoundError", "TimeoutError"])
-    expect("__faultier" in Faults).toBe(false)
+    expect("__fault" in Faults).toBe(false)
   })
 
   it("creates wrapped faults using wrap().as", () => {
@@ -142,12 +142,12 @@ describe("registry", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     const restored = Faults.fromSerializable({
-      __faultier: true,
+      __fault: true,
       _tag: "OtherError",
       cause: {
         kind: "fault",
         value: {
-          __faultier: true,
+          __fault: true,
           _tag: "TimeoutError",
           name: "TimeoutError",
         },
@@ -165,7 +165,7 @@ describe("registry", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     const restored = Faults.fromSerializable({
-      __faultier: true,
+      __fault: true,
       __payload_withCause: "existing-value",
       _tag: "TimeoutError",
       name: "TimeoutError",
@@ -196,15 +196,15 @@ describe("registry", () => {
 
     expect(() =>
       Faults.fromSerializable({
-        __faultier: false,
+        __fault: false,
         _tag: "ValidatedError",
         name: "ValidatedError",
       } as unknown as SerializableFault)
-    ).toThrow("Invalid Faultier payload")
+    ).toThrow("Invalid fault payload")
 
     expect(() =>
       Faults.fromSerializable({
-        __faultier: true,
+        __fault: true,
         _tag: "ValidatedError",
         meta: "not-an-object",
         name: "ValidatedError",
@@ -227,7 +227,7 @@ describe("registry", () => {
 
     const Faults = registry({ NormalizedError })
     const restored = Faults.fromSerializable({
-      __faultier: true,
+      __fault: true,
       _tag: "NormalizedError",
       name: "NormalizedError",
       value: "42",
@@ -398,7 +398,7 @@ describe("registry", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     const restored = Faults.fromSerializable({
-      __faultier: true,
+      __fault: true,
       _tag: "Other",
       message: "other",
       name: "Other",
@@ -416,14 +416,14 @@ describe("registry", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     let current: SerializableFault = {
-      __faultier: true,
+      __fault: true,
       _tag: "TimeoutError",
       name: "TimeoutError",
     }
 
     for (let i = 0; i < 150; i += 1) {
       current = {
-        __faultier: true,
+        __fault: true,
         _tag: "NotFoundError",
         cause: { kind: "fault", value: current },
         id: `${i}`,

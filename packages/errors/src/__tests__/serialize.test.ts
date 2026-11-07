@@ -11,7 +11,7 @@ import { Fault, fromSerializable, isSerializableFault, Tagged, toSerializable } 
 // prototype chain. The reserved-key properties below keep this mirror honest —
 // if the library's rule drifts, they fail.
 const WIRE_ENVELOPE_KEYS = new Set([
-  "__faultier",
+  "__fault",
   "_tag",
   "cause",
   "name",
@@ -123,7 +123,7 @@ describe("toSerializable", () => {
       .withMeta({ requestId: "req-1" })
 
     expect(fault.toSerializable()).toStrictEqual({
-      __faultier: true,
+      __fault: true,
       _tag: "NotFoundError",
       details: "lookup failed",
       id: "123",
@@ -267,7 +267,7 @@ describe("toSerializable", () => {
     const error = new Error("boom")
 
     expect(toSerializable(error)).toStrictEqual({
-      __faultier: true,
+      __fault: true,
       _tag: "UnknownError",
       cause: { kind: "error", message: "boom", name: "Error", stack: error.stack },
       message: "boom",
@@ -277,7 +277,7 @@ describe("toSerializable", () => {
 
   it("serializes non-Error thrown values as UnknownThrown", () => {
     expect(toSerializable("boom")).toStrictEqual({
-      __faultier: true,
+      __fault: true,
       _tag: "UnknownThrown",
       cause: { kind: "thrown", value: "boom" },
       message: "UnknownThrown",
@@ -303,7 +303,7 @@ describe("toSerializable", () => {
 })
 
 function withCause(cause: unknown) {
-  return { __faultier: true, _tag: "Outer", cause, name: "Outer" }
+  return { __fault: true, _tag: "Outer", cause, name: "Outer" }
 }
 
 describe("isSerializableFault", () => {
@@ -315,24 +315,22 @@ describe("isSerializableFault", () => {
   })
 
   it("returns false for values fromSerializable rejects", () => {
-    expect(isSerializableFault({ __faultier: false, _tag: "X" })).toBe(false)
-    expect(isSerializableFault({ __faultier: true, _tag: 1 })).toBe(false)
-    expect(isSerializableFault({ __faultier: true, _tag: "X", meta: "nope" })).toBe(false)
+    expect(isSerializableFault({ __fault: false, _tag: "X" })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: 1 })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: "X", meta: "nope" })).toBe(false)
     expect(isSerializableFault(new Error("boom"))).toBe(false)
     expect(isSerializableFault(null)).toBe(false)
   })
 
   it("returns false when a typed envelope field has the wrong type", () => {
-    expect(isSerializableFault({ __faultier: true, _tag: "X" })).toBe(false)
-    expect(isSerializableFault({ __faultier: true, _tag: "X", message: 42, name: "X" })).toBe(false)
-    expect(isSerializableFault({ __faultier: true, _tag: "X", details: 1, name: "X" })).toBe(false)
-    expect(isSerializableFault({ __faultier: true, _tag: "X", name: "X", stack: false })).toBe(
-      false
-    )
+    expect(isSerializableFault({ __fault: true, _tag: "X" })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: "X", message: 42, name: "X" })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: "X", details: 1, name: "X" })).toBe(false)
+    expect(isSerializableFault({ __fault: true, _tag: "X", name: "X", stack: false })).toBe(false)
   })
 
   it("returns false when a nested cause fromSerializable visits is invalid", () => {
-    const invalidFault = { __faultier: true, _tag: "Inner", meta: null, name: "Inner" }
+    const invalidFault = { __fault: true, _tag: "Inner", meta: null, name: "Inner" }
 
     expect(() =>
       fromSerializable(withCause({ kind: "fault", value: invalidFault }) as SerializableFault)
@@ -356,14 +354,14 @@ describe("isSerializableFault", () => {
 
 describe("fromSerializable", () => {
   it("throws InvalidPayloadError for invalid payloads", () => {
-    expect(() => fromSerializable({ __faultier: false } as unknown as SerializableFault)).toThrow(
-      new InvalidPayloadError({ reason: "expected __faultier: true" })
+    expect(() => fromSerializable({ __fault: false } as unknown as SerializableFault)).toThrow(
+      new InvalidPayloadError({ reason: "expected __fault: true" })
     )
   })
 
   it("rewrites payload keys that collide with reserved names", () => {
     const deserialized = fromSerializable({
-      __faultier: true,
+      __fault: true,
       _tag: "CollisionError",
       name: "CollisionError",
       withCause: "payload-value",
@@ -378,7 +376,7 @@ describe("fromSerializable", () => {
 
   it("preserves existing keys that use the collision prefix", () => {
     const deserialized = fromSerializable({
-      __faultier: true,
+      __fault: true,
       __payload_withCause: "existing-value",
       _tag: "CollisionError",
       name: "CollisionError",
@@ -393,12 +391,12 @@ describe("fromSerializable", () => {
 
   it("preserves prototype-sensitive payload keys without changing the prototype", () => {
     const payload = JSON.parse(
-      '{"__faultier":true,"_tag":"PrototypeError","name":"PrototypeError","__proto__":"payload-value"}'
+      '{"__fault":true,"_tag":"PrototypeError","name":"PrototypeError","__proto__":"payload-value"}'
     ) as SerializableFault
 
     const deserialized = fromSerializable(payload)
     const baseline = fromSerializable({
-      __faultier: true,
+      __fault: true,
       _tag: "PrototypeError",
       name: "PrototypeError",
     })
@@ -413,7 +411,7 @@ describe("fromSerializable", () => {
     // A hand-built wire far deeper than MAX_CAUSE_DEPTH (100), so only the
     // reviver's own cap (not the serializer's) bounds the result.
     let current: SerializableFault = {
-      __faultier: true,
+      __fault: true,
       _tag: "LeafError",
       message: "leaf",
       name: "LeafError",
@@ -421,7 +419,7 @@ describe("fromSerializable", () => {
 
     for (let i = 0; i < 10_000; i += 1) {
       current = {
-        __faultier: true,
+        __fault: true,
         _tag: "WrapperError",
         cause: { kind: "fault", value: current },
         name: "WrapperError",
@@ -438,7 +436,7 @@ describe("fromSerializable", () => {
   it("throws when meta is not an object", () => {
     expect(() =>
       fromSerializable({
-        __faultier: true,
+        __fault: true,
         _tag: "TestError",
         meta: "not-an-object",
         name: "TestError",
@@ -531,7 +529,7 @@ describe("fromSerializable", () => {
     fc.assert(
       fc.property(hostileKeyArb, jsonValueArb, (key, value) => {
         const wire = {
-          __faultier: true,
+          __fault: true,
           _tag: "HostileError",
           message: "hostile payload",
           name: "HostileError",

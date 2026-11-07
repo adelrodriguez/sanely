@@ -53,6 +53,6 @@ describe("InvalidPayloadError", () => {
     expect(error._tag).toBe("InvalidPayloadError")
     expect(error.name).toBe("InvalidPayloadError")
     expect(error.reason).toBe("_tag must be a string")
-    expect(error.message).toBe("Invalid Faultier payload: _tag must be a string")
+    expect(error.message).toBe("Invalid fault payload: _tag must be a string")
   })
 })

@@ -5,11 +5,11 @@ This guide shows you how to declare the errors of your app as fault classes, and
 1. Declare one class for each kind of failure with `Tagged(tag)<Fields>()`. Use the class name as the tag:
 
    ```ts
-   import { Tagged } from "@sanely/errors"
+   import * as Fault from "@sanely/errors"
 
-   class ValidationError extends Tagged("ValidationError")<{ field: string }>() {}
-   class NotFoundError extends Tagged("NotFoundError")<{ resource: string; id: string }>() {}
-   class TimeoutError extends Tagged("TimeoutError")() {}
+   class ValidationError extends Fault.Tagged("ValidationError")<{ field: string }>() {}
+   class NotFoundError extends Fault.Tagged("NotFoundError")<{ resource: string; id: string }>() {}
+   class TimeoutError extends Fault.Tagged("TimeoutError")() {}
    ```
 
    Leave the type argument out when the fault has no fields. Field types must be JSON-safe values. Use a type alias or an inline type for the fields, not an interface.
@@ -19,9 +19,9 @@ This guide shows you how to declare the errors of your app as fault classes, and
 3. Group the classes in a registry. Each key must be the tag of its class:
 
    ```ts
-   import { registry } from "@sanely/errors"
+   import * as Fault from "@sanely/errors"
 
-   export const AppFault = registry({ ValidationError, NotFoundError, TimeoutError })
+   export const AppFault = Fault.registry({ ValidationError, NotFoundError, TimeoutError })
 
    export type AppError = typeof AppFault.Type // ValidationError | NotFoundError | TimeoutError
    ```
@@ -43,9 +43,9 @@ This guide shows you how to declare the errors of your app as fault classes, and
 If each module has its own registry, merge them:
 
 ```ts
-import { merge } from "@sanely/errors"
+import * as Fault from "@sanely/errors"
 
-export const AppFault = merge(AuthFault, BillingFault)
+export const AppFault = Fault.merge(AuthFault, BillingFault)
 ```
 
 `merge` takes at least two registries. If two registries use the same tag for different classes, `merge` throws `RegistryMergeConflictError` from `@sanely/errors/errors`.
@@ -55,7 +55,7 @@ export const AppFault = merge(AuthFault, BillingFault)
 To give a fault a default message, set it in the constructor. The constructor must take the fields object as its only parameter, because a registry calls it with that object when it reads a serialized fault. For a shorter call, add a static factory:
 
 ```ts
-class UserNotFound extends Tagged("UserNotFound")<{ id: string }>() {
+class UserNotFound extends Fault.Tagged("UserNotFound")<{ id: string }>() {
   constructor(fields: { id: string }) {
     super(fields)
     this.message = `User ${fields.id} not found`

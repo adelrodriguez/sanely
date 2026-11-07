@@ -1,15 +1,15 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, rmSync, writeFileSync } from "node:fs"
-import type * as FaultierErrorsContract from "../src/errors"
-import type * as FaultierContract from "../src/index"
+import type * as FaultErrorsContract from "../src/errors"
+import type * as FaultContract from "../src/index"
 
 const rootSpecifier = "@sanely/errors"
 const errorsSpecifier = "@sanely/errors/errors"
 const typesSpecifier = "@sanely/errors/types"
 
-const Faultier = (await import(rootSpecifier)) as typeof FaultierContract
-const FaultierErrors = (await import(errorsSpecifier)) as typeof FaultierErrorsContract
-const FaultierTypes = (await import(typesSpecifier)) as object
+const Fault = (await import(rootSpecifier)) as typeof FaultContract
+const FaultErrors = (await import(errorsSpecifier)) as typeof FaultErrorsContract
+const FaultTypes = (await import(typesSpecifier)) as object
 
 function assertExports(namespace: object, expected: string[], entrypoint: string): void {
   const actual = Object.keys(namespace)
@@ -22,7 +22,7 @@ function assertExports(namespace: object, expected: string[], entrypoint: string
 }
 
 assertExports(
-  Faultier,
+  Fault,
   [
     "Fault",
     "Tagged",
@@ -39,7 +39,7 @@ assertExports(
   "@sanely/errors"
 )
 assertExports(
-  FaultierErrors,
+  FaultErrors,
   [
     "InvalidPayloadError",
     "RegistryMergeConflictError",
@@ -48,9 +48,9 @@ assertExports(
   ],
   "@sanely/errors/errors"
 )
-assertExports(FaultierTypes, [], "@sanely/errors/types")
+assertExports(FaultTypes, [], "@sanely/errors/types")
 
-class InvalidFieldError extends Faultier.Tagged("InvalidFieldError")<{ message: string }>() {}
+class InvalidFieldError extends Fault.Tagged("InvalidFieldError")<{ message: string }>() {}
 
 let thrown: unknown
 try {
@@ -60,8 +60,8 @@ try {
   thrown = error
 }
 
-if (!(thrown instanceof FaultierErrors.ReservedFieldError)) {
-  throw new Error("Root behavior and faultier/errors do not share error constructor identity")
+if (!(thrown instanceof FaultErrors.ReservedFieldError)) {
+  throw new Error("Root behavior and @sanely/errors/errors do not share error constructor identity")
 }
 
 const outputPaths = [

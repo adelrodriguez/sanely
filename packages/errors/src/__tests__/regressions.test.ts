@@ -73,7 +73,7 @@ describe("#65 native Error.cause chains survive traversal and transport", () => 
     const { mid, root } = wrapNativeChain()
 
     expect(registry({ ServiceError }).toSerializable(mid)).toStrictEqual({
-      __faultier: true,
+      __fault: true,
       _tag: "UnknownError",
       cause: {
         cause: { kind: "error", message: "root", name: "Error", stack: root.stack },

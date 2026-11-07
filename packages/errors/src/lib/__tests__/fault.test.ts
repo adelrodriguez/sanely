@@ -108,7 +108,7 @@ describe("Fault", () => {
 
     const serialized = fault.toSerializable()
 
-    expect(serialized.__faultier).toBe(true)
+    expect(serialized.__fault).toBe(true)
 
     let current = serialized
     let depth = 0
@@ -267,7 +267,7 @@ describe("Fault", () => {
     const parsed = JSON.parse(json) as unknown
 
     expect(parsed).toEqual({
-      __faultier: true,
+      __fault: true,
       _tag: "ExampleFault",
       details: "details",
       message: "message",

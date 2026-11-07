@@ -1,5 +1,5 @@
 /**
- * Library-defined errors thrown by Faultier APIs.
+ * Library-defined errors thrown by fault APIs.
  */
 export {
   InvalidPayloadError,

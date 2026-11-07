@@ -81,7 +81,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf<FlattenOptions["field"]>().toEqualTypeOf<FlattenField | undefined>()
   expectTypeOf<TagOf<AppError>>().toEqualTypeOf<"NotFoundError" | "PaymentError" | "TimeoutError">()
   expectTypeOf<ByTag<AppError, "PaymentError">>().toEqualTypeOf<PaymentError>()
-  expectTypeOf<SerializableFault["__faultier"]>().toEqualTypeOf<true>()
+  expectTypeOf<SerializableFault["__fault"]>().toEqualTypeOf<true>()
   expectTypeOf<SerializableCause["kind"]>().toEqualTypeOf<"error" | "fault" | "thrown">()
   expectTypeOf<SerializableFault>().toExtend<JsonValue>()
   expectTypeOf<
@@ -512,7 +512,7 @@ function _registeredConstructorContract() {
 
 function _negativeTypeTests() {
   // @ts-expect-error -- registry state is internal
-  void AppFault.__faultier
+  void AppFault.__fault
 
   // @ts-expect-error -- "BadTag" is not a registered tag
   AppFault.create("BadTag", {})

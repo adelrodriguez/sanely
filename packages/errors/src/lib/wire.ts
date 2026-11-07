@@ -17,7 +17,7 @@ export type SerializableCause =
   | { kind: "thrown"; value: SerializableValue }
 
 export type SerializableFault = {
-  __faultier: true
+  __fault: true
   _tag: string
   name: string
   message?: string
@@ -76,7 +76,7 @@ export const MAX_CAUSE_DEPTH = 100
 // is user payload. Fault methods are not listed here: they live on the
 // prototype, so isReservedKey (fault.ts) covers them via a prototype check.
 export const RESERVED_FAULT_KEYS: ReadonlySet<string> = new Set<string>([
-  "__faultier",
+  "__fault",
   "_tag",
   "cause",
   "name",

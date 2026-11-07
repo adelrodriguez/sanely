@@ -77,7 +77,7 @@ function Tagged<const Tag extends string>(
 Returns a fault class to extend. Its constructor takes `Fields` as its only argument, or no argument when `Fields` is empty. Each field becomes a read-only property. The class has a static `_tag`.
 
 ```ts
-class NotFoundError extends Tagged("NotFoundError")<{ id: string }>() {}
+class NotFoundError extends Fault.Tagged("NotFoundError")<{ id: string }>() {}
 
 new NotFoundError({ id: "123" }).id // "123"
 ```
@@ -120,7 +120,7 @@ Membership uses the class, not only the tag. A fault from another class with the
 | `fromSerializable(data)`                   | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
 
 ```ts
-const AppFault = registry({ NotFoundError, TimeoutError })
+const AppFault = Fault.registry({ NotFoundError, TimeoutError })
 
 AppFault.tags // ["NotFoundError", "TimeoutError"]
 ```
@@ -136,7 +136,7 @@ Calls `handler` when `fault._tag` is `tag`, and `fallback` otherwise. `fault` mu
 Calls the handler for `fault._tag`. `fault` must have a fault union type. When the handlers cover every tag of the union, the result type has no `undefined`.
 
 ```ts
-matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
+Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 ```
 
 ## Other functions
@@ -153,16 +153,16 @@ matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 `SerializableFault` is a plain object with these fields, and one field for each payload field of the fault:
 
-| Field        | Type                                | Required | Description                                             |
-| ------------ | ----------------------------------- | -------- | ------------------------------------------------------- |
-| `__faultier` | `true`                              | Yes      | The marker of the wire format.                          |
-| `_tag`       | `string`                            | Yes      | The tag.                                                |
-| `name`       | `string`                            | Yes      | The name.                                               |
-| `message`    | `string`                            | No       | The message for the user. The package always writes it. |
-| `details`    | `string`                            | No       | The message for logs.                                   |
-| `meta`       | `Record<string, SerializableValue>` | No       | The metadata.                                           |
-| `stack`      | `string`                            | No       | The stack.                                              |
-| `cause`      | `SerializableCause`                 | No       | The cause.                                              |
+| Field     | Type                                | Required | Description                                             |
+| --------- | ----------------------------------- | -------- | ------------------------------------------------------- |
+| `__fault` | `true`                              | Yes      | The marker of the wire format.                          |
+| `_tag`    | `string`                            | Yes      | The tag.                                                |
+| `name`    | `string`                            | Yes      | The name.                                               |
+| `message` | `string`                            | No       | The message for the user. The package always writes it. |
+| `details` | `string`                            | No       | The message for logs.                                   |
+| `meta`    | `Record<string, SerializableValue>` | No       | The metadata.                                           |
+| `stack`   | `string`                            | No       | The stack.                                              |
+| `cause`   | `SerializableCause`                 | No       | The cause.                                              |
 
 `SerializableCause` is one of these objects:
 
@@ -178,7 +178,7 @@ Serialization, deserialization, and chain traversal stop after 100 nested causes
 
 A key is reserved when it is one of these:
 
-- A wire format key: `__faultier`, `_tag`, `name`, `message`, `details`, `meta`, `stack`, or `cause`.
+- A wire format key: `__fault`, `_tag`, `name`, `message`, `details`, `meta`, `stack`, or `cause`.
 - A name on the prototype chain of `Fault`: the methods of `Fault`, such as `withMeta` and `unwrap`, and the inherited names `constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and `__lookupSetter__`.
 
 A `Tagged` constructor throws `ReservedFieldError` for a reserved field name. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.

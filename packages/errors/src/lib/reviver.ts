@@ -33,10 +33,10 @@ function findPayloadIssue(value: unknown): string | undefined {
   if (
     typeof value !== "object"
     || value === null
-    || !("__faultier" in value)
-    || value.__faultier !== true
+    || !("__fault" in value)
+    || value.__fault !== true
   ) {
-    return "expected __faultier: true"
+    return "expected __fault: true"
   }
 
   if (!("_tag" in value) || typeof value._tag !== "string") {
