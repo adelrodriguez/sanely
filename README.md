@@ -14,7 +14,7 @@ Migrated packages contain their source libraries. The other packages still conta
 
 | Package                                   | Replaces                                                  | Status   |
 | ----------------------------------------- | --------------------------------------------------------- | -------- |
-| [`@sanely/try`](packages/try)             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Starter  |
+| [`@sanely/try`](packages/try)             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Migrated |
 | [`@sanely/errors`](packages/errors)       | [`faultier`](https://github.com/adelrodriguez/faultier)   | Migrated |
 | [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     | Starter  |
 | [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         | Starter  |

@@ -1,9 +1,14 @@
 {
   "name": "@sanely/try",
   "version": "0.0.1",
-  "private": true,
   "description": "A better try/catch for TypeScript",
-  "keywords": [],
+  "keywords": [
+    "abort-signal",
+    "error-handling",
+    "retry",
+    "timeout",
+    "try-catch"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/try#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -19,7 +24,7 @@
     "dist"
   ],
   "type": "module",
-  "sideEffects": false,
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "imports": {
@@ -28,17 +33,26 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
     }
   },
   "scripts": {
+    "bench": "vitest bench --run --reporter=verbose",
+    "bench:ci": "vitest bench --run --reporter=verbose --reporter=json --outputFile.json=bench-results/vitest.json && node scripts/bench-report.ts",
     "build": "tsdown",
     "build:debug": "tsdown --no-minify --sourcemap",
-    "build:verify": "node ../../scripts/verify-build.ts",
+    "build:verify": "node ../../scripts/verify-build.ts && node scripts/verify-package.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
     "test": "vitest run",
-    "test:compat": "node ../../scripts/compat-smoke.mjs",
+    "test:compat": "node scripts/compat-smoke.mjs",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
@@ -46,11 +60,12 @@
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "fast-check": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   }
 }
