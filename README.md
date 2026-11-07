@@ -28,7 +28,9 @@ Migrated packages contain their source libraries. The other packages still conta
 1. Run `pnpm run generate new-package`. It asks for the name, emoji, and description, then creates `packages/<name>` from the starter and installs dependencies. To skip the prompts, pass the answers in order, such as `pnpm run generate new-package --args cache 🗄️ "A small cache"`.
 2. Replace the example in `src/` with the library.
 3. Add the package to the table above.
-4. When the package is ready to publish, remove `private` from its `package.json` without a changeset, and add it as a trusted publisher on npm for this repository's `release.yml` workflow. After the merge, `release.yml` publishes version `0.0.1`.
+4. When the package is ready to publish, remove `private` from its `package.json` without a changeset.
+5. Publish version `0.0.1` once by hand. npm accepts a trusted publisher only for a package that exists. Run `npm login`, build the package, and run `pnpm publish --access public` in `packages/<name>`.
+6. Make `release.yml` the trusted publisher with `npm trust github @sanely/<name> --file release.yml --repo adelrodriguez/sanely --allow-publish`. This needs npm 11.15.0 or later and 2FA on your npm account. After that, `release.yml` publishes each new version.
 
 ## Layout
 
