@@ -20,6 +20,10 @@
     "test:compat": {
       "dependsOn": ["build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/compat-smoke.mjs"]
+    },
+    "test:types-perf": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   },
   "ui": "tui"
