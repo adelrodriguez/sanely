@@ -1,17 +1,23 @@
-# Contributing to Gated
+# Contributing to `@sanely/flags`
 
-Thank you for contributing to Gated.
+The package lives in `packages/flags` of the [sanely](https://github.com/adelrodriguez/sanely) monorepo.
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) 26.
-- [pnpm](https://pnpm.io) 12.
+- [Node.js](https://nodejs.org): the version in the root `.node-version` (24).
+- [pnpm](https://pnpm.io): the version that the root `package.json` pins (12).
 - [Git](https://git-scm.com).
 
 ## Set up the repository
 
-1. Fork and clone the repository.
-2. Install dependencies:
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/adelrodriguez/sanely.git
+   cd sanely
+   ```
+
+2. Install dependencies at the repository root:
 
    ```sh
    pnpm install
@@ -28,7 +34,7 @@ src/
   index.ts                  Root public API
   factory.ts                Gate factory and batch construction
   decision.ts               Decision helpers
-  hooks/                    Hook factory, published as @sanely/flags/hooks
+  hooks/                    defineHook, published as @sanely/flags/hooks
   integrations/react.tsx    React integration, published as @sanely/flags/react
   lib/
     evaluation/             Evaluation engine and batch
@@ -65,6 +71,8 @@ for example `#lib/types/index.ts` or `#lib/shared/errors.ts`. The `imports` fiel
 `../` imports.
 
 ## Development commands
+
+Run the package commands in `packages/flags`, and the workspace commands from any folder.
 
 ```sh
 pnpm run build          # Build the published package into dist.
@@ -141,4 +149,4 @@ Do not report vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions are licensed under the [MIT License](../../LICENSE).

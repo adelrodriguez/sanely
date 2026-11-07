@@ -1,6 +1,6 @@
-# Gated Context
+# `@sanely/flags` Context
 
-Gated is a provider-independent, type-safe feature-flag library for TypeScript applications. Package consumers supply identity resolution and provider decision logic. Gated executes the evaluation lifecycle, hooks, validation, and fallback behavior.
+`@sanely/flags` is a provider-independent, type-safe feature-flag library for TypeScript applications. Package consumers supply identity resolution and provider decision logic. The package executes the evaluation lifecycle, hooks, validation, and fallback behavior.
 
 `buildGate` creates gate factories. Each evaluator resolves an identity, runs the complete hook lifecycle, obtains and validates a discriminated provider decision when needed, and returns a boolean or a configured variant. Identity resolution is strict by default and anonymous when the factory opts in. Evaluators expose `details()` for the decision source, payload, and fallback error. Call options support identity overrides and cancellation. Factory and per-gate timeouts return the configured default.
 
@@ -31,7 +31,7 @@ Use the vocabulary below in code, tests, issues, and documentation. The package'
 | **gate cache**          | The bounded React promise cache created by `createGateCache`. It owns invalidation, clearing, and prefetch operations.                                                                                                          |
 | **gate provider**       | The React provider that isolates a gate cache per mount and can supply a default identity to descendant gate hooks.                                                                                                             |
 | **integration**         | An optional framework-facing package surface built on the core API, such as the React integration.                                                                                                                              |
-| **package consumer**    | An application or library that installs Gated and imports its published package entry points.                                                                                                                                   |
+| **package consumer**    | An application or library that installs `@sanely/flags` and imports its published package entry points.                                                                                                                         |
 | **public entry points** | The supported import paths: `@sanely/flags`, `@sanely/flags/hooks`, and `@sanely/flags/react`.                                                                                                                                  |
 
 Call the provider result a decision, not a "flag value", when the difference from the gate's returned value matters.
