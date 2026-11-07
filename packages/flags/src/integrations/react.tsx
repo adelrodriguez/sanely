@@ -69,7 +69,12 @@ type VersionStore = {
  * Counts the change notifications of one gate factory and records when each flag last changed. It
  * listens for the lifetime of the factory, so it also covers entries that no component reads.
  */
-type ChangeClock = { allChangedAt: number; changedAt: Map<string, number>; count: number }
+type ChangeClock = {
+  allChangedAt: number
+  attached: boolean
+  changedAt: Map<string, number>
+  count: number
+}
 
 /**
  * The flags of one cache entry and the change count when its evaluation started. A read drops the
@@ -191,28 +196,42 @@ function getBatchBucket(cache: InternalGateCache, flags: readonly AnyGateEvaluat
 
 const changeClocks = new WeakMap<EvaluatorFactoryRef, ChangeClock>()
 
-function getChangeClock(ref: EvaluatorFactoryRef): ChangeClock {
-  const existing = changeClocks.get(ref)
-  if (existing) return existing
-  const clock: ChangeClock = { allChangedAt: 0, changedAt: new Map(), count: 0 }
-  // Never detached: an entry can outlive every component that reads it, in any gate cache.
-  ref.changes.subscribe((keys) => {
-    clock.count += 1
-    if (keys === undefined) {
-      clock.allChangedAt = clock.count
-      return
-    }
-    for (const key of keys) clock.changedAt.set(key, clock.count)
-  })
-  changeClocks.set(ref, clock)
-  return clock
+/**
+ * Returns the change clock of the factory and attaches it when it is not attached yet. A throwing
+ * `subscribe` is reported through `onCacheError`, and the evaluation continues without live
+ * invalidation, as in the core. The clock stays detached, so the next new entry tries again, and
+ * the entries made before then share the clock that a later attachment updates.
+ */
+function getChangeClock(ref: EvaluatorFactoryRef, flagKey: string): ChangeClock {
+  let clock = changeClocks.get(ref)
+  if (!clock) {
+    clock = { allChangedAt: 0, attached: false, changedAt: new Map(), count: 0 }
+    changeClocks.set(ref, clock)
+  }
+  if (clock.attached) return clock
+  const attaching = clock
+  try {
+    // Never detached: an entry can outlive every component that reads it, in any gate cache.
+    ref.changes.subscribe((keys) => {
+      attaching.count += 1
+      if (keys === undefined) {
+        attaching.allChangedAt = attaching.count
+        return
+      }
+      for (const key of keys) attaching.changedAt.set(key, attaching.count)
+    })
+    attaching.attached = true
+  } catch (error) {
+    ref.reportSubscribeError(flagKey, error)
+  }
+  return attaching
 }
 
 function watchChanges(flags: readonly object[]): ChangeWatch | undefined {
   const records = flags.map((flag) => getEvaluatorRecord(flag))
-  const ref = records[0]?.factoryRef
-  if (!ref) return undefined
-  const clock = getChangeClock(ref)
+  const [first] = records
+  if (!first) return undefined
+  const clock = getChangeClock(first.factoryRef, first.options.key)
   return { clock, keys: records.map((record) => record?.options.key ?? ""), since: clock.count }
 }
 
@@ -533,12 +552,21 @@ function getVersionStore(
 }
 
 function changesSubscriber(flags: readonly AnyGateEvaluator[]) {
-  const ref = flags[0] ? getEvaluatorRecord(flags[0])?.factoryRef : undefined
+  const first = flags[0] ? getEvaluatorRecord(flags[0]) : undefined
   const keys = new Set(flags.map((flag) => getEvaluatorRecord(flag)?.options.key))
-  return (bump: () => void): (() => void) =>
-    ref?.changes.subscribe((changedKeys) => {
-      if (changedKeys === undefined || changedKeys.some((key) => keys.has(key))) bump()
-    }) ?? (() => null)
+  return (bump: () => void): (() => void) => {
+    if (!first) return () => null
+    try {
+      return first.factoryRef.changes.subscribe((changedKeys) => {
+        if (changedKeys === undefined || changedKeys.some((key) => keys.has(key))) bump()
+      })
+    } catch (error) {
+      // The component keeps its value without re-rendering on changes, as the core evaluation
+      // continues without invalidation.
+      first.factoryRef.reportSubscribeError(first.options.key, error)
+      return () => null
+    }
+  }
 }
 
 export function useGate<TFlag extends AnyGateEvaluator>(

@@ -3,6 +3,11 @@ import type { GateCallOptions, GateChanges, GateOptions } from "#lib/types/index
 export type EvaluatorFactoryRef = {
   batch: (flags: readonly object[], callOptions?: GateCallOptions<never>) => Promise<unknown>
   changes: GateChanges
+  /**
+   * Reports a `subscribe` failure through the factory's `onCacheError`, as cache invalidation does,
+   * for an integration that attaches to `changes` and continues without live invalidation.
+   */
+  reportSubscribeError: (flagKey: string, error: unknown) => void
 }
 
 export type EvaluatorRecord = {

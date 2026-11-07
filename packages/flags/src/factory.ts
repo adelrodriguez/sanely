@@ -20,6 +20,7 @@ import {
 } from "#lib/gate/registry.ts"
 import { ForeignGateEvaluatorError, BatchFlagNotFoundError } from "#lib/shared/errors.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
+import { normalizeError } from "#lib/shared/utils.ts"
 
 type GateValue<TEvaluator> =
   TEvaluator extends GateEvaluator<
@@ -172,6 +173,15 @@ export function buildGate<TIdentity extends Identity>(
   const factoryRef: EvaluatorFactoryRef = {
     batch: batch as EvaluatorFactoryRef["batch"],
     changes,
+    reportSubscribeError(flagKey, error) {
+      reportInBackground(resolved.onCacheError, {
+        error: normalizeError(error),
+        flagKey,
+        identity: null,
+        key: flagKey,
+        operation: "subscribe",
+      })
+    },
   }
 
   function gate(options: {

@@ -416,7 +416,8 @@ const gate = buildGate({
 Call `notify({ keys })` to invalidate the named flags, or `notify({})` to invalidate every
 flag. Gated drops the cached decisions and the in-flight provider calls for those flags.
 If the `subscribe` function throws, Gated reports the error through `onCacheError` and
-does not fail the evaluation.
+does not fail the evaluation. React gate reads and prefetches also continue, and they try
+to attach again on the next new cache entry.
 
 Each gate factory calls `subscribe` at most once at a time. Invalidation and
 `gate.changes` listeners share that one attachment. After the first evaluation that uses
