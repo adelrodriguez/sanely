@@ -20,9 +20,8 @@ export interface UnitDefinition {
 }
 
 /**
- * The single source of truth for all supported units, ordered from largest to smallest. The alias
- * unions in `types.ts`, the parse grammar in `expression/grammar.ts`, and the format output all
- * derive from this table.
+ * The shared time units, ordered from largest to smallest. Unit alias types, duration parsing and
+ * formatting, and cron interval aliases derive from this table.
  */
 export const UNITS = [
   {

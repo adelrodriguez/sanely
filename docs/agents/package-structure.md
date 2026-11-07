@@ -16,9 +16,10 @@ An integration can have an `index.tsx` main module when it contains JSX.
 Use `./` for imports within a folder and full `#` paths for imports across folders.
 The `project/source-imports` rule applies this convention to imports, re-exports, and literal dynamic imports.
 Its safe fix resolves the source file before it changes the path.
-Implementation modules must not import public entry points.
+Implementation modules must not import their own package's source entry points.
 Declare permitted domain dependencies in the Oxlint configuration that applies to the package, including type imports.
 Update those declarations when you add a package or domain.
+For code shared across packages, follow [Share internal code](../../CONTRIBUTING.md#share-internal-code).
 
 ## Tests and benchmarks
 

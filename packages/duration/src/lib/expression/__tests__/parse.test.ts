@@ -1,8 +1,8 @@
+import { UNITS } from "@sanely/core/time"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import { InvalidTimeExpressionError } from "#lib/expression/errors.ts"
 import { parse, safeParse } from "#lib/expression/parse.ts"
-import { UNITS } from "#lib/units/table.ts"
 
 const aliases = UNITS.flatMap((unit) => unit.aliases)
 

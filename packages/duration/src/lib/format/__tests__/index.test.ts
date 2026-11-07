@@ -1,6 +1,6 @@
+import { MS_PER_DAY, MS_PER_MINUTE, MS_PER_WEEK } from "@sanely/core/time"
 import { describe, expect, it } from "vitest"
 import { format } from "#lib/format/index.ts"
-import { MS_PER_DAY, MS_PER_MINUTE, MS_PER_WEEK } from "#lib/units/constants.ts"
 
 describe("format", () => {
   it("should format milliseconds (short)", () => {

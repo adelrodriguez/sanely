@@ -22,4 +22,14 @@ Grammar and description are independent domains. Neither imports the other.
 The Oxlint domain declarations enforce this direction, including type imports.
 Implementation modules do not import the public entry point.
 
+## Shared time definitions
+
+`@sanely/core/time` owns time unit aliases and nominal clock ratios.
+The normalizer selects its minute and hour definitions from the shared unit table.
+Vocabulary, schedule rules, and validation use its clock ratios. Cron owns accepted intervals, calendar rules, and errors.
+
+Core is a workspace development dependency. The build bundles its JavaScript and declarations and rejects external package imports in both outputs.
+Consumers install cron on its own, with no runtime dependencies.
+
 Use the [package structure reference](../../../docs/agents/package-structure.md) for file names and imports, and the [testing guide](testing.md) for test placement.
+See the [core architecture](../../core/docs/architecture.md) for the shared definitions.

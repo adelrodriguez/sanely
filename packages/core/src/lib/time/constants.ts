@@ -1,4 +1,14 @@
 /**
+ * Minutes in one hour.
+ */
+export const MINUTES_PER_HOUR = 60
+
+/**
+ * Hours in one nominal day.
+ */
+export const HOURS_PER_DAY = 24
+
+/**
  * Milliseconds in one second (`1_000`).
  */
 export const MS_PER_SECOND = 1000
@@ -11,12 +21,12 @@ export const MS_PER_MINUTE: number = MS_PER_SECOND * 60
 /**
  * Milliseconds in one hour (`3_600_000`).
  */
-export const MS_PER_HOUR: number = MS_PER_MINUTE * 60
+export const MS_PER_HOUR: number = MS_PER_MINUTE * MINUTES_PER_HOUR
 
 /**
  * Milliseconds in one day (`86_400_000`).
  */
-export const MS_PER_DAY: number = MS_PER_HOUR * 24
+export const MS_PER_DAY: number = MS_PER_HOUR * HOURS_PER_DAY
 
 /**
  * Milliseconds in one week (`604_800_000`).

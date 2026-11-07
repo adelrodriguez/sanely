@@ -12,6 +12,9 @@ const ratelimitEntryPoints = {
 
 // Each domain imports itself and only the lower domains in this map.
 const dependencies: Record<string, Record<string, string[]>> = {
+  core: {
+    time: [],
+  },
   cron: {
     api: [
       "describe",
@@ -33,10 +36,9 @@ const dependencies: Record<string, Record<string, string[]>> = {
     vocabulary: [],
   },
   duration: {
-    convert: ["expression", "units"],
-    expression: ["units"],
-    format: ["units"],
-    units: [],
+    convert: ["expression"],
+    expression: [],
+    format: [],
   },
   flags: {
     config: ["shared", "types"],
@@ -70,6 +72,7 @@ const publicEntries = [
   "#index.ts",
   "#errors.ts",
   "#types.ts",
+  "#time.ts",
   "#wire.ts",
   "#wire/**",
   "#hooks/**",
@@ -80,6 +83,32 @@ const publicEntries = [
 
 type Override = NonNullable<Parameters<typeof defineConfig>[0]["overrides"]>[number]
 
+const timeImports = {
+  group: ["@sanely/**", "!@sanely/core", "!@sanely/core/time"],
+  message: "Import shared time definitions through @sanely/core/time.",
+}
+
+const workspaceImports: Record<string, { group: string[]; message: string }> = {
+  core: {
+    group: ["@sanely/**"],
+    message: "Core must not import a package that depends on it.",
+  },
+  cron: timeImports,
+  duration: timeImports,
+}
+
+function packageImports(name: string) {
+  const pattern = workspaceImports[name]
+  return pattern ? [pattern] : []
+}
+
+const packageOverrides = Object.keys(workspaceImports).map<Override>((name) => ({
+  files: [`packages/${name}/src/**/*.{ts,tsx}`],
+  rules: {
+    "no-restricted-imports": ["error", { patterns: packageImports(name) }],
+  },
+}))
+
 const domainDefaults = Object.keys(dependencies).map<Override>((name) => ({
   files: [`packages/${name}/src/lib/**/*.{ts,tsx}`],
   rules: {
@@ -87,6 +116,7 @@ const domainDefaults = Object.keys(dependencies).map<Override>((name) => ({
       "error",
       {
         patterns: [
+          ...packageImports(name),
           {
             group: [...publicEntries, "#lib/**"],
             message: "Declare the domain and its dependencies in oxlint.config.ts.",
@@ -105,6 +135,7 @@ const domainOverrides = Object.entries(dependencies).flatMap(([name, domains]) =
         "error",
         {
           patterns: [
+            ...packageImports(name),
             { group: publicEntries, message: "lib must not import a public entry point." },
             {
               group: [
@@ -237,6 +268,7 @@ export default defineConfig({
         ],
       },
     },
+    ...packageOverrides,
     ...domainDefaults,
     ...domainOverrides,
     ...["hooks", "integrations"].map<Override>((unit) => ({

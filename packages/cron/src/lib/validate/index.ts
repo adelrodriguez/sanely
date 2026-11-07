@@ -1,12 +1,11 @@
+import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
 import type { DaySet, Kind, Schedule, ScheduleOf, Time, Window } from "#lib/schedule/index.ts"
 import type { Path } from "#lib/schedule/rules.ts"
 import type { DayOfMonth, HourInterval, MinuteInterval, Weekday } from "#lib/vocabulary/words.ts"
 import { fail, show, toHourInterval, toMinuteInterval, toWindow } from "#lib/schedule/rules.ts"
 import {
   DAY_GROUP_NAMES,
-  HOURS_PER_DAY,
   LAST_DAY_OF_MONTH,
-  MINUTES_PER_HOUR,
   formatChoices,
   isDayGroup,
   isDayOfMonth,

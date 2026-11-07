@@ -1,3 +1,4 @@
+import { UNITS } from "@sanely/core/time"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import {
@@ -13,7 +14,6 @@ import {
 } from "#lib/convert/index.ts"
 import { InvalidTimeExpressionError } from "#lib/expression/errors.ts"
 import { parse } from "#lib/expression/parse.ts"
-import { UNITS } from "#lib/units/table.ts"
 
 describe("convert", () => {
   it("should convert generated expressions from unit definitions", () => {

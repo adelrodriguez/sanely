@@ -1,3 +1,4 @@
+import { getUnitMs, UNITS } from "@sanely/core/time"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import {
@@ -8,7 +9,6 @@ import {
   MS_PER_YEAR,
   parse,
 } from "#index.ts"
-import { getUnitMs, UNITS } from "#lib/units/table.ts"
 
 const finiteMilliseconds = fc.double({
   max: 10 * MS_PER_YEAR,

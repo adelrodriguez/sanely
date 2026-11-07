@@ -10,7 +10,27 @@ Use the package's contributor guide for its runtime behavior and tests.
 3. To change what every new package starts with, edit `turbo/generators/templates/scaffolds/new-package/`.
 
 The generator uses the same starter as the keel template.
-Each package lives in `packages/<name>` and publishes as `@sanely/<name>`.
+Each library lives in `packages/<name>` and publishes as `@sanely/<name>`.
+The shared `@sanely/core` workspace stays private.
+
+## Share internal code
+
+Put definitions used by more than one library in `packages/core`, under the domain that owns them.
+Export each domain through a named subpath, such as `@sanely/core/time`.
+Core does not import a library package or use third-party runtime dependencies.
+
+To use core in a library:
+
+1. Add `@sanely/core` to the library's `devDependencies` with `workspace:*`.
+2. Import an exported domain subpath and add it to the package's allowed imports in `oxlint.config.ts`.
+3. Add the imported core subpaths, such as `@sanely/core/time`, to `deps.alwaysBundle` in its tsdown configuration.
+4. Set `deps.onlyBundle` and `deps.onlyImport` to `[]` to reject bundled third-party packages and external package imports, including declarations.
+5. Run `build:verify` to check the packed library in an isolated consumer.
+
+Turborepo builds core before its consumers, including when starting development watchers.
+Published libraries contain the shared implementation and declarations.
+They do not declare core as a runtime dependency, because npm cannot install a private workspace.
+See the [core architecture](packages/core/docs/architecture.md) for ownership and dependency boundaries.
 
 ## Change workspace configuration
 
@@ -39,6 +59,9 @@ CI runs each package's compatibility script on the Node.js floor in its `engines
 1. Add a changeset when a change affects users of a published package. Skip internal refactors, test changes, and documentation cleanup.
 2. Create the entry with `pnpm exec changeset --empty`, then describe the change and select its package version bump.
 3. Use a major bump only when the user requests it. Alert the user if a breaking change affects a package at version `1.0.0` or higher.
+
+When a core change affects consumers, add a changeset for each affected published library.
+Core is private and has no release of its own; its bundled consumers need new versions to ship the change.
 
 For a package's first publication, follow [Add a package](README.md#add-a-package).
 New packages start private at `0.0.1`. Remove `private` without a changeset when the package is ready.

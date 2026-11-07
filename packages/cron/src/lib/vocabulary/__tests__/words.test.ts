@@ -1,4 +1,3 @@
-import { MS_PER_HOUR, MS_PER_MINUTE, safeParse } from "@sanely/duration"
 import { describe, expect, it } from "vitest"
 import {
   DAY_GROUPS,
@@ -6,7 +5,6 @@ import {
   HOUR_INTERVALS,
   LAST_DAY_OF_MONTH,
   MINUTE_INTERVALS,
-  UNITS,
   WEEKDAYS,
   formatChoices,
   getOrdinalSuffix,
@@ -18,44 +16,6 @@ import {
   isWeekday,
   isWindowEnd,
 } from "#lib/vocabulary/words.ts"
-
-// Every unit alias in the `@sanely/duration` unit table.
-const DURATION_ALIASES = [
-  "years",
-  "year",
-  "yrs",
-  "yr",
-  "y",
-  "months",
-  "month",
-  "mo",
-  "weeks",
-  "week",
-  "w",
-  "days",
-  "day",
-  "d",
-  "hours",
-  "hour",
-  "hrs",
-  "hr",
-  "h",
-  "minutes",
-  "minute",
-  "mins",
-  "min",
-  "m",
-  "seconds",
-  "second",
-  "secs",
-  "sec",
-  "s",
-  "milliseconds",
-  "millisecond",
-  "msecs",
-  "msec",
-  "ms",
-]
 
 describe("WEEKDAYS", () => {
   it("should list the days in calendar order, Monday first", () => {
@@ -115,39 +75,6 @@ describe("intervals", () => {
 
   it("should stop the days of the month at the last day that occurs in every month", () => {
     expect(LAST_DAY_OF_MONTH).toBe(28)
-  })
-})
-
-describe("UNITS", () => {
-  it("should map the minute and hour aliases to their unit", () => {
-    expect(UNITS.map((unit) => [unit.plural, unit.aliases])).toEqual([
-      ["minutes", ["minutes", "minute", "mins", "min", "m"]],
-      ["hours", ["hours", "hour", "hrs", "hr", "h"]],
-    ])
-  })
-
-  it("should give each alias exactly one unit", () => {
-    const aliases = UNITS.flatMap((unit) => unit.aliases)
-
-    expect(new Set(aliases).size).toBe(aliases.length)
-  })
-
-  const unitByAlias: ReadonlyMap<string, string> = new Map(
-    UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit.plural] as const))
-  )
-
-  for (const alias of DURATION_ALIASES) {
-    it(`should give "${alias}" the same unit as @sanely/duration`, () => {
-      const milliseconds = safeParse(`2${alias}`)
-      expect(milliseconds).not.toBeNull()
-
-      expect(unitByAlias.get(alias) === "minutes").toBe(milliseconds === 2 * MS_PER_MINUTE)
-      expect(unitByAlias.get(alias) === "hours").toBe(milliseconds === 2 * MS_PER_HOUR)
-    })
-  }
-
-  it("should contain no alias that @sanely/duration does not have", () => {
-    expect([...unitByAlias.keys()].filter((alias) => !DURATION_ALIASES.includes(alias))).toEqual([])
   })
 })
 

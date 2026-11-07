@@ -12,7 +12,9 @@ Each package is its own context. A package gets its glossary at `packages/<name>
 - [`@sanely/cron`](./packages/cron/GLOSSARY.md): compiles an English-like schedule language to cron expressions
 - `@sanely/rpc`: calls procedures from a Standard Schema contract over any transport
 - [`@sanely/skew`](./packages/skew/GLOSSARY.md): detects stale clients after a deployment
+- [`@sanely/core`](./packages/core/GLOSSARY.md): shared time units and their aliases
 
 ## Relationships
 
-The packages do not depend on each other. A term means what the glossary of its package says, even when another package uses the same word.
+Cron and duration share time units and aliases from core. Core does not depend on either package.
+Other terms keep the meaning defined by the glossary of their package.

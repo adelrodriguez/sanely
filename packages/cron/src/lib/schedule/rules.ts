@@ -1,12 +1,6 @@
+import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
 import type { Hour, HourInterval, MinuteInterval, WindowEnd } from "#lib/vocabulary/words.ts"
-import {
-  HOUR_INTERVALS,
-  HOURS_PER_DAY,
-  MINUTE_INTERVALS,
-  MINUTES_PER_HOUR,
-  formatChoices,
-  isOneOf,
-} from "#lib/vocabulary/words.ts"
+import { HOUR_INTERVALS, MINUTE_INTERVALS, formatChoices, isOneOf } from "#lib/vocabulary/words.ts"
 import type { Window } from "./index.ts"
 import { isWindow } from "./index.ts"
 

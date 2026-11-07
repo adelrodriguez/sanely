@@ -1,4 +1,4 @@
-import { UNIT_ALIASES } from "#lib/units/table.ts"
+import { UNIT_ALIASES } from "@sanely/core/time"
 
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")

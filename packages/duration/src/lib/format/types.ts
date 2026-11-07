@@ -1,4 +1,4 @@
-import type { UnitName } from "#lib/units/types.ts"
+import type { UnitName } from "@sanely/core/time"
 
 /**
  * Options for `format`.
