@@ -25,7 +25,7 @@
     "release": "changeset publish",
     "test": "pnpm run test:rules && turbo run test",
     "test:compat": "turbo run test:compat",
-    "test:rules": "node --test .adamantite/rules/__tests__/*.test.ts",
+    "test:rules": "node --test __tests__/oxlint.config.test.ts .adamantite/rules/__tests__/*.test.ts",
     "version": "changeset version && pnpm run fix"
   },
   "devDependencies": {

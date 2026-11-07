@@ -1,5 +1,5 @@
 {
   "extends": "@tooling/tsconfig/base.json",
-  "include": ["scripts", "turbo", ".adamantite/rules", "*.config.ts"],
+  "include": ["scripts", "turbo", ".adamantite/rules", "__tests__", "*.config.ts"],
   "exclude": ["node_modules", ".packref"]
 }

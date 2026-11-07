@@ -239,6 +239,22 @@ export default defineConfig({
     },
     ...domainDefaults,
     ...domainOverrides,
+    ...["hooks", "integrations"].map<Override>((unit) => ({
+      files: [`packages/flags/src/${unit}/**/*.{ts,tsx}`],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: [...publicEntries, `!#${unit}/**`],
+                message: `${unit} imports only its own modules and library domains.`,
+              },
+            ],
+          },
+        ],
+      },
+    })),
     // Dependencies inside `packages/ratelimit/src/lib` point one way, as its docs/architecture.md
     // describes:
     //
