@@ -32,6 +32,29 @@ export class ParseError extends Error {
   }
 }
 
+// `JSON.stringify` returns `undefined` for `undefined`, a function, and a symbol, but its type
+// is `string`.
+function toJson(value: unknown): string | undefined {
+  return JSON.stringify(value)
+}
+
+/**
+ * A value as text for a reason or a message, such as `"weekday"`, `25`, or `{"hour":9}`. A value
+ * that cannot become JSON or a string, such as an object with a broken `toString`, still gives a
+ * text.
+ */
+export function show(value: unknown): string {
+  try {
+    return toJson(value) ?? String(value)
+  } catch {
+    try {
+      return String(value)
+    } catch {
+      return Object.prototype.toString.call(value)
+    }
+  }
+}
+
 /**
  * Stop with a reason.
  */

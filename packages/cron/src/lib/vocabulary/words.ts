@@ -186,9 +186,9 @@ export function getOrdinalSuffix(day: number): string {
 }
 
 /**
- * Format a list of numbers the way the reasons in error messages do: `2, 3, or 4`.
+ * Format a list of choices the way the reasons in error messages do: `2 or 3`, `2, 3, or 4`.
  */
-export function formatChoices(values: readonly number[]): string {
-  const head = values.slice(0, -1).join(", ")
-  return `${head}, or ${values.at(-1)}`
+export function formatChoices(values: ReadonlyArray<number | string>): string {
+  if (values.length <= 2) return values.join(" or ")
+  return `${values.slice(0, -1).join(", ")}, or ${values.at(-1)}`
 }

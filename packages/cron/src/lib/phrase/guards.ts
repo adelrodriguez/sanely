@@ -1,6 +1,6 @@
 import type { CronPhrase } from "#lib/schedule/schedule.ts"
 import { parsePhrase } from "#lib/grammar/grammar.ts"
-import { parseLenient } from "./parse"
+import { safeParse } from "./parse"
 
 /**
  * Check whether a value is a cron phrase in the strict form, without throwing.
@@ -16,13 +16,8 @@ export function isCronPhrase(value: string): value is CronPhrase {
 }
 
 /**
- * Check whether `parse` accepts a value (strict form or lenient form), without throwing.
+ * Check whether `parse` accepts a string (strict form or lenient form), without throwing.
  */
 export function isValidCronPhrase(value: string): boolean {
-  try {
-    parseLenient(value)
-    return true
-  } catch {
-    return false
-  }
+  return typeof value === "string" && safeParse(value) !== null
 }

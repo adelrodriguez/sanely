@@ -15,7 +15,10 @@ import {
 const hourArb = fc.integer({ max: 23, min: 0 }).filter((value) => isHour(value))
 const minuteArb = fc.integer({ max: 59, min: 0 }).filter((value) => isMinute(value))
 
-export const timeArb: fc.Arbitrary<Time> = fc.record({ hour: hourArb, minute: minuteArb })
+export const timeArb: fc.Arbitrary<Time> = fc.record(
+  { hour: hourArb, minute: minuteArb },
+  { noNullPrototype: true }
+)
 
 // A window on whole hours. The end is not included, and 24 is the end of the day.
 export const windowArb: fc.Arbitrary<Window> = hourArb.chain((from) =>
@@ -48,17 +51,21 @@ export const scheduleArb: fc.Arbitrary<Schedule> = fc.oneof(
       interval: fc.constantFrom(...MINUTE_INTERVALS),
       on: daySetArb,
     },
-    { requiredKeys: ["every"] }
+    { noNullPrototype: true, requiredKeys: ["every"] }
   ),
   fc.record(
     { every: fc.constant("hour"), interval: fc.constantFrom(...HOUR_INTERVALS), on: daySetArb },
-    { requiredKeys: ["every"] }
+    { noNullPrototype: true, requiredKeys: ["every"] }
   ),
   fc.record(
     { at: timeArb, every: fc.constant("day"), on: daySetArb },
     {
+      noNullPrototype: true,
       requiredKeys: ["at", "every"],
     }
   ),
-  fc.record({ at: timeArb, day: dayOfMonthArb, every: fc.constant("month") })
+  fc.record(
+    { at: timeArb, day: dayOfMonthArb, every: fc.constant("month") },
+    { noNullPrototype: true }
+  )
 )
