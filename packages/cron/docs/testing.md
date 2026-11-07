@@ -12,6 +12,7 @@ Property tests check exact run times, canonical phrase round trips, and JSON sch
 Keep the grammar table shared between runtime tests and public type assertions.
 
 The package's `test:types-perf` script checks both phrase literals and typed schedule objects.
+Run `pnpm turbo run test:types-perf --filter @sanely/cron` to build workspace dependencies before the check.
 Run this check separately from builds and tests, because concurrent work can exceed its time budget.
 `build:verify` checks the packed runtime and declarations. `test:compat` loads built exports, and CI runs it on the package's Node.js floor.
 

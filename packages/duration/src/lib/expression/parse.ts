@@ -1,4 +1,4 @@
-import { getUnitMs } from "#lib/units/table.ts"
+import { getUnitMs } from "@sanely/core/time"
 import { InvalidTimeExpressionError } from "./errors"
 import { LENIENT_UNIT_PATTERN, NUMBER_PATTERN } from "./grammar"
 

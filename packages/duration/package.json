@@ -51,6 +51,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@sanely/core": "workspace:*",
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",

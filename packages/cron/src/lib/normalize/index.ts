@@ -1,11 +1,14 @@
-import { DAY_GROUPS, DAYS, UNITS } from "#lib/vocabulary/words.ts"
+import { UNITS } from "@sanely/core/time"
+import { DAY_GROUPS, DAYS } from "#lib/vocabulary/words.ts"
+
+const INTERVAL_UNITS = UNITS.filter((unit) => unit.long === "minute" || unit.long === "hour")
 
 const DAY_BY_ALIAS: ReadonlyMap<string, string> = new Map(
   Object.entries(DAYS).flatMap(([name, day]) => day.aliases.map((alias) => [alias, name] as const))
 )
 
-const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof UNITS)[number]> = new Map(
-  UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
+const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof INTERVAL_UNITS)[number]> = new Map(
+  INTERVAL_UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
 )
 
 const GROUP_BY_WORD: ReadonlyMap<string, { readonly plural: string; readonly singular: string }> =
@@ -29,7 +32,7 @@ function splitAttachedUnit(token: string): string[] {
 // spelling variants: the word before them selects the form that the strict form uses.
 function mapWord(word: string, previous: string | undefined): string {
   const unit = UNIT_BY_ALIAS.get(word)
-  if (unit) return previous === "every" ? unit.singular : unit.plural
+  if (unit) return previous === "every" ? unit.long : unit.longPlural
 
   const group = GROUP_BY_WORD.get(word)
   if (group && previous === "every") return group.singular

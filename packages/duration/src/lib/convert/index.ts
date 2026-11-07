@@ -1,7 +1,6 @@
+import { getUnitByName, type UnitName } from "@sanely/core/time"
 import type { TimeExpression } from "#lib/expression/types.ts"
-import type { UnitName } from "#lib/units/types.ts"
 import { parse } from "#lib/expression/parse.ts"
-import { getUnitByName } from "#lib/units/table.ts"
 
 /**
  * Parse a time expression string and convert the result into the given unit.

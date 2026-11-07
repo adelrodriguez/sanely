@@ -59,6 +59,10 @@ Explanation:
 
 - [About the forms of a time expression](docs/explanation/about-time-expression-forms.md)
 
+## Contributing
+
+Read the [architecture](docs/architecture.md), [testing guide](docs/testing.md), and root [contributor guide](../../CONTRIBUTING.md) before changing the package.
+
 ## License
 
 MIT. See [LICENSE](../../LICENSE).

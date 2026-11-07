@@ -50,7 +50,7 @@ export type Milliseconds = AliasesOf<"millisecond">
 export type Unit = UnitRow["aliases"][number]
 
 /**
- * Canonical unit name (long plural), used by `convert` and the `units` format option.
+ * Canonical unit name (long plural).
  */
 export type UnitName = UnitRow["longPlural"]
 

@@ -1,5 +1,4 @@
-import type { UnitName } from "#lib/units/types.ts"
-import { getUnitByName, UNITS, type UnitDefinition } from "#lib/units/table.ts"
+import { getUnitByName, UNITS, type UnitDefinition, type UnitName } from "@sanely/core/time"
 import type { FormatOptions } from "./types.ts"
 
 interface Segment {

@@ -10,6 +10,7 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/verify-build.ts"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
@@ -19,6 +20,10 @@
     "test:compat": {
       "dependsOn": ["build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/compat-smoke.mjs"]
+    },
+    "test:types-perf": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   },
   "ui": "tui"

@@ -1,4 +1,4 @@
-import type { UnitAnyCase } from "#lib/units/types.ts"
+import type { UnitAnyCase } from "@sanely/core/time"
 
 /**
  * A single time expression in strict form: a bare number (interpreted as milliseconds), or a number

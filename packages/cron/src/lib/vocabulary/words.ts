@@ -1,3 +1,5 @@
+import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
+
 /**
  * The day names in calendar order, Monday first.
  */
@@ -64,9 +66,6 @@ export const DAY_GROUP_NAMES: readonly DayGroup[] = Object.keys(DAY_GROUPS).filt
  */
 export type SingularDayGroup = (typeof DAY_GROUPS)[DayGroup]["singular"]
 
-export const MINUTES_PER_HOUR = 60
-export const HOURS_PER_DAY = 24
-
 /**
  * The last day of the month that a schedule can use. Days 29 to 31 do not occur in every month.
  */
@@ -124,16 +123,6 @@ export type DayOfMonth = Exclude<Enumerate<29>, 0>
 export const SHORTCUTS = ["hourly", "daily", "weekly", "monthly"] as const
 
 export type Shortcut = (typeof SHORTCUTS)[number]
-
-/**
- * Interval units and their aliases. The aliases are a copy of the minute and hour rows of the
- * `@sanely/duration` unit table, so that an alias never means different units in the two packages.
- * The singular word follows `every`, and the plural word follows a number.
- */
-export const UNITS = [
-  { aliases: ["minutes", "minute", "mins", "min", "m"], plural: "minutes", singular: "minute" },
-  { aliases: ["hours", "hour", "hrs", "hr", "h"], plural: "hours", singular: "hour" },
-] as const
 
 /**
  * Check that a value is one of a list of values.
