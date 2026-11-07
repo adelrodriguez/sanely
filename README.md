@@ -8,6 +8,8 @@
 
 Sanely is a pnpm and Turborepo monorepo for the `@sanely/*` libraries. Each package starts from the [keel](https://github.com/adelrodriguez/keel) library template, with tsdown, vitest, and Changesets. Adamantite and Packref are set up at the root.
 
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for workspace changes and releases, and [CODING_STANDARDS.md](CODING_STANDARDS.md) for decisions that need human review.
+
 ## Packages
 
 Migrated packages contain their source libraries. The other packages still contain the starter.
@@ -34,8 +36,8 @@ Migrated packages contain their source libraries. The other packages still conta
 
 ## Layout
 
-- `packages/<name>/src/index.ts` exports the public API of a package. Everything else stays internal.
-- `src/lib/` holds the library logic in folders whose imports point one way. `oxlint.config.ts` enforces the direction with `no-restricted-imports`.
+- Package source entry points correspond to the exports in `package.json`. See the [package structure reference](docs/agents/package-structure.md) for source and test ownership.
+- `src/lib/` holds the library logic. Oxlint checks its declared dependency direction with `no-restricted-imports`.
 - Code imports with `#` subpath imports, such as `#lib/shared/errors.ts`.
 - Tests sit in a `__tests__/` folder beside the file they test, with the same name. `src/__tests__/types.test-d.ts` tests the public types with `expectTypeOf`.
 - `scripts/` holds the build checks that every package shares, and `setup-repo.sh`, which creates or updates the `main` ruleset on GitHub.

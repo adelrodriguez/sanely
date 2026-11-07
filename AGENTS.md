@@ -1,77 +1,14 @@
 # AGENTS.md
 
-Use ASD-STE100 Simplified Technical English for all communication.
+Before you explore or change code, read [domain guidance](docs/agents/domain.md) and the relevant package `GLOSSARY.md` files.
 
-Before you explore or change code, read the relevant `GLOSSARY.md` files. Use the
-ubiquitous language in these files.
+Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before you write or review code and documentation.
 
-## Workspace
+## Read for the task
 
-- Before you add or move source or tests, read `docs/agents/package-structure.md`.
-- Each package lives in `packages/<name>` and publishes as `@sanely/<name>`.
-- Run `pnpm run generate new-package` to add a package. The Turborepo generator renders the
-  starter in `turbo/generators/templates/scaffolds/new-package/`, which has the same example as
-  the keel template. Replace the example in `src/` with the library. To change what every new
-  package starts with, edit those templates.
-- Every package starts at version `0.0.1` and is private, so Changesets does not publish it.
-  When the package is ready to publish, remove `private` from its `package.json` without a
-  changeset. npm accepts a trusted publisher only for a package that exists, so the user must
-  publish `0.0.1` by hand and then make `release.yml` its trusted publisher. The README gives
-  the commands. After that, `release.yml` publishes each new version.
-- A package can keep its own build and compatibility checks in `packages/<name>/scripts/`. Its
-  `build:verify` and `test:compat` scripts then run those checks instead of the shared ones in
-  `scripts/`. CI runs each package's `test:compat` on the floor in its `engines.node`.
-- Turborepo runs `build`, `test`, `test:compat`, and `build:verify` in each package and caches
-  the results. Run them from the root, such as `pnpm run test`, or for one package with
-  `pnpm turbo run test --filter @sanely/try`.
-- Adamantite runs once over the whole repository. Put rules for one package in an
-  `overrides` entry in `oxlint.config.ts` with a `packages/<name>/` glob.
-- A package's `tsconfig.json` only extends `@tooling/tsconfig/library.json`. Change compiler
-  options in `tooling/tsconfig/`, not in a package.
-- Packages share tool versions through the catalog in `pnpm-workspace.yaml`. Use `catalog:` for
-  a tool that every package uses.
-
-## Agent skills
-
-### Issue tracker
-
-Issues and PRDs are tracked as GitHub issues at `adelrodriguez/sanely`. See
-`docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Use the multi-context domain-doc layout, with one context for each package. See `docs/agents/domain.md`.
-
-## Changesets
-
-- Use Changesets for versioning and changelog management.
-- Run `pnpm exec changeset --empty` to create an empty changeset.
-- Do not make a major version bump unless the user requests it.
-- If a change is breaking and the package is at version 1.0.0 or higher, alert the user.
-
-<!-- ADAMANTITE:START -->
-
-## Adamantite
-
-This project uses Adamantite for its managed formatting, linting, type checking, and dependency-analysis setup.
-
-- Prefer the package scripts Adamantite added for this workspace.
-- Run `pnpm run check` to catch formatting, lint, and type issues. Direct command: `adamantite check`.
-- Run `pnpm run fix` to apply safe lint fixes and format code. Direct command: `adamantite fix`.
-- Run `pnpm run analyze` after changing dependencies, imports, or exports. It also checks monorepo package consistency. Direct command: `adamantite analyze`.
-- Write project-specific lint rules in `.adamantite/rules/`, one rule for each file. Run `adamantite rule add <name>` to start a rule with its authoring guidance.
-- Run `adamantite doctor` and follow its findings to repair managed setup.
-
-<!-- ADAMANTITE:END -->
-
-<!-- PACKREF:START -->
-
-## Packref
-
-Use Packref when you need to inspect a dependency's exact source implementation or compare referenced versions; read the local `packref` skill, or install it with `npx -y skills add https://github.com/adelrodriguez/packref/tree/v0.3.7 --skill packref --yes`.
-Run `remove`, `prune`, `clean`, or `clean --global` only when the user requests that removal scope, because these commands delete state.
-<!-- PACKREF:END -->
+- Before you add or move source or tests, read [package structure](docs/agents/package-structure.md).
+- Before you change workspace configuration, build checks, or compatibility checks, read [CONTRIBUTING.md](CONTRIBUTING.md).
+- Before you add a package or prepare a release, read [release guidance](CONTRIBUTING.md#prepare-a-release).
+- Before you run checks, write custom lint rules, or inspect dependency source, read [tooling guidance](docs/agents/tooling.md).
+- For GitHub issues and PRDs, read [issue tracker guidance](docs/agents/issue-tracker.md).
+- Before you assign triage labels, read [triage labels](docs/agents/triage-labels.md).

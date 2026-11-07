@@ -26,4 +26,4 @@ Run these commands before you open a pull request. CI runs the same commands.
 
 ## Add a changeset
 
-Add a changeset when your change affects package users. See the Changesets section of the root [`AGENTS.md`](../../AGENTS.md).
+Add a changeset when your change affects package users. See the root [release guidance](../../CONTRIBUTING.md#prepare-a-release).

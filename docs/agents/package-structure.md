@@ -17,8 +17,8 @@ Use `./` for imports within a folder and full `#` paths for imports across folde
 The `project/source-imports` rule applies this convention to imports, re-exports, and literal dynamic imports.
 Its safe fix resolves the source file before it changes the path.
 Implementation modules must not import public entry points.
-The domain declarations in the root `oxlint.config.ts` own the permitted dependencies, including type imports.
-Add the package and its domain dependencies there when you add a package or domain.
+Declare permitted domain dependencies in the Oxlint configuration that applies to the package, including type imports.
+Update those declarations when you add a package or domain.
 
 ## Tests and benchmarks
 
@@ -39,7 +39,7 @@ The rule's fixtures run through the root `test:rules` script and are part of the
 ## Documentation
 
 Keep package source ownership in `docs/architecture.md` and package test requirements in `docs/testing.md`.
-Link to these pages from contributor guidance. Keep the package glossary focused on domain language.
+Link to these pages from contributor guidance. See [coding standards](../../CODING_STANDARDS.md) for glossary content.
 
 The README introduces the package and links to consumer documentation.
 Use `docs/reference.md` for an API reference or an index of larger reference pages.

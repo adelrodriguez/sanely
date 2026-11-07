@@ -89,7 +89,7 @@ Follow the [testing guide](docs/testing.md).
 
 ## Add a changeset
 
-Add a changeset when your change affects package users. See the Changesets section of the root [`AGENTS.md`](../../AGENTS.md).
+Add a changeset when your change affects package users. See the root [release guidance](../../CONTRIBUTING.md#prepare-a-release).
 
 ## Report a problem
 
