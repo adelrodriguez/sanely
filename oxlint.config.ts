@@ -12,6 +12,10 @@ export default defineConfig({
   },
   overrides: [
     {
+      files: ["packages/duration/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
+    {
       files: ["packages/cron/src/__tests__/types.test-d.ts"],
       rules: { "no-lone-blocks": "off" },
     },
