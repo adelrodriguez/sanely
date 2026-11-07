@@ -2,7 +2,6 @@ import type { ValidateCronPhrase } from "#lib/grammar/types.ts"
 import type { CronExpression, Schedule } from "#lib/schedule/schedule.ts"
 import { toFields } from "#lib/fields/fields.ts"
 import { serialize } from "#lib/serialize/serialize.ts"
-import { InvalidCronPhraseError } from "./errors"
 import { parseLenient } from "./parse"
 
 /**
@@ -20,14 +19,11 @@ import { parseLenient } from "./parse"
  * @param input - A `Schedule`, or a cron phrase in the strict form
  *
  * @returns The cron expression
+ * @throws {InvalidScheduleError} If a phrase is not valid at runtime
  */
 export function cron<const T extends string | Schedule>(
   input: T extends string ? ValidateCronPhrase<T> : Schedule
 ): CronExpression {
   const value: string | Schedule = input
-  if (typeof value !== "string") return serialize(toFields(value))
-
-  const result = parseLenient(value)
-  if (!result.ok) throw new InvalidCronPhraseError(value, result.reason)
-  return serialize(result.fields)
+  return serialize(toFields(typeof value === "string" ? parseLenient(value) : value))
 }

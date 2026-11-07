@@ -10,7 +10,7 @@ import {
   type DaySet,
   HOUR_INTERVALS,
   type HourInterval,
-  InvalidCronPhraseError,
+  InvalidScheduleError,
   isCronPhrase,
   isValidCronPhrase,
   MINUTE_INTERVALS,
@@ -347,16 +347,19 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(isValidCronPhrase).parameters.toEqualTypeOf<[value: string]>()
 }
 
-// InvalidCronPhraseError
+// InvalidScheduleError
 
-// Exposes the invalid input on InvalidCronPhraseError as readonly unknown.
+// Exposes the input, the reason, and the path on InvalidScheduleError, with a literal name.
 {
-  const error = new InvalidCronPhraseError("every 7 minutes", "7 does not divide 60")
+  const error = new InvalidScheduleError("every 7 minutes", "7 does not divide 60")
 
   expectTypeOf(error).toExtend<Error>()
+  expectTypeOf(error.name).toEqualTypeOf<"InvalidScheduleError">()
   expectTypeOf(error.value).toBeUnknown()
-  expectTypeOf(InvalidCronPhraseError).constructorParameters.toEqualTypeOf<
-    [value: unknown, reason: string]
+  expectTypeOf(error.reason).toEqualTypeOf<string>()
+  expectTypeOf(error.path).toEqualTypeOf<ReadonlyArray<string | number>>()
+  expectTypeOf(InvalidScheduleError).constructorParameters.toEqualTypeOf<
+    [value: unknown, reason: string, path?: ReadonlyArray<string | number>]
   >()
 }
 
@@ -539,13 +542,13 @@ function _negativeTypeTests() {
   // @ts-expect-error -- isValidCronPhrase takes a string
   isValidCronPhrase(null)
 
-  const error = new InvalidCronPhraseError("every 7 minutes", "7 does not divide 60")
+  const error = new InvalidScheduleError("every 7 minutes", "7 does not divide 60")
 
   // @ts-expect-error -- value is readonly
   error.value = "every 15 minutes"
 
   // @ts-expect-error -- the reason is required
-  void new InvalidCronPhraseError("every 7 minutes")
+  void new InvalidScheduleError("every 7 minutes")
 }
 
 // Suppress unused function warning — this exists only for type checking
