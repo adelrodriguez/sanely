@@ -1,16 +1,20 @@
 import { DAY_GROUPS, DAYS, UNITS } from "#lib/vocabulary/words.ts"
 
 const DAY_BY_ALIAS: ReadonlyMap<string, string> = new Map(
-  DAYS.flatMap((day) => day.aliases.map((alias) => [alias, day.name] as const))
+  Object.entries(DAYS).flatMap(([name, day]) => day.aliases.map((alias) => [alias, name] as const))
 )
 
 const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof UNITS)[number]> = new Map(
   UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
 )
 
-const GROUP_BY_WORD: ReadonlyMap<string, (typeof DAY_GROUPS)[number]> = new Map(
-  DAY_GROUPS.flatMap((group) => [[group.singular, group] as const, [group.plural, group] as const])
-)
+const GROUP_BY_WORD: ReadonlyMap<string, { readonly plural: string; readonly singular: string }> =
+  new Map(
+    Object.entries(DAY_GROUPS).flatMap(([plural, { singular }]) => {
+      const group = { plural, singular }
+      return [[singular, group] as const, [plural, group] as const]
+    })
+  )
 
 // A number with a unit alias and no space, such as "15m".
 const ATTACHED_UNIT_RE = /^(\d+)([a-z]+)$/

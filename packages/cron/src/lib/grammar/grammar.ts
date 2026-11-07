@@ -1,50 +1,45 @@
-import type { Schedule } from "#lib/schedule/schedule.ts"
-import type { Shortcut } from "#lib/vocabulary/types.ts"
-import { createSchedule, range } from "#lib/schedule/schedule.ts"
+import type { DaySet, Schedule, ScheduleOf, Time } from "#lib/schedule/schedule.ts"
+import type { DayGroup, Shortcut, Weekday } from "#lib/vocabulary/words.ts"
+import { fail, toHourInterval, toMinuteInterval, toWindow } from "#lib/schedule/rules.ts"
 import {
+  DAY_GROUP_NAMES,
   DAY_GROUPS,
-  DAYS,
-  HOUR_INTERVALS,
-  MAX_ORDINAL,
-  MINUTE_INTERVALS,
-  formatChoices,
+  LAST_DAY_OF_MONTH,
+  WEEKDAYS,
   getOrdinalSuffix,
+  isDayGroup,
+  isDayOfMonth,
+  isHour,
+  isMinute,
+  isNonEmpty,
+  isWeekday,
 } from "#lib/vocabulary/words.ts"
-
-/**
- * The result of a parse: a schedule, or a reason that names the part of the phrase that failed.
- */
-export type GrammarResult =
-  | { readonly ok: true; readonly schedule: Schedule }
-  | { readonly ok: false; readonly reason: string }
-
-interface ClockTime {
-  readonly hour: number
-  readonly minute: number
-}
 
 const TIME_FORMATS = "Use H:MM or HH:MM (24-hour), H:MMam or H:MMpm, noon, or midnight"
 
+const MIDNIGHT: Time = { hour: 0, minute: 0 }
+
 // A Map, so that a lookup never finds a member of `Object.prototype`, such as "constructor". The
 // `satisfies` check gives every shortcut a schedule and accepts no other key.
-const SHORTCUT_SCHEDULES: ReadonlyMap<string, Partial<Schedule>> = new Map(
+const SHORTCUT_SCHEDULES: ReadonlyMap<string, Schedule> = new Map(
   Object.entries({
-    daily: { hour: [0], minute: [0] },
-    hourly: { minute: [0] },
-    monthly: { dayOfMonth: [1], hour: [0], minute: [0] },
-    weekly: { dayOfWeek: [0], hour: [0], minute: [0] },
-  } satisfies Record<Shortcut, Partial<Schedule>>)
+    daily: { at: MIDNIGHT, every: "day" },
+    hourly: { every: "hour" },
+    monthly: { at: MIDNIGHT, day: 1, every: "month" },
+    weekly: { at: MIDNIGHT, every: "day", on: ["sunday"] },
+  } satisfies Record<Shortcut, Schedule>)
 )
 
-const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUPS.map((group) => group.singular).join(", ")}, or ${DAY_GROUPS.map((group) => group.plural).join(", ")}`
+// The day group of each singular word, such as "weekdays" for "weekday".
+const GROUP_BY_SINGULAR: ReadonlyMap<string, DayGroup> = new Map(
+  DAY_GROUP_NAMES.map((name) => [DAY_GROUPS[name].singular, name])
+)
 
-class GrammarError extends Error {
-  override name = "GrammarError"
+function findDayGroup(word: string): DayGroup | undefined {
+  return isDayGroup(word) ? word : GROUP_BY_SINGULAR.get(word)
 }
 
-function fail(reason: string): never {
-  throw new GrammarError(reason)
-}
+const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUP_NAMES.map((name) => DAY_GROUPS[name].singular).join(", ")}, or ${DAY_GROUP_NAMES.join(", ")}`
 
 class Cursor {
   #index = 0
@@ -89,35 +84,35 @@ class Cursor {
   }
 }
 
-function parseInterval(token: string, unit: "minutes" | "hours"): number {
+// An interval of 1 and an interval of one full cycle have their own sentence shapes.
+const INTERVAL_WORDS = {
+  hours: { cycle: 24, next: "every day at midnight", single: "every hour" },
+  minutes: { cycle: 60, next: "every hour", single: "every minute" },
+} as const
+
+function parseIntervalNumber(token: string, unit: keyof typeof INTERVAL_WORDS): number {
   if (!/^[1-9]\d*$/.test(token)) {
     fail(`"${token}" is not a valid interval. Use a whole number without a leading zero`)
   }
 
   const value = Number(token)
-  const [cycle, intervals, single, next] =
-    unit === "minutes"
-      ? [60, MINUTE_INTERVALS, "every minute", "every hour"]
-      : [24, HOUR_INTERVALS, "every hour", "every day at midnight"]
-
-  if (intervals.includes(value)) return value
+  const { cycle, next, single } = INTERVAL_WORDS[unit]
   if (value === 1) fail(`use "${single}" for an interval of 1 ${unit.slice(0, -1)}`)
   if (value === cycle) fail(`use "${next}" for an interval of ${cycle} ${unit}`)
-
-  const choices = `Use ${formatChoices(intervals)}`
-  if (value < cycle) fail(`${token} does not divide ${cycle}. ${choices}`)
-  return fail(`${token} ${unit} has no exact single cron. ${choices}`)
+  return value
 }
 
-function parseTimeToken(token: string): ClockTime {
+function toTime(token: string, hour: number, minute: number): Time {
+  if (!isHour(hour) || !isMinute(minute)) fail(`"${token}" is not a valid time. ${TIME_FORMATS}`)
+  return { hour, minute }
+}
+
+function parseTimeToken(token: string): Time {
   if (token === "noon") return { hour: 12, minute: 0 }
   if (token === "midnight") return { hour: 0, minute: 0 }
 
   const clock = /^(\d{1,2}):([0-5]\d)$/.exec(token)
-  if (clock) {
-    const hour = Number(clock[1])
-    if (hour <= 23) return { hour, minute: Number(clock[2]) }
-  }
+  if (clock) return toTime(token, Number(clock[1]), Number(clock[2]))
 
   const meridiem = /^([1-9]|1[0-2]):([0-5]\d)(am|pm)$/.exec(token)
   if (meridiem) {
@@ -126,7 +121,7 @@ function parseTimeToken(token: string): ClockTime {
     if (hour === 12 && minute === 0) {
       fail(`"${token}" is ambiguous. Use ${meridiem[3] === "am" ? "midnight" : "noon"}`)
     }
-    return { hour: (hour % 12) + (meridiem[3] === "pm" ? 12 : 0), minute }
+    return toTime(token, (hour % 12) + (meridiem[3] === "pm" ? 12 : 0), minute)
   }
 
   if (/^\d{1,2}$/.test(token)) {
@@ -145,7 +140,7 @@ function parseTimeToken(token: string): ClockTime {
   return fail(`"${token}" is not a valid time. ${TIME_FORMATS}`)
 }
 
-function parseTime(cursor: Cursor): ClockTime {
+function parseTime(cursor: Cursor): Time {
   const before = cursor.before
   const token = cursor.next()
   if (token === undefined) fail(`expected a time after "${before}"`)
@@ -157,34 +152,34 @@ function formatDayList(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
 }
 
+const byCalendarOrder = (a: Weekday, b: Weekday) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b)
+
 // The checks follow the same steps as the type-level validator, so that the reasons agree: first
 // the day names, then duplicates, then the calendar order, and last the list format.
-function parseDayList(words: readonly string[]): number[] {
+function parseDayList(words: readonly string[], before: string): readonly [Weekday, ...Weekday[]] {
   const names = words
     .filter((word) => word !== "and")
     .map((word) => (word.endsWith(",") ? word.slice(0, -1) : word))
 
   for (const name of names) {
-    if (DAY_GROUPS.some((group) => group.singular === name || group.plural === name)) {
-      fail(`"${name}" cannot be part of a list of days`)
-    }
-    if (!DAYS.some((day) => day.name === name)) fail(`"${name}" is not a day. ${DAY_SET_HINT}`)
+    if (findDayGroup(name)) fail(`"${name}" cannot be part of a list of days`)
+    if (!isWeekday(name)) fail(`"${name}" is not a day. ${DAY_SET_HINT}`)
   }
 
-  const duplicate = names.find((name, index) => names.indexOf(name) !== index)
+  const days = names.filter((name) => isWeekday(name))
+  if (!isNonEmpty(days)) return fail(`expected a day set after "${before}"`)
+
+  const duplicate = days.find((day, index) => days.indexOf(day) !== index)
   if (duplicate) fail(`"${duplicate}" is in the list more than one time`)
 
-  const indexes = names.map((name) => DAYS.findIndex((day) => day.name === name))
-  const sorted = indexes.toSorted((a, b) => a - b)
-  if (sorted.some((index, position) => index !== indexes[position])) {
-    fail(
-      `list the days in calendar order, Monday first: "${formatDayList(sorted.map((index) => DAYS[index]?.name ?? ""))}"`
-    )
+  const sorted = days.toSorted(byCalendarOrder)
+  if (sorted.some((day, index) => day !== days[index])) {
+    fail(`list the days in calendar order, Monday first: "${formatDayList(sorted)}"`)
   }
 
-  if (words.join(" ") !== formatDayList(names)) fail(`write the list as "${formatDayList(names)}"`)
+  if (words.join(" ") !== formatDayList(days)) fail(`write the list as "${formatDayList(days)}"`)
 
-  return indexes.map((index) => DAYS[index]?.cron ?? 0)
+  return days
 }
 
 // A day set ends at the end of the phrase or at one of the stop words.
@@ -192,81 +187,85 @@ function parseDaySet(
   cursor: Cursor,
   context: "every" | "on",
   stopWords: readonly string[]
-): number[] {
+): DaySet {
   const before = cursor.before
   const words: string[] = []
   while (!cursor.done && !stopWords.includes(cursor.peek() ?? "")) words.push(cursor.next() ?? "")
 
   if (words.length === 0) fail(`expected a day set after "${before}"`)
 
-  const [only] = words
-  const group = DAY_GROUPS.find((entry) => entry.singular === only || entry.plural === only)
-  if (words.length === 1 && group) {
-    const expected = context === "every" ? group.singular : group.plural
+  const [only = ""] = words
+  const group = words.length === 1 ? findDayGroup(only) : undefined
+  if (group) {
+    const expected = context === "every" ? DAY_GROUPS[group].singular : group
     if (only !== expected) fail(`use "${expected}" after "${context}"`)
-    return [...group.cron]
+    return group
   }
 
-  return parseDayList(words)
+  return parseDayList(words, before)
 }
 
-function parseMinuteInterval(cursor: Cursor, interval: number): Partial<Schedule> {
-  const fields: { minute: number[]; hour?: number[]; dayOfWeek?: number[] } = {
-    minute: range(0, 59, interval),
+function parseOn(cursor: Cursor): { on?: DaySet } {
+  if (cursor.peek() !== "on") return {}
+  cursor.next()
+  return { on: parseDaySet(cursor, "on", ["at", "between"]) }
+}
+
+function parseWindow(cursor: Cursor): Pick<ScheduleOf<"minute">, "between"> {
+  if (cursor.peek() !== "between") return {}
+  cursor.next()
+
+  const startToken = cursor.peek() ?? ""
+  const start = parseTime(cursor)
+  cursor.expect("and")
+  const endToken = cursor.peek() ?? ""
+  const end = parseTime(cursor)
+
+  if (start.minute !== 0) {
+    fail(`the window must start and end on the hour, and "${startToken}" is not on the hour`)
   }
-  const atClause = `a minute interval cannot have an "at" clause. Use "between <time> and <time>" to limit it to a window`
-
-  if (cursor.peek() === "between") {
-    cursor.next()
-    const startToken = cursor.peek() ?? ""
-    const start = parseTime(cursor)
-    cursor.expect("and")
-    const endToken = cursor.peek() ?? ""
-    const end = parseTime(cursor)
-
-    if (start.minute !== 0)
-      fail(`the window must start and end on the hour, and "${startToken}" is not on the hour`)
-    if (end.minute !== 0)
-      fail(`the window must start and end on the hour, and "${endToken}" is not on the hour`)
-
-    // The end is not included. An end at midnight is the end of the day.
-    const endHour = end.hour === 0 ? 24 : end.hour
-    if (endHour <= start.hour) fail("the window must end after it starts")
-
-    fields.hour = range(start.hour, endHour - 1)
+  if (end.minute !== 0) {
+    fail(`the window must start and end on the hour, and "${endToken}" is not on the hour`)
   }
 
-  if (cursor.peek() === "on") {
-    cursor.next()
-    fields.dayOfWeek = parseDaySet(cursor, "on", ["at", "between"])
-    if (cursor.peek() === "between") fail(`the window clause must come before the "on" clause`)
+  // The end is not included. An end at midnight is the end of the day.
+  return { between: toWindow(start.hour, end.hour === 0 ? 24 : end.hour) }
+}
+
+function parseMinuteInterval(
+  cursor: Cursor,
+  interval: Pick<ScheduleOf<"minute">, "interval">
+): Schedule {
+  const between = parseWindow(cursor)
+  const on = parseOn(cursor)
+  if (on.on && cursor.peek() === "between") {
+    fail(`the window clause must come before the "on" clause`)
   }
 
-  if (cursor.peek() === "at") fail(atClause)
+  if (cursor.peek() === "at") {
+    fail(
+      `a minute interval cannot have an "at" clause. Use "between <time> and <time>" to limit it to a window`
+    )
+  }
   cursor.expectEnd()
-  return fields
+  return { every: "minute", ...interval, ...between, ...on }
 }
 
-function parseHourInterval(cursor: Cursor, interval: number): Partial<Schedule> {
-  const fields: { minute: number[]; hour: number[]; dayOfWeek?: number[] } = {
-    hour: range(0, 23, interval),
-    minute: [0],
-  }
-
+function parseHourInterval(
+  cursor: Cursor,
+  interval: Pick<ScheduleOf<"hour">, "interval">
+): Schedule {
   if (cursor.peek() === "between") fail("an hour interval cannot have a window")
 
-  if (cursor.peek() === "on") {
-    cursor.next()
-    fields.dayOfWeek = parseDaySet(cursor, "on", ["at", "between"])
-  }
+  const on = parseOn(cursor)
 
   if (cursor.peek() === "at") fail(`an hour interval cannot have an "at" clause`)
   if (cursor.peek() === "between") fail("an hour interval cannot have a window")
   cursor.expectEnd()
-  return fields
+  return { every: "hour", ...interval, ...on }
 }
 
-function parseAt(cursor: Cursor): ClockTime {
+function parseAt(cursor: Cursor): Time {
   if (cursor.done) fail(`expected "at <time>" after "${cursor.before}"`)
   cursor.expect("at")
   const time = parseTime(cursor)
@@ -274,13 +273,13 @@ function parseAt(cursor: Cursor): ClockTime {
   return time
 }
 
-function parseEvery(cursor: Cursor): Partial<Schedule> {
+function parseEvery(cursor: Cursor): Schedule {
   const token = cursor.peek()
   if (token === undefined) fail(`expected an interval, "day", or a day set after "every"`)
 
   if (token === "minute" || token === "hour") {
     cursor.next()
-    return token === "minute" ? parseMinuteInterval(cursor, 1) : parseHourInterval(cursor, 1)
+    return token === "minute" ? parseMinuteInterval(cursor, {}) : parseHourInterval(cursor, {})
   }
 
   if (token === "minutes" || token === "hours") {
@@ -289,8 +288,7 @@ function parseEvery(cursor: Cursor): Partial<Schedule> {
 
   if (token === "day") {
     cursor.next()
-    const { hour, minute } = parseAt(cursor)
-    return { hour: [hour], minute: [minute] }
+    return { at: parseAt(cursor), every: "day" }
   }
 
   if (/^[+-]?[\d.]/.test(token)) {
@@ -303,18 +301,17 @@ function parseEvery(cursor: Cursor): Partial<Schedule> {
       fail(`"${unit}" is not an interval unit. Use minutes or hours`)
     }
 
-    const interval = parseInterval(token, unit)
+    const value = parseIntervalNumber(token, unit)
     return unit === "minutes"
-      ? parseMinuteInterval(cursor, interval)
-      : parseHourInterval(cursor, interval)
+      ? parseMinuteInterval(cursor, { interval: toMinuteInterval(value) })
+      : parseHourInterval(cursor, { interval: toHourInterval(value) })
   }
 
-  const dayOfWeek = parseDaySet(cursor, "every", ["at"])
-  const { hour, minute } = parseAt(cursor)
-  return { dayOfWeek, hour: [hour], minute: [minute] }
+  const on = parseDaySet(cursor, "every", ["at"])
+  return { at: parseAt(cursor), every: "day", on }
 }
 
-function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
+function parseDayOfMonth(cursor: Cursor): Schedule {
   cursor.expect("the")
 
   const token = cursor.next()
@@ -322,9 +319,11 @@ function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
 
   const match = /^([1-9]\d*)(st|nd|rd|th)$/.exec(token)
   const day = Number(match?.[1])
-  if (!match || day > 31) fail(`"${token}" is not a day of the month. Use 1st to ${MAX_ORDINAL}th`)
-  if (day > MAX_ORDINAL) {
-    fail(`the ${token} does not occur in every month. Use 1st to ${MAX_ORDINAL}th`)
+  if (!match || day > 31) {
+    fail(`"${token}" is not a day of the month. Use 1st to ${LAST_DAY_OF_MONTH}th`)
+  }
+  if (!isDayOfMonth(day)) {
+    return fail(`the ${token} does not occur in every month. Use 1st to ${LAST_DAY_OF_MONTH}th`)
   }
   if (match[2] !== getOrdinalSuffix(day)) {
     fail(`"${token}" has the wrong suffix. Use "${day}${getOrdinalSuffix(day)}"`)
@@ -333,17 +332,17 @@ function parseDayOfMonth(cursor: Cursor): Partial<Schedule> {
   cursor.expect("of")
   cursor.expect("every")
   cursor.expect("month")
-  const { hour, minute } = parseAt(cursor)
-  return { dayOfMonth: [day], hour: [hour], minute: [minute] }
+  return { at: parseAt(cursor), day, every: "month" }
 }
 
-function parseTokens(cursor: Cursor): Partial<Schedule> {
+function parseTokens(cursor: Cursor): Schedule {
   const first = cursor.next() ?? ""
 
   const shortcut = SHORTCUT_SCHEDULES.get(first)
   if (shortcut) {
     cursor.expectEnd()
-    return shortcut
+    // A copy, so that a caller who changes the result does not change the table.
+    return structuredClone(shortcut)
   }
 
   if (first === "every") return parseEvery(cursor)
@@ -356,23 +355,15 @@ function parseTokens(cursor: Cursor): Partial<Schedule> {
 
 /**
  * Parse a cron phrase in the strict form.
+ *
+ * @throws {ParseError} With a reason that names the part of the phrase that failed
  */
-export function parseStrict(phrase: string): GrammarResult {
-  if (phrase === "") return { ok: false, reason: "the phrase is empty" }
-  if (phrase !== phrase.toLowerCase()) return { ok: false, reason: "use lowercase words" }
+export function parsePhrase(phrase: string): Schedule {
+  if (phrase === "") fail("the phrase is empty")
+  if (phrase !== phrase.toLowerCase()) fail("use lowercase words")
 
   const tokens = phrase.split(" ")
-  if (tokens.includes("")) {
-    return {
-      ok: false,
-      reason: "use one space between words, and no space at the start or the end",
-    }
-  }
+  if (tokens.includes("")) fail("use one space between words, and no space at the start or the end")
 
-  try {
-    return { ok: true, schedule: createSchedule(parseTokens(new Cursor(tokens))) }
-  } catch (error) {
-    if (error instanceof GrammarError) return { ok: false, reason: error.message }
-    throw error
-  }
+  return parseTokens(new Cursor(tokens))
 }

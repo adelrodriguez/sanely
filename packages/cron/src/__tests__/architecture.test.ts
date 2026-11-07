@@ -4,72 +4,23 @@ import { describe, expect, it } from "vitest"
 
 const LIB = join(import.meta.dirname, "..", "lib")
 
-// The lib folders in layers, from the bottom up. A folder imports only from the folders before it,
-// so that all dependencies point in one direction:
-//
-//   phrase      the public functions: cron, parse, safeParse, guards, and errors
-//   normalize   lenient form -> strict form
-//   grammar     strict form  -> schedule (and the type-level validator)
-//   serialize   schedule     -> standard cron expression
-//   schedule    the schedule model
-//   vocabulary  the words and slot types of the language
-//
-// The grammar does not know the cron format, and the serializer does not know the language.
-// `src/index.ts` re-exports the public API from `phrase` and the types. Nothing in lib imports from
-// outside lib.
-const LAYERS = ["vocabulary", "schedule", "serialize", "grammar", "normalize", "phrase"] as const
-
-const IMPORT_RE = /from\s+"([.#][^"]+)"/g
-
-function getModuleFiles(folder: string): string[] {
-  return readdirSync(join(LIB, folder)).filter((file) => file.endsWith(".ts"))
-}
-
-function getImports(folder: string, file: string): string[] {
-  const source = readFileSync(join(LIB, folder, file), "utf8")
-  return [...source.matchAll(IMPORT_RE)].map((match) => match[1] ?? "")
-}
-
-describe("module dependencies", () => {
-  it("has a layer for every lib folder", () => {
-    const folders = readdirSync(LIB, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-
-    expect(folders.toSorted()).toEqual([...LAYERS].toSorted())
-  })
-
+// The import direction between the lib folders is a lint rule: see the cron overrides in
+// oxlint.config.ts. This test checks only that each module sits in a lib folder.
+describe("lib folders", () => {
   it("has no files directly in lib", () => {
     const files = readdirSync(LIB, { withFileTypes: true }).filter((entry) => entry.isFile())
 
     expect(files.map((entry) => entry.name)).toEqual([])
   })
-
-  for (const [layer, folder] of LAYERS.entries()) {
-    const lower = LAYERS.slice(0, layer)
-
-    it(`${folder} imports only from ${lower.join(", ") || "itself"}`, () => {
-      for (const file of getModuleFiles(folder)) {
-        for (const specifier of getImports(folder, file)) {
-          expect(specifier, `${folder}/${file} imports from outside lib`).not.toMatch(
-            /^\.\.\/\.\.\//
-          )
-
-          if (specifier.startsWith("#") || specifier.startsWith("../")) {
-            if (specifier.startsWith("#")) expect(specifier).toMatch(/^#lib\//)
-            const imported = specifier.split("/")[1] ?? ""
-            expect(lower, `${folder}/${file} imports ${imported}`).toContain(imported)
-          }
-        }
-      }
-    })
-  }
 })
 
 describe("public entry", () => {
   it("only re-exports from lib", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "index.ts"), "utf8")
-    const statements = source.split("\n").filter((line) => line.trim() !== "")
+    const statements = source
+      .split(/\n(?=export )/)
+      .map((statement) => statement.replaceAll(/\s+/g, " ").trim())
+      .filter((statement) => statement !== "")
 
     for (const statement of statements) {
       expect(statement).toMatch(
@@ -83,7 +34,8 @@ const SRC = join(import.meta.dirname, "..")
 
 // The suffixes of the files in a `__tests__` folder. Each file is named after the source file next
 // to the folder that it tests, such as `grammar/__tests__/grammar.test.ts` for `grammar/grammar.ts`.
-const TEST_SUFFIXES = [".test.ts", ".test-d.ts", ".table.ts"]
+// A `.table.ts` file holds test data, and an `.arbitrary.ts` file holds fast-check arbitraries.
+const TEST_SUFFIXES = [".test.ts", ".test-d.ts", ".table.ts", ".arbitrary.ts"]
 
 // Tests of the whole package, not of one file. The types test is the only types test: it tests all
 // public types through the package entry.
