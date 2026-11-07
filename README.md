@@ -12,16 +12,16 @@ Sanely is a pnpm and Turborepo monorepo for the `@sanely/*` libraries. Each pack
 
 Migrated packages contain their source libraries. The other packages still contain the starter.
 
-| Package                                   | Replaces                                                  | Status   |
-| ----------------------------------------- | --------------------------------------------------------- | -------- |
-| [`@sanely/try`](packages/try)             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Migrated |
-| [`@sanely/errors`](packages/errors)       | [`faultier`](https://github.com/adelrodriguez/faultier)   | Migrated |
-| [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     | Migrated |
-| [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         | Migrated |
-| [`@sanely/duration`](packages/duration)   | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Migrated |
-| [`@sanely/cron`](packages/cron)           | None                                                      | Migrated |
-| [`@sanely/rpc`](packages/rpc)             | [`typedport`](https://github.com/adelrodriguez/typedport) | Migrated |
-| [`@sanely/skew`](packages/skew)           | [`crispen`](https://github.com/adelrodriguez/crispen)     | Starter  |
+| Package                                   | What it does                                                                                                                   | Replaces                                                  | Status   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | -------- |
+| [`@sanely/try`](packages/try)             | A better try/catch for TypeScript.                                                                                             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Migrated |
+| [`@sanely/errors`](packages/errors)       | Extensible error handling for TypeScript.                                                                                      | [`faultier`](https://github.com/adelrodriguez/faultier)   | Migrated |
+| [`@sanely/ratelimit`](packages/ratelimit) | Atomic rate limiting with pluggable stores.                                                                                    | [`richter`](https://github.com/adelrodriguez/richter)     | Migrated |
+| [`@sanely/flags`](packages/flags)         | Type-safe feature flag library for TypeScript applications.                                                                    | [`gated`](https://github.com/adelrodriguez/gated)         | Migrated |
+| [`@sanely/duration`](packages/duration)   | Parse human-readable time expressions into any unit, and format durations into human-readable strings.                         | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Migrated |
+| [`@sanely/cron`](packages/cron)           | A small, type-safe English-like language that compiles to exact cron expressions.                                              | None                                                      | Migrated |
+| [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Migrated |
+| [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Migrated |
 
 ## Add a package
 

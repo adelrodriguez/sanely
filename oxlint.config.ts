@@ -12,7 +12,11 @@ const ratelimitEntryPoints = {
 
 export default defineConfig({
   extends: [core, custom()],
-  ignorePatterns: core.ignorePatterns,
+  ignorePatterns: [
+    ...core.ignorePatterns,
+    // These fixtures import the built package by name, so they lint only after a build.
+    "packages/skew/tests/package-contract/**",
+  ],
   options: {
     respectEslintDisableDirectives: true,
     typeAware: true,
@@ -265,6 +269,101 @@ export default defineConfig({
     },
     {
       files: ["packages/ratelimit/src/**/__tests__/**"],
+      rules: { "no-restricted-imports": "off" },
+    },
+    // Imports in `packages/skew/src` point one way: the
+    // protocol, then the runtime, then integrations. Adapters import only the protocol and
+    // `adapters/shared.ts`, and an integration never imports an adapter. These rules follow the
+    // generic `src/lib` rules above, because a later override replaces the rule options of an
+    // earlier one. The last rule lets tests cross these lines.
+    {
+      files: ["packages/skew/src/lib/protocol/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["#index.ts"],
+                message: "skew code must not import the public entry point.",
+              },
+              {
+                group: ["#lib/runtime/**", "#integrations/**", "#adapters/**"],
+                message: "protocol imports nothing else in skew.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/skew/src/lib/runtime/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["#index.ts"],
+                message: "skew code must not import the public entry point.",
+              },
+              {
+                group: ["#integrations/**", "#adapters/**"],
+                message: "runtime imports only the protocol.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/skew/src/integrations/**/*.{ts,tsx}"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["#index.ts"],
+                message: "skew code must not import the public entry point.",
+              },
+              {
+                group: ["#adapters/**"],
+                message: "An integration never imports an adapter.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/skew/src/adapters/**/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["#index.ts"],
+                message: "skew code must not import the public entry point.",
+              },
+              {
+                group: [
+                  "#lib/**",
+                  "!#lib/protocol/**",
+                  "#integrations/**",
+                  "#adapters/**",
+                  "!#adapters/shared.ts",
+                ],
+                message: "Adapters import only the protocol and adapters/shared.ts.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ["packages/skew/src/**/__tests__/**"],
       rules: { "no-restricted-imports": "off" },
     },
     {

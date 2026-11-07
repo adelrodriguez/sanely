@@ -1,0 +1,81 @@
+"use client"
+
+import { useCallback, useMemo, useSyncExternalStore } from "react"
+import type { DeploymentSource } from "#lib/protocol/types.ts"
+import type {
+  DeploymentMonitor,
+  DeploymentStatus,
+  DeploymentSubscriberOptions,
+} from "#lib/runtime/monitor.ts"
+import { getDefaultMonitor, getMonitor } from "#lib/runtime/registry.ts"
+
+export interface DeploymentStatusOptions extends DeploymentSubscriberOptions {
+  readonly source?: DeploymentSource
+}
+
+export function useDeploymentStatus(options: DeploymentStatusOptions = {}): DeploymentStatus {
+  const stableOptions = useShallowStableOptions(options)
+  const monitor = stableOptions.source ? getMonitor(stableOptions.source) : getDefaultMonitor()
+  const subscribe = useCallback(
+    (listener: () => void) => monitor.subscribe(listener, stableOptions),
+    [monitor, stableOptions]
+  )
+
+  return useSyncExternalStore(
+    subscribe,
+    () => monitor.getState(),
+    () => getServerState(monitor)
+  )
+}
+
+function useShallowStableOptions(options: DeploymentStatusOptions): DeploymentStatusOptions {
+  return useMemo(
+    () => ({
+      checkInterval: options.checkInterval,
+      checkOnReconnect: options.checkOnReconnect,
+      checkOnSubscribe: options.checkOnSubscribe,
+      checkOnVisible: options.checkOnVisible,
+      isCurrent: options.isCurrent,
+      source: options.source,
+    }),
+    [
+      options.checkInterval,
+      options.checkOnReconnect,
+      options.checkOnSubscribe,
+      options.checkOnVisible,
+      options.isCurrent,
+      options.source,
+    ]
+  )
+}
+
+const serverStates = new WeakMap<DeploymentMonitor, DeploymentStatus>()
+
+function getServerState(monitor: DeploymentMonitor): DeploymentStatus {
+  const existing = serverStates.get(monitor)
+  if (existing !== undefined) {
+    return existing
+  }
+
+  const state = monitor.getState()
+  const serverState: DeploymentStatus = {
+    ...state,
+    checkStatus: "idle",
+    checkedAt: null,
+    error: null,
+    reloadStatus: "unprotected",
+    status: "unknown",
+    target: null,
+  }
+  serverStates.set(monitor, serverState)
+  return serverState
+}
+
+export type {
+  CheckStatus,
+  DeploymentMonitor,
+  DeploymentStatus,
+  DeploymentSubscriberOptions,
+  ReloadStatus,
+} from "#lib/runtime/monitor.ts"
+export type { Deployment, DeploymentSource, IsDeploymentCurrent } from "#lib/protocol/types.ts"
