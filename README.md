@@ -36,7 +36,7 @@ Each package is a skeleton until its code moves here. Most packages replace an e
 - `src/lib/` holds the library logic in folders whose imports point one way. `oxlint.config.ts` enforces the direction with `no-restricted-imports`.
 - Code imports with `#` subpath imports, such as `#lib/shared/errors.ts`.
 - Tests sit in a `__tests__/` folder beside the file they test, with the same name. `src/__tests__/types.test-d.ts` tests the public types with `expectTypeOf`.
-- `scripts/` holds the build checks that every package shares.
+- `scripts/` holds the build checks that every package shares, and `setup-repo.sh`, which creates or updates the `main` ruleset on GitHub.
 - `turbo/generators/` holds the `new-package` generator. Its templates are the starter for every package.
 - `tooling/tsconfig/` holds the TypeScript configurations. Each package's `tsconfig.json` extends `@tooling/tsconfig/library.json`, and the root `tsconfig.json` extends `@tooling/tsconfig/base.json`.
 
@@ -50,10 +50,12 @@ Run these from the root. Turborepo runs the package tasks and caches their resul
 | `pnpm run fix`          | Formatting and safe lint fixes                                       |
 | `pnpm run analyze`      | Package consistency, and unused files, exports, and dependencies     |
 | `pnpm run build`        | Builds every package                                                 |
+| `pnpm run dev`          | Rebuilds every package when its source changes                       |
 | `pnpm run test`         | Unit tests                                                           |
 | `pnpm run test:compat`  | Runs each built package with the globals of the `engines.node` floor |
 | `pnpm run build:verify` | Builds, packs, installs, and type-checks each package as a consumer  |
 | `pnpm run generate`     | Runs a Turborepo generator, such as `new-package`                    |
+| `pnpm run bump:deps`    | Updates dependencies in every workspace, with a prompt               |
 
 ## CI
 
