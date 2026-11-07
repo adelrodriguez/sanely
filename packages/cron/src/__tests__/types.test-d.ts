@@ -347,180 +347,231 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
 }
 
 // ── Negative type tests ──────────────────────────────────────────────────────
-// These verify that invalid usage produces compile-time errors.
-// The function bodies never execute — only the type checker matters.
+// These verify that invalid usage produces compile-time errors. The comment above each
+// `@ts-expect-error` is the message that TypeScript gives without the directive. The function
+// bodies never execute: only the type checker matters.
 
 function _negativeTypeTests() {
+  // TS2322: Type '1' is not assignable to type '2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30'.
   // @ts-expect-error -- 1 is not a MinuteInterval: a schedule without an interval runs every minute
   const minutes: MinuteInterval = 1
   void minutes
 
+  // TS2322: Type '5' is not assignable to type '2 | 3 | 4 | 6 | 8 | 12'.
   // @ts-expect-error -- 5 does not divide 24
   const hours: HourInterval = 5
   void hours
 
+  // TS2322: Type '"weekday"' is not assignable to type '"friday" | "monday" | "saturday" | "sunday" | "thursday" | "tuesday" | "wednesday"'.
   // @ts-expect-error -- "weekday" is a day group, not a Weekday
   const weekday: Weekday = "weekday"
   void weekday
 
+  // TS2820: Type '"weekday"' is not assignable to type 'DaySet'. Did you mean '"weekdays"'?
   // @ts-expect-error -- a schedule uses the plural day group
   const singular: DaySet = "weekday"
   void singular
 
+  // TS2322: Type '[]' is not assignable to type 'DaySet'.
   // @ts-expect-error -- a day list has one or more days
   const empty: DaySet = []
   void empty
 
+  // TS2322: Type '29' is not assignable to type 'DayOfMonth'.
   // @ts-expect-error -- the 29th does not occur in every month
   const day: DayOfMonth = 29
   void day
 
+  // TS2322: Type '24' is not assignable to type '0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23'.
   // @ts-expect-error -- 24 is not an hour
   const hour: Time = { hour: 24, minute: 0 }
   void hour
 
+  // TS2322: Type '60' is not assignable to type '0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | ... 16 more ... | 59'.
   // @ts-expect-error -- 60 is not a minute
   const minute: Time = { hour: 9, minute: 60 }
   void minute
 
+  // TS2322: Type '{ from: 17; to: 9; }' is not assignable to type 'Window'.
   // @ts-expect-error -- the window must end after it starts
   const backwards: Window = { from: 17, to: 9 }
   void backwards
 
+  // TS2322: Type '{ from: 9; to: 9; }' is not assignable to type 'Window'.
   // @ts-expect-error -- the window must end after it starts
   const same: Window = { from: 9, to: 9 }
   void same
 
+  // TS2322: Type '7' is not assignable to type '2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30 | undefined'.
   // @ts-expect-error -- 7 does not divide 60
   const interval: Schedule = { every: "minute", interval: 7 }
   void interval
 
+  // TS2353: Object literal may only specify known properties, and 'between' does not exist in type '{ readonly every: "hour"; readonly interval?: 2 | 3 | 4 | 6 | 8 | 12 | undefined; readonly on?: DaySet | undefined; }'.
   // @ts-expect-error -- an hour schedule has no window
   const window: Schedule = { between: { from: 9, to: 17 }, every: "hour" }
   void window
 
+  // TS2353: Object literal may only specify known properties, and 'on' does not exist in type '{ readonly every: "month"; readonly day: DayOfMonth; readonly at: Time; }'.
   // @ts-expect-error -- a month schedule has no day set
   const monthDays: Schedule = { at: { hour: 9, minute: 0 }, day: 1, every: "month", on: "weekdays" }
   void monthDays
 
+  // TS2322: Type '{ every: "day"; }' is not assignable to type 'Schedule'.
   // @ts-expect-error -- a day schedule needs a time
   const noTime: Schedule = { every: "day" }
   void noTime
 
+  // TS2322: Type '"week"' is not assignable to type '"day" | "hour" | "minute" | "month"'.
   // @ts-expect-error -- "week" is not a kind of schedule
   const week: Schedule = { every: "week" }
   void week
 
+  // TS2322: Type 'string' is not assignable to type 'CronExpression'.
   // @ts-expect-error -- a string is not a CronExpression
   const expression: CronExpression = "*/15 * * * *"
   void expression
 
+  // TS2820: Type '"every 7 minutes"' is not assignable to type 'CronPhrase'. Did you mean '"every 2 minutes"'?
   // @ts-expect-error -- 7 is not a minute interval
   const phraseInterval: CronPhrase = "every 7 minutes"
   void phraseInterval
 
+  // TS2820: Type '"every 15 minutes at 9:30"' is not assignable to type 'CronPhrase'. Did you mean '"every 15 minutes"'?
   // @ts-expect-error -- a minute interval cannot have an "at" clause
   const at: CronPhrase = "every 15 minutes at 9:30"
   void at
 
+  // TS2820: Type '"biweekly"' is not assignable to type 'CronPhrase'. Did you mean '"weekly"'?
   // @ts-expect-error -- "biweekly" is not in the language
   const word: CronPhrase = "biweekly"
   void word
 
+  // TS2322: Type '"every frday at 9:00"' is not assignable to type 'CronPhrase'.
   // @ts-expect-error -- a day set starts with a day name or a day group
   const frday: CronPhrase = "every frday at 9:00"
   void frday
 
+  // TS2322: Type '"on the first of every month at 9:00"' is not assignable to type 'CronPhrase'.
   // @ts-expect-error -- a day of the month starts with a number
   const ordinal: CronPhrase = "on the first of every month at 9:00"
   void ordinal
 
+  // TS2345: Argument of type '"every 7 minutes"' is not assignable to parameter of type '"7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30"'.
   // @ts-expect-error -- 7 does not divide 60
   cron("every 7 minutes")
 
+  // TS2345: Argument of type '"every 90 minutes"' is not assignable to parameter of type '"90 minutes has no exact single cron. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30"'.
   // @ts-expect-error -- 90 minutes has no exact single cron
   cron("every 90 minutes")
 
+  // TS2345: Argument of type '"every 5 hours"' is not assignable to parameter of type '"5 does not divide 24. Use 2, 3, 4, 6, 8, or 12"'.
   // @ts-expect-error -- 5 does not divide 24
   cron("every 5 hours")
 
+  // TS2345: Argument of type 'string' is not assignable to parameter of type '"a string is not a CronPhrase. Use parse for a string at runtime"'.
   // @ts-expect-error -- a plain string is not a CronPhrase: use parse
   cron(userInput)
 
+  // TS2345: Argument of type '`every ${string}`' is not assignable to parameter of type '"a string is not a CronPhrase. Use parse for a string at runtime"'.
   // @ts-expect-error -- a template literal type that is not a CronPhrase
   cron(`every ${userInput}`)
 
+  // TS2345: Argument of type '"every 15 minutes" | "every 7 minutes"' is not assignable to parameter of type '"7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30" | "every 15 minutes"'.
   // @ts-expect-error -- a union with one invalid member
   cron(Math.random() > 0.5 ? "every 15 minutes" : "every 7 minutes")
 
+  // TS2345: Argument of type '"every day at 9"' is not assignable to parameter of type '"\"9\" is not a valid time. Write the minutes, such as \"9:00\", and use 24-hour time or am/pm"'.
   // @ts-expect-error -- a time must have minutes
   cron("every day at 9")
 
+  // TS2345: Argument of type '"every day at 12:00pm"' is not assignable to parameter of type '"\"12:00pm\" is ambiguous. Use noon"'.
   // @ts-expect-error -- 12:00pm is ambiguous; use noon
   cron("every day at 12:00pm")
 
+  // TS2345: Argument of type '"every day at 25:00"' is not assignable to parameter of type '"\"25:00\" is not a valid time. Use H:MM or HH:MM (24-hour), H:MMam or H:MMpm, noon, or midnight"'.
   // @ts-expect-error -- 25:00 is not a valid time
   cron("every day at 25:00")
 
+  // TS2345: Argument of type '"every friday and monday at 9:00"' is not assignable to parameter of type '"list the days in calendar order, Monday first: \"monday and friday\""'.
   // @ts-expect-error -- the days are not in calendar order
   cron("every friday and monday at 9:00")
 
+  // TS2345: Argument of type '"every monday, wednesday, and friday at 9:00"' is not assignable to parameter of type '"write the list as \"monday, wednesday and friday\""'.
   // @ts-expect-error -- the list format is "monday, wednesday and friday"
   cron("every monday, wednesday, and friday at 9:00")
 
+  // TS2345: Argument of type '"every 15 minutes on weekday"' is not assignable to parameter of type '"use \"weekdays\" after \"on\""'.
   // @ts-expect-error -- the day set after "on" is "weekdays"
   cron("every 15 minutes on weekday")
 
+  // TS2345: Argument of type '"every 15 minutes between 9:30 and 17:00"' is not assignable to parameter of type '"the window must start and end on the hour, and \"9:30\" is not on the hour"'.
   // @ts-expect-error -- the window must be on the hour
   cron("every 15 minutes between 9:30 and 17:00")
 
+  // TS2345: Argument of type '"every 15 minutes between 17:00 and 9:00"' is not assignable to parameter of type '"the window must end after it starts"'.
   // @ts-expect-error -- the window must end after it starts
   cron("every 15 minutes between 17:00 and 9:00")
 
+  // TS2345: Argument of type '"every 15 minutes at 9:30"' is not assignable to parameter of type '"a minute interval cannot have an \"at\" clause. Use \"between <time> and <time>\" to limit it to a window"'.
   // @ts-expect-error -- a minute interval cannot have an "at" clause
   cron("every 15 minutes at 9:30")
 
+  // TS2345: Argument of type '"on the 29th of every month at 9:00"' is not assignable to parameter of type '"the 29th does not occur in every month. Use 1st to 28th"'.
   // @ts-expect-error -- the 29th does not occur in every month
   cron("on the 29th of every month at 9:00")
 
+  // TS2345: Argument of type '"Every 15 Mins"' is not assignable to parameter of type '"use lowercase words"'.
   // @ts-expect-error -- the lenient form is not a CronPhrase; use parse
   cron("Every 15 Mins")
 
+  // TS2345: Argument of type '"every  15 minutes"' is not assignable to parameter of type '"use one space between words, and no space at the start or the end"'.
   // @ts-expect-error -- extra whitespace is not a CronPhrase
   cron("every  15 minutes")
 
+  // TS2345: Argument of type '"biweekly"' is not assignable to parameter of type '"\"biweekly\" is not a valid start of a phrase. Start with \"every\", \"on the\", or a shortcut: hourly, daily, weekly, or monthly"'.
   // @ts-expect-error -- "biweekly" is not in the language
   cron("biweekly")
 
+  // TS2345: Argument of type '""' is not assignable to parameter of type '"the phrase is empty"'.
   // @ts-expect-error -- an empty string is not a CronPhrase
   cron("")
 
+  // TS2345: Argument of type '15' is not assignable to parameter of type '"a string is not a CronPhrase. Use parse for a string at runtime" | Schedule'.
   // @ts-expect-error -- cron takes a string or a Schedule, not a number
   cron(15)
 
+  // TS2345: Argument of type 'string' is not assignable to parameter of type 'Schedule'.
   // @ts-expect-error -- describe takes a Schedule, not a phrase
   describe("every hour")
 
+  // TS2322: Type '7' is not assignable to type '2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30 | undefined'.
   // @ts-expect-error -- 7 does not divide 60
   cron({ every: "minute", interval: 7 })
 
+  // TS2322: Type '9' is not assignable to type '18 | 19 | 20 | 21 | 22 | 23 | 24'.
   // @ts-expect-error -- the window must end after it starts
   cron({ between: { from: 17, to: 9 }, every: "minute" })
 
+  // TS2353: Object literal may only specify known properties, and 'on' does not exist in type '{ readonly every: "month"; readonly day: DayOfMonth; readonly at: Time; }'.
   // @ts-expect-error -- a month schedule has no day set
   cron({ at: { hour: 9, minute: 0 }, day: 1, every: "month", on: "weekdays" })
 
+  // TS2353: Object literal may only specify known properties, and 'label' does not exist in type '{ readonly every: "hour"; readonly interval?: 2 | 3 | 4 | 6 | 8 | 12 | undefined; readonly on?: DaySet | undefined; }'.
   // @ts-expect-error -- "label" is not a key of a Schedule
   cron({ every: "hour", label: "report" })
 
+  // TS2322: Type '[]' is not assignable to type 'DaySet | undefined'.
   // @ts-expect-error -- a day list has one or more days
   cron({ at: { hour: 9, minute: 0 }, every: "day", on: [] })
 
   const error = new InvalidScheduleError("every 7 minutes", "7 does not divide 60")
 
+  // TS2540: Cannot assign to 'value' because it is a read-only property.
   // @ts-expect-error -- value is readonly
   error.value = "every 15 minutes"
 
+  // TS2554: Expected 2-3 arguments, but got 1.
   // @ts-expect-error -- the reason is required
   void new InvalidScheduleError("every 7 minutes")
 }
