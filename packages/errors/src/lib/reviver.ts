@@ -1,0 +1,244 @@
+import { InvalidPayloadError } from "./errors"
+import { Fault, isReservedKey } from "./fault"
+import {
+  collectPayloadFields,
+  definePayloadField,
+  MAX_CAUSE_DEPTH,
+  RESERVED_FAULT_KEYS,
+  type SerializableCause,
+  type SerializableFault,
+} from "./wire"
+
+export type FaultResolver = (tag: string, payload: Record<string, unknown>) => Fault | undefined
+
+// Prefix applied (repeatedly, until unique) to payload keys that would
+// collide with reserved Fault keys during deserialization.
+const PAYLOAD_PREFIX = "__payload_"
+
+type PreparedPayload = {
+  collisionPayload: Record<string, unknown>
+  constructorPayload: Record<string, unknown>
+}
+
+class DeserializedFault extends Fault {
+  // Widens Fault's protected constructor to public.
+  public constructor(tag: string) {
+    super(tag)
+  }
+}
+
+// The envelope rule fromSerializable enforces at every fault it revives:
+// returns why a value is not a revivable envelope, or undefined when it is one.
+function findPayloadIssue(value: unknown): string | undefined {
+  if (
+    typeof value !== "object"
+    || value === null
+    || !("__fault" in value)
+    || value.__fault !== true
+  ) {
+    return "expected __fault: true"
+  }
+
+  if (!("_tag" in value) || typeof value._tag !== "string") {
+    return "_tag must be a string"
+  }
+
+  if (
+    "meta" in value
+    && value.meta !== undefined
+    && (typeof value.meta !== "object" || value.meta === null)
+  ) {
+    return "meta must be an object"
+  }
+
+  return undefined
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string"
+}
+
+// Mirrors the serializer's depth budget (toCause and serializeFault): it never
+// writes a cause past MAX_CAUSE_DEPTH, so one found there is rejected rather
+// than left unchecked.
+function isSerializableCause(cause: unknown, depth: number): boolean {
+  if (typeof cause !== "object" || cause === null || !("kind" in cause)) return false
+
+  if (cause.kind === "thrown") return true
+
+  if (cause.kind === "fault") {
+    return "value" in cause && isFaultEnvelope(cause.value, depth + 1)
+  }
+
+  if (cause.kind === "error") {
+    return (
+      "name" in cause
+      && typeof cause.name === "string"
+      && "message" in cause
+      && typeof cause.message === "string"
+      && isOptionalString(Reflect.get(cause, "stack"))
+      && (!("cause" in cause)
+        || cause.cause === undefined
+        || (depth + 1 < MAX_CAUSE_DEPTH && isSerializableCause(cause.cause, depth + 1)))
+    )
+  }
+
+  return false
+}
+
+function isFaultEnvelope(value: unknown, depth: number): value is SerializableFault {
+  return (
+    typeof value === "object"
+    && value !== null
+    && findPayloadIssue(value) === undefined
+    && "name" in value
+    && typeof value.name === "string"
+    && isOptionalString(Reflect.get(value, "message"))
+    && isOptionalString(Reflect.get(value, "details"))
+    && isOptionalString(Reflect.get(value, "stack"))
+    && (!("cause" in value)
+      || value.cause === undefined
+      || (depth < MAX_CAUSE_DEPTH && isSerializableCause(value.cause, depth)))
+  )
+}
+
+// Stricter than fromSerializable, which tolerates a missing name or malformed
+// causes: true only when the value really is a SerializableFault.
+export function isSerializableFault(value: unknown): value is SerializableFault {
+  return isFaultEnvelope(value, 0)
+}
+
+function assertSerializableFault(value: unknown): asserts value is SerializableFault {
+  const issue = findPayloadIssue(value)
+
+  if (issue !== undefined) {
+    throw new InvalidPayloadError({ reason: issue })
+  }
+}
+
+function createDeserializedError(name: string, message: string, stack?: string): Error {
+  const error = new Error(message)
+  error.name = name
+  error.stack = stack
+  return error
+}
+
+function extractPayloadFields(json: SerializableFault): Record<string, unknown> {
+  // Exclude only envelope keys here (not the full reserved rule): a wire key
+  // that shadows a Fault method must be renamed by preparePayload, not dropped.
+  return collectPayloadFields(json, (key) => RESERVED_FAULT_KEYS.has(key))
+}
+
+function preparePayload(payload: Record<string, unknown>): PreparedPayload {
+  const collisionPayload: Record<string, unknown> = {}
+  const constructorPayload: Record<string, unknown> = {}
+  const rawKeys = new Set(Object.keys(payload))
+  const assignedKeys = new Set<string>()
+
+  for (const [key, value] of Object.entries(payload)) {
+    let targetKey = key
+
+    while (
+      isReservedKey(targetKey)
+      || assignedKeys.has(targetKey)
+      || (targetKey !== key && rawKeys.has(targetKey))
+    ) {
+      targetKey = `${PAYLOAD_PREFIX}${targetKey}`
+    }
+
+    assignedKeys.add(targetKey)
+
+    if (targetKey === key) {
+      definePayloadField(constructorPayload, key, value)
+    } else {
+      definePayloadField(collisionPayload, targetKey, value)
+    }
+  }
+
+  return { collisionPayload, constructorPayload }
+}
+
+function restorePayloadFields(fault: Fault, payload: Record<string, unknown>): void {
+  const target = fault as unknown as Record<string, unknown>
+
+  for (const [key, value] of Object.entries(payload)) {
+    definePayloadField(target, key, value)
+  }
+}
+
+function deserializeCause(
+  cause: SerializableCause,
+  resolveFault: FaultResolver | undefined,
+  depth: number
+): unknown {
+  if (cause.kind === "fault") {
+    // Invariant: allow at most MAX_CAUSE_DEPTH nested fault edges.
+    if (depth >= MAX_CAUSE_DEPTH) return undefined
+    return deserializeFault(cause.value, resolveFault, depth + 1)
+  }
+
+  if (cause.kind === "error") {
+    const error = createDeserializedError(cause.name, cause.message, cause.stack)
+
+    // Same budget as toCause (fault.ts): native errors spend fault-edge depth.
+    if (cause.cause && depth + 1 < MAX_CAUSE_DEPTH) {
+      error.cause = deserializeCause(cause.cause, resolveFault, depth + 1)
+    }
+
+    return error
+  }
+
+  return cause.value
+}
+
+function restoreDeserializedFields(fault: Fault, json: SerializableFault): void {
+  const target = fault
+
+  if (typeof json.name === "string") {
+    target.name = json.name
+  }
+
+  if (typeof json.message === "string") {
+    target.message = json.message
+  }
+
+  if (typeof json.details === "string") {
+    target.details = json.details
+  }
+
+  if (json.meta !== undefined) {
+    target.meta = json.meta
+  }
+
+  if (typeof json.stack === "string") {
+    target.stack = json.stack
+  }
+}
+
+export function fromSerializable(json: SerializableFault): Fault {
+  return deserializeFault(json)
+}
+
+export function deserializeFault(json: unknown, resolveFault?: FaultResolver, depth = 0): Fault {
+  assertSerializableFault(json)
+
+  const payload = preparePayload(extractPayloadFields(json))
+  const resolvedFault = resolveFault?.(json._tag, payload.constructorPayload)
+  const fault = resolvedFault ?? new DeserializedFault(json._tag)
+
+  // A resolved constructor already applied constructorPayload; the generic
+  // fallback needs both buckets restored directly.
+  if (!resolvedFault) {
+    restorePayloadFields(fault, payload.constructorPayload)
+  }
+  restorePayloadFields(fault, payload.collisionPayload)
+  restoreDeserializedFields(fault, json)
+
+  if (json.cause) {
+    // Intentionally assign cause directly instead of withCause().
+    // Serialized stacks already contain any prior "Caused by:" enhancement.
+    fault.cause = deserializeCause(json.cause, resolveFault, depth)
+  }
+
+  return fault
+}

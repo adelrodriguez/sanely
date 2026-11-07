@@ -45,18 +45,20 @@ delete Set.prototype.union
 async function checkPackage(directory) {
   const root = resolve(directory)
   /**
-   * @type {{ name: string; exports: { ".": { import: string } } }}
+   * @type {{ name: string; exports: Record<string, { import: string }> }}
    */
   const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"))
-  const entry = resolve(root, manifest.exports["."].import)
-  const content = await readFile(entry, "utf8")
-
-  check(
-    !/(?:from|import|require)\s*\(?\s*["']node:/.test(content),
-    `${manifest.name} imports no Node.js module`
+  await Promise.all(
+    Object.entries(manifest.exports).map(async ([subpath, target]) => {
+      const entry = resolve(root, target.import)
+      const content = await readFile(entry, "utf8")
+      check(
+        !/(?:from|import|require)\s*\(?\s*["']node:/.test(content),
+        `${manifest.name}${subpath.slice(1)} imports no Node.js module`
+      )
+      await import(pathToFileURL(entry).href)
+    })
   )
-
-  await import(pathToFileURL(entry).href)
 
   console.info(`${manifest.name} loads on Node.js ${process.versions.node}.`)
 }

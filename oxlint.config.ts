@@ -11,6 +11,23 @@ export default defineConfig({
     typeCheck: true,
   },
   overrides: [
+    // Preserve Fault's public name and the source's conditional payload types.
+    {
+      files: ["packages/errors/src/lib/fault.ts"],
+      rules: { "unicorn/custom-error-definition": "off" },
+    },
+    {
+      files: ["packages/errors/src/lib/registry.ts"],
+      rules: { "typescript/no-invalid-void-type": "off" },
+    },
+    {
+      files: ["packages/errors/src/lib/registry.ts", "packages/errors/src/lib/tagged.ts"],
+      rules: { "typescript/no-generated-empty-object-type": "off" },
+    },
+    {
+      files: ["packages/errors/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
     {
       files: ["packages/duration/src/__tests__/types.test-d.ts"],
       rules: { "no-lone-blocks": "off" },

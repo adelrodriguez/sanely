@@ -1,0 +1,194 @@
+import { describe, expect, it } from "vitest"
+
+import { fromSerializable, registry, Tagged } from "#index.ts"
+
+class ServiceError extends Tagged("ServiceError")() {}
+class DatabaseError extends Tagged("DatabaseError")() {}
+
+describe("#64 getContext keeps meta keys that exist on Object.prototype", () => {
+  it("keeps constructor and toString meta keys", () => {
+    const fault = new ServiceError().withMeta({ constructor: "x", ok: 1, toString: "y" })
+
+    expect(fault.getContext()).toStrictEqual({ constructor: "x", ok: 1, toString: "y" })
+  })
+
+  it("keeps an inherited-name key set only on a cause", () => {
+    const leaf = new DatabaseError().withMeta({ valueOf: "leaf" })
+    const head = new ServiceError().withMeta({ requestId: "r1" }).withCause(leaf)
+
+    expect(head.getContext()).toStrictEqual({ requestId: "r1", valueOf: "leaf" })
+  })
+
+  it("keeps an own __proto__ meta key without touching the result's prototype", () => {
+    const meta = JSON.parse('{"__proto__":"x"}') as Record<string, string>
+    const context = new ServiceError().withMeta(meta).getContext()
+
+    expect(Object.getPrototypeOf(context)).toBe(Object.prototype)
+    expect(Object.entries(context)).toStrictEqual([["__proto__", "x"]])
+  })
+})
+
+function wrapNativeChain() {
+  const root = new Error("root")
+  const mid = new Error("mid", { cause: root })
+  return { fault: new ServiceError().withMessage("svc").withCause(mid), mid, root }
+}
+
+describe("#65 native Error.cause chains survive traversal and transport", () => {
+  it("unwraps through native Error causes to the root", () => {
+    const { fault, mid, root } = wrapNativeChain()
+
+    expect(fault.unwrap()).toStrictEqual([fault, mid, root])
+  })
+
+  it("flattens messages through native Error causes", () => {
+    const { fault } = wrapNativeChain()
+
+    expect(fault.flatten()).toBe("svc -> mid -> root")
+  })
+
+  it("finds faults that sit below a native Error in the chain", () => {
+    const leaf = new DatabaseError().withMeta({ table: "users" })
+    const mid = new Error("mid", { cause: leaf })
+    const head = new ServiceError().withCause(mid)
+
+    expect(head.getTags()).toStrictEqual(["ServiceError", "DatabaseError"])
+    expect(head.getContext()).toStrictEqual({ table: "users" })
+  })
+
+  it("keeps the root cause across a serialization round trip", () => {
+    const { fault, mid, root } = wrapNativeChain()
+
+    expect(fault.toSerializable().cause).toStrictEqual({
+      cause: { kind: "error", message: "root", name: "Error", stack: root.stack },
+      kind: "error",
+      message: "mid",
+      name: "Error",
+      stack: mid.stack,
+    })
+    expect(fromSerializable(fault.toSerializable()).flatten()).toBe("svc -> mid -> root")
+  })
+
+  it("keeps nested native causes when a registry serializes a plain Error", () => {
+    const { mid, root } = wrapNativeChain()
+
+    expect(registry({ ServiceError }).toSerializable(mid)).toStrictEqual({
+      __fault: true,
+      _tag: "UnknownError",
+      cause: {
+        cause: { kind: "error", message: "root", name: "Error", stack: root.stack },
+        kind: "error",
+        message: "mid",
+        name: "Error",
+        stack: mid.stack,
+      },
+      message: "mid",
+      name: "UnknownError",
+    })
+  })
+
+  it("stays bounded for circular native cause chains", () => {
+    const loop = new Error("loop")
+    loop.cause = loop
+    const fault = new ServiceError().withCause(loop)
+
+    expect(fault.unwrap()).toHaveLength(101)
+
+    // The wire spends the whole depth budget on native errors: 100 revived
+    // "loop" errors, the last one without a cause.
+    const revivedErrors: unknown[] = []
+    let node: unknown = fromSerializable(fault.toSerializable()).cause
+    while (node instanceof Error) {
+      revivedErrors.push(node)
+      node = node.cause
+    }
+
+    expect(revivedErrors).toHaveLength(100)
+    expect(revivedErrors.every((error) => (error as Error).message === "loop")).toBe(true)
+    expect(node).toBeUndefined()
+  })
+})
+
+describe("#66 registered constructors revive from their own fields object", () => {
+  class UserNotFound extends Tagged("UserNotFound")<{ id: string }>() {
+    constructor(fields: { id: string }) {
+      super(fields)
+      this.message = `User ${fields.id} not found`
+    }
+
+    static forId(id: string): UserNotFound {
+      return new UserNotFound({ id })
+    }
+  }
+
+  const AppFault = registry({ UserNotFound })
+
+  it("restores fields and the constructor-derived message", () => {
+    const restored = AppFault.fromSerializable(UserNotFound.forId("42").toSerializable())
+
+    expect(restored).toBeInstanceOf(UserNotFound)
+    expect(restored).toMatchObject({ id: "42", message: "User 42 not found" })
+  })
+
+  it("keeps a message set after construction over the derived default", () => {
+    const original = UserNotFound.forId("42").withMessage("No such user")
+    const restored = AppFault.fromSerializable(original.toSerializable())
+
+    expect(restored.message).toBe("No such user")
+  })
+})
+
+describe("#21 flatten returns a string when a cause's toJSON returns undefined", () => {
+  it("flattens a cause whose toJSON returns undefined", () => {
+    const cause = {
+      toJSON(): undefined {
+        return undefined
+      },
+    }
+    const fault = new ServiceError().withMessage("svc").withCause(cause)
+
+    expect(fault.flatten()).toBe("svc -> [object Object]")
+  })
+
+  it("passes a string to a custom formatter for a cause whose toJSON returns a function", () => {
+    const formatted: unknown[] = []
+    const fault = new ServiceError().withMessage("svc").withCause({ toJSON: () => () => 1 })
+
+    fault.flatten({
+      formatter: (value) => {
+        formatted.push(value)
+        return value
+      },
+    })
+
+    expect(formatted).toStrictEqual(["svc", "[object Object]"])
+  })
+})
+
+describe("#33 registry matchers match a fault by a numeric registry key", () => {
+  class NumericError extends Tagged("1")() {}
+  const NumericFault = registry({ 1: NumericError })
+
+  it("calls the matchTag handler for a numeric key", () => {
+    const fault = NumericFault.create(1)
+
+    expect(
+      NumericFault.matchTag(
+        fault,
+        1,
+        () => "handler",
+        () => "fallback"
+      )
+    ).toBe("handler")
+  })
+
+  it("calls the matchTags handler for a numeric key", () => {
+    const fault = NumericFault.create(1)
+
+    expect(NumericFault.matchTags(fault, { 1: () => "handler" }, () => "fallback")).toBe("handler")
+  })
+
+  it("lists the string tag for a numeric key", () => {
+    expect(NumericFault.tags).toStrictEqual(["1"])
+  })
+})
