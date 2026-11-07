@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { act, cleanup, render, screen } from "@testing-library/react"
 import { Component, type ReactNode, Suspense } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { buildGate, decision } from "#index.ts"
+import { buildGate, type DecisionCacheErrorReport, decision } from "#index.ts"
 import {
   createGateCache,
   createGateHooks,
@@ -55,6 +55,35 @@ function changingFactory() {
     },
   })
   return { decide, decideMany, factory, provider }
+}
+
+// A factory whose `subscribe` throws while `fails` returns true and attaches otherwise.
+function failingSubscribeFactory(fails: () => boolean) {
+  const reported = Promise.withResolvers<DecisionCacheErrorReport>()
+  const listeners: Array<(change: { keys?: readonly string[] }) => void> = []
+  const decide = vi.fn(() => decision.boolean(true))
+  const decideMany = vi.fn((keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, decision.boolean(true)]))
+  )
+  const factory = buildGate({
+    decide,
+    decideMany,
+    identify: () => ({ distinctId: "core" }),
+    onCacheError: (report) => {
+      reported.resolve(report)
+    },
+    subscribe: (notify) => {
+      if (fails()) {
+        throw new Error("subscribe failed")
+      }
+      listeners.push(notify)
+      return () => null
+    },
+  })
+  const emit = (keys: readonly string[]) => {
+    for (const notify of listeners) notify({ keys })
+  }
+  return { decide, decideMany, emit, factory, reported }
 }
 
 async function renderAsync(node: ReactNode): Promise<void> {
@@ -548,6 +577,64 @@ describe("React integration", () => {
       expect(decideMany).toHaveBeenCalledTimes(2)
     }
   )
+
+  it.each(["prefetch", "prefetchBatch"] as const)(
+    "evaluates with %s and reports the error when subscribe throws",
+    async (method) => {
+      const { decide, decideMany, factory, reported } = failingSubscribeFactory(() => true)
+      const flag = factory({ defaultValue: false, key: "beta" })
+      const cache = createGateCache()
+
+      await (method === "prefetch" ? cache.prefetch(flag) : cache.prefetchBatch([flag]))
+
+      expect(decide.mock.calls.length + decideMany.mock.calls.length).toBe(1)
+      expect(await reported.promise).toMatchObject({
+        error: new Error("subscribe failed"),
+        flagKey: "beta",
+        operation: "subscribe",
+      })
+    }
+  )
+
+  it("renders a gate and reports the error when subscribe throws", async () => {
+    const { decide, factory, reported } = failingSubscribeFactory(() => true)
+    const flag = factory({ defaultValue: false, key: "beta" })
+    function Consumer() {
+      return <span>{String(useGate(flag))}</span>
+    }
+    await renderAsync(
+      <GateProvider>
+        <Suspense fallback="loading">
+          <Consumer />
+        </Suspense>
+      </GateProvider>
+    )
+
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(1)
+    expect(await reported.promise).toMatchObject({ flagKey: "beta", operation: "subscribe" })
+  })
+
+  it("attaches the change clock on a later evaluation after subscribe throws", async () => {
+    let attempts = 0
+    const { decide, emit, factory } = failingSubscribeFactory(() => {
+      attempts += 1
+      return attempts === 1
+    })
+    const flag = factory({ defaultValue: false, key: "beta" })
+    const cache = createGateCache()
+    const first = { distinctId: "first" }
+
+    await cache.prefetch(flag, { identity: first })
+    await cache.prefetch(flag, { identity: { distinctId: "second" } })
+    await act(() => {
+      emit(["beta"])
+      return Promise.resolve()
+    })
+    await cache.prefetch(flag, { identity: first })
+
+    expect(decide).toHaveBeenCalledTimes(3)
+  })
 
   it("keeps a retained entry when a change names another flag", async () => {
     const { decide, factory, provider } = changingFactory()
