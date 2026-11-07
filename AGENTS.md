@@ -14,7 +14,9 @@ ubiquitous language in these files.
   package starts with, edit those templates.
 - Every package starts at version `0.0.1` and is private, so Changesets does not publish it.
   When the package is ready to publish, remove `private` from its `package.json` without a
-  changeset. After the merge, `release.yml` publishes `0.0.1`.
+  changeset. npm accepts a trusted publisher only for a package that exists, so the user must
+  publish `0.0.1` by hand and then make `release.yml` its trusted publisher. The README gives
+  the commands. After that, `release.yml` publishes each new version.
 - A package can keep its own build and compatibility checks in `packages/<name>/scripts/`. Its
   `build:verify` and `test:compat` scripts then run those checks instead of the shared ones in
   `scripts/`. CI runs each package's `test:compat` on the floor in its `engines.node`.

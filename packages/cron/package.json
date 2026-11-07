@@ -1,9 +1,14 @@
 {
   "name": "@sanely/cron",
   "version": "0.0.1",
-  "private": true,
   "description": "A small, type-safe English-like language that compiles to exact cron expressions",
-  "keywords": [],
+  "keywords": [
+    "cron",
+    "crontab",
+    "human-readable",
+    "schedule",
+    "type-safe"
+  ],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/cron#readme",
   "bugs": {
     "url": "https://github.com/adelrodriguez/sanely/issues"
@@ -40,12 +45,16 @@
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
     "test:coverage": "vitest run --coverage",
+    "test:types-perf": "node scripts/typecheck-perf.ts",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "croner": "10.0.1",
+    "fast-check": "catalog:",
+    "humanspan": "0.3.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

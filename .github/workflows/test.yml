@@ -38,6 +38,29 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
+  types-perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check type-check performance
+        run: pnpm --filter @sanely/cron run test:types-perf
+
   # Lists the packages to check and the `engines.node` floor of each.
   compat-packages:
     runs-on: ubuntu-latest

@@ -11,6 +11,10 @@ export default defineConfig({
     typeCheck: true,
   },
   overrides: [
+    {
+      files: ["packages/cron/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
     // Code in `src/` imports through `#` subpath imports, never through `../`.
     {
       files: ["packages/*/src/**/*.ts"],
