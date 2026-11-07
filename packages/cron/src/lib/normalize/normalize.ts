@@ -8,9 +8,13 @@ const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof UNITS)[number]> = new Map(
   UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
 )
 
-const GROUP_BY_WORD: ReadonlyMap<string, (typeof DAY_GROUPS)[number]> = new Map(
-  DAY_GROUPS.flatMap((group) => [[group.singular, group] as const, [group.name, group] as const])
-)
+const GROUP_BY_WORD: ReadonlyMap<string, { readonly plural: string; readonly singular: string }> =
+  new Map(
+    Object.entries(DAY_GROUPS).flatMap(([plural, { singular }]) => {
+      const group = { plural, singular }
+      return [[singular, group] as const, [plural, group] as const]
+    })
+  )
 
 // A number with a unit alias and no space, such as "15m".
 const ATTACHED_UNIT_RE = /^(\d+)([a-z]+)$/
@@ -29,7 +33,7 @@ function mapWord(word: string, previous: string | undefined): string {
 
   const group = GROUP_BY_WORD.get(word)
   if (group && previous === "every") return group.singular
-  if (group && previous === "on") return group.name
+  if (group && previous === "on") return group.plural
 
   return DAY_BY_ALIAS.get(word) ?? word
 }

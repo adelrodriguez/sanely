@@ -31,22 +31,24 @@ export const DAYS = {
 } as const satisfies Record<Weekday, { aliases: readonly string[]; cron: number }>
 
 /**
- * The day groups. A day group stands alone: it is never part of a list of days. A schedule and the
- * `on` clause use the plural word. The `every` clause uses the singular word.
+ * The day groups, keyed by the plural word, with their days. A day group stands alone: it is never
+ * part of a list of days. A schedule and the `on` clause use the plural word. The `every` clause
+ * uses the singular word.
  */
-export const DAY_GROUPS = [
-  {
-    days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-    name: "weekdays",
-    singular: "weekday",
-  },
-  { days: ["saturday", "sunday"], name: "weekends", singular: "weekend" },
-] as const satisfies ReadonlyArray<{ days: readonly Weekday[]; name: string; singular: string }>
+export const DAY_GROUPS = {
+  weekdays: { days: ["monday", "tuesday", "wednesday", "thursday", "friday"], singular: "weekday" },
+  weekends: { days: ["saturday", "sunday"], singular: "weekend" },
+} as const satisfies Record<string, { days: readonly Weekday[]; singular: string }>
 
 /**
  * A day group, in the plural word: `"weekdays"` or `"weekends"`.
  */
-export type DayGroup = (typeof DAY_GROUPS)[number]["name"]
+export type DayGroup = keyof typeof DAY_GROUPS
+
+/**
+ * A day group, in the singular word that follows `every`: `"weekday"` or `"weekend"`.
+ */
+export type SingularDayGroup = (typeof DAY_GROUPS)[DayGroup]["singular"]
 
 export const MINUTES_PER_HOUR = 60
 export const HOURS_PER_DAY = 24
@@ -93,9 +95,9 @@ export type Minute = Enumerate<typeof MINUTES_PER_HOUR>
 export type WindowEnd = Exclude<Enumerate<25>, 0>
 
 /**
- * The hours that a window can end at after it starts at `From`.
+ * The hours from 0 to `H`, with `H`.
  */
-export type HoursAfter<From extends Hour> = Exclude<WindowEnd, Enumerate<From> | From>
+export type HoursTo<H extends Hour> = Enumerate<H> | H
 
 /**
  * A day of the month, from 1 to 28.
@@ -125,6 +127,13 @@ export const UNITS = [
 export function isOneOf<const T>(values: readonly T[], value: unknown): value is T {
   const candidates: readonly unknown[] = values
   return candidates.includes(value)
+}
+
+/**
+ * Check that a list has one or more values.
+ */
+export function isNonEmpty<T>(values: readonly T[]): values is readonly [T, ...T[]] {
+  return values.length > 0
 }
 
 function isIntegerFrom(value: unknown, first: number, last: number): value is number {

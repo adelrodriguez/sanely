@@ -1,7 +1,7 @@
 import type { GrammarResult } from "#lib/grammar/grammar.ts"
 import { parseStrict } from "#lib/grammar/grammar.ts"
 import { normalize } from "#lib/normalize/normalize.ts"
-import { toStandardCron } from "#lib/serialize/serialize.ts"
+import { serialize } from "#lib/serialize/serialize.ts"
 import { InvalidCronPhraseError } from "./errors"
 
 /**
@@ -34,7 +34,7 @@ export function parseLenient(value: unknown): GrammarResult {
 export function parse(value: string): string {
   const result = parseLenient(value)
   if (!result.ok) throw new InvalidCronPhraseError(value, result.reason)
-  return toStandardCron(result.fields)
+  return serialize(result.fields)
 }
 
 /**
@@ -50,5 +50,5 @@ export function parse(value: string): string {
  */
 export function safeParse(value: string): string | null {
   const result = parseLenient(value)
-  return result.ok ? toStandardCron(result.fields) : null
+  return result.ok ? serialize(result.fields) : null
 }

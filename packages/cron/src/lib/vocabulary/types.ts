@@ -1,4 +1,11 @@
-import type { DAY_GROUPS, DayOfMonth, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS } from "./words"
+import type {
+  DayGroup,
+  DayOfMonth,
+  HOUR_INTERVALS,
+  MINUTE_INTERVALS,
+  SingularDayGroup,
+  WEEKDAYS,
+} from "./words"
 
 // Every subset of the days, in calendar order. 2^7 = 128 tuples, with the empty tuple.
 type Subsets<T extends readonly string[]> = T extends readonly [
@@ -26,15 +33,13 @@ export type FormatList<T extends readonly string[]> = T extends readonly [infer 
  */
 export type DayNameList = FormatList<Exclude<Subsets<typeof WEEKDAYS>, []>>
 
-type DayGroupRow = (typeof DAY_GROUPS)[number]
-
 /**
  * The day set of a cron phrase. After `every` a day group is singular (`"weekday"`), and after `on`
  * it is plural (`"weekdays"`).
  */
 export type PhraseDaySet<Context extends "every" | "on"> =
   | DayNameList
-  | (Context extends "every" ? DayGroupRow["singular"] : DayGroupRow["name"])
+  | (Context extends "every" ? SingularDayGroup : DayGroup)
 
 // Each member of a union of numbers with its suffix.
 type WithSuffix<N extends number> = N extends unknown

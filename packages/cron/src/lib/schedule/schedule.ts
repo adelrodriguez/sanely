@@ -1,14 +1,15 @@
 import type {
-  DAY_GROUPS,
   DayGroup,
   DayOfMonth,
   Hour,
   HourInterval,
-  HoursAfter,
+  HoursTo,
   Minute,
   MinuteInterval,
   Shortcut,
+  SingularDayGroup,
   Weekday,
+  WindowEnd,
 } from "#lib/vocabulary/words.ts"
 
 /**
@@ -27,8 +28,18 @@ export type Time = { readonly hour: Hour; readonly minute: Minute }
  *   const window: Window = { from: 9, to: 17 } // 9:00 to 16:59
  */
 export type Window = {
-  [From in Hour]: { readonly from: From; readonly to: HoursAfter<From> }
+  [From in Hour]: { readonly from: From; readonly to: Exclude<WindowEnd, HoursTo<From>> }
 }[Hour]
+
+/**
+ * Check that a window ends after it starts.
+ */
+export function isWindow(window: {
+  readonly from: Hour
+  readonly to: WindowEnd
+}): window is Window {
+  return window.to > window.from
+}
 
 /**
  * The days of the week that a schedule runs on: a day group, or a list of one or more day names. A
@@ -75,7 +86,7 @@ type MinuteBase = "every minute" | `every ${MinuteInterval} minutes`
 type HourBase = "every hour" | `every ${HourInterval} hours`
 
 // The first word of the day set after `every`: a day name, or a singular day group.
-type FirstDayWord = Weekday | (typeof DAY_GROUPS)[number]["singular"]
+type FirstDayWord = Weekday | SingularDayGroup
 
 /**
  * A cron phrase in the strict form, such as `"every 15 minutes on weekdays"`. `describe` returns
