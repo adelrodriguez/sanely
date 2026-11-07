@@ -46,6 +46,20 @@ export const DAY_GROUPS = {
 export type DayGroup = keyof typeof DAY_GROUPS
 
 /**
+ * Check that a value is a day group, in the plural word.
+ */
+export function isDayGroup(value: unknown): value is DayGroup {
+  return typeof value === "string" && Object.hasOwn(DAY_GROUPS, value)
+}
+
+/**
+ * The day groups, in the plural word.
+ */
+export const DAY_GROUP_NAMES: readonly DayGroup[] = Object.keys(DAY_GROUPS).filter((name) =>
+  isDayGroup(name)
+)
+
+/**
  * A day group, in the singular word that follows `every`: `"weekday"` or `"weekend"`.
  */
 export type SingularDayGroup = (typeof DAY_GROUPS)[DayGroup]["singular"]

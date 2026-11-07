@@ -1,4 +1,4 @@
-export * from "./lib/phrase/errors"
+export { InvalidScheduleError } from "./lib/phrase/errors"
 export * from "./lib/phrase/cron"
 export { parse, safeParse } from "./lib/phrase/parse"
 export * from "./lib/phrase/guards"

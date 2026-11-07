@@ -1,37 +1,87 @@
-function describe(value: unknown): string {
-  if (typeof value === "string") return JSON.stringify(value)
+import type { Path } from "#lib/schedule/rules.ts"
+import { ParseError } from "#lib/schedule/rules.ts"
 
-  // Objects with a broken `toString` cannot become a string. The error must still be created.
+// `JSON.stringify` returns `undefined` for `undefined`, a function, and a symbol, but its type
+// is `string`.
+function toJson(value: unknown): string | undefined {
+  return JSON.stringify(value)
+}
+
+// The input as text for the message. A value that cannot become JSON or a string, such as an
+// object with a broken `toString`, must not stop the error from being created.
+function show(value: unknown): string {
   try {
-    return String(value)
+    return toJson(value) ?? String(value)
   } catch {
-    return Object.prototype.toString.call(value)
+    try {
+      return String(value)
+    } catch {
+      return Object.prototype.toString.call(value)
+    }
+  }
+}
+
+// A path such as `["on", 2]` as `on[2]`, and `["at", "hour"]` as `at.hour`.
+function formatPath(path: Path): string {
+  return path
+    .map((key, index) => {
+      if (typeof key === "number") return `[${key}]`
+      return index === 0 ? key : `.${key}`
+    })
+    .join("")
+}
+
+/**
+ * Error thrown when an input is not a valid schedule: a cron phrase that the language does not
+ * contain, or a schedule object with a value that one cron expression cannot express exactly.
+ *
+ * @example
+ *   import { InvalidScheduleError, parse } from "@sanely/cron"
+ *
+ *   try {
+ *     parse(form.schedule)
+ *   } catch (error) {
+ *     if (error instanceof InvalidScheduleError) console.error(error.reason, error.path)
+ *   }
+ */
+export class InvalidScheduleError extends Error {
+  override readonly name: "InvalidScheduleError"
+
+  /**
+   * The input, without a change.
+   */
+  readonly value: unknown
+
+  /**
+   * Why the input is not valid, such as `7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20,
+   * or 30`. For a cron phrase, it is the same text as the type error.
+   */
+  readonly reason: string
+
+  /**
+   * The keys from the root of a schedule object to the value that failed, such as `["at", "hour"]`.
+   * It is empty for a cron phrase, and for an object that fails as a whole.
+   */
+  readonly path: Path
+
+  constructor(value: unknown, reason: string, path: Path = []) {
+    const where = path.length === 0 ? "" : ` at "${formatPath(path)}"`
+    super(`Invalid schedule${where}: ${reason}. Received: ${show(value)}`)
+    this.name = "InvalidScheduleError"
+    this.value = value
+    this.reason = reason
+    this.path = path
   }
 }
 
 /**
- * Error thrown by `cron` and `parse` when the input is not a valid cron phrase.
- *
- * @example
- *   import { parse, InvalidCronPhraseError } from "@sanely/cron"
- *
- *   try {
- *     parse(userInput)
- *   } catch (error) {
- *     if (error instanceof InvalidCronPhraseError) {
- *       console.error(error.message, error.value)
- *     }
- *   }
+ * Run a parse step, and change a `ParseError` to an `InvalidScheduleError` for the input.
  */
-export class InvalidCronPhraseError extends Error {
-  /**
-   * The invalid input value.
-   */
-  readonly value: unknown
-
-  constructor(value: unknown, reason: string) {
-    super(`Invalid cron phrase: ${reason}. Received: ${describe(value)}`)
-    this.name = "InvalidCronPhraseError"
-    this.value = value
+export function withInput<T>(value: unknown, step: () => T): T {
+  try {
+    return step()
+  } catch (error) {
+    if (error instanceof ParseError) throw new InvalidScheduleError(value, error.reason, error.path)
+    throw error
   }
 }

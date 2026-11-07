@@ -5,7 +5,7 @@ import type { GrammarRow } from "#lib/grammar/__tests__/grammar.table.ts"
 import type { CronPhrase, DaySet, Schedule } from "#lib/schedule/schedule.ts"
 import { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
 import { cron } from "#lib/phrase/cron.ts"
-import { InvalidCronPhraseError } from "#lib/phrase/errors.ts"
+import { InvalidScheduleError } from "#lib/phrase/errors.ts"
 import { scheduleArb } from "#lib/schedule/__tests__/schedule.arbitrary.ts"
 import { HOUR_INTERVALS, MINUTE_INTERVALS } from "#lib/vocabulary/words.ts"
 
@@ -22,8 +22,8 @@ describe("cron with a phrase", () => {
     })
   }
 
-  it("should throw InvalidCronPhraseError for an invalid phrase at runtime", () => {
-    expect(() => cron("every 7 minutes" as CronPhrase)).toThrow(InvalidCronPhraseError)
+  it("should throw InvalidScheduleError for an invalid phrase at runtime", () => {
+    expect(() => cron("every 7 minutes" as CronPhrase)).toThrow(InvalidScheduleError)
     expect(() => cron("every 7 minutes" as CronPhrase)).toThrow("7 does not divide 60")
   })
 })

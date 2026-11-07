@@ -1,9 +1,12 @@
+import type { Schedule } from "#lib/schedule/schedule.ts"
+
 /**
  * One row of the grammar table.
  *
- * - `strict`: the `CronPhrase` type, the validator, and `isCronPhrase` accept the phrase.
+ * - `strict`: the `CronPhrase` type, the validator, and the strict grammar accept the phrase.
  * - `lenient`: `parse` accepts the phrase.
- * - `cron`: the expected cron expression, for a phrase that `parse` accepts.
+ * - `schedule`: the expected schedule, for a phrase that `parse` accepts.
+ * - `cron`: the expected cron expression of that schedule.
  * - `error`: a part of the reason, for a phrase that `parse` rejects.
  * - `strictError`: a part of the reason in the strict form (the type-level message), when it is
  *   different from `error`. When it is not given, the type-level message contains `error`.
@@ -13,12 +16,14 @@ export type GrammarRow =
       readonly phrase: string
       readonly strict: true
       readonly lenient: true
+      readonly schedule: Schedule
       readonly cron: string
     }
   | {
       readonly phrase: string
       readonly strict: false
       readonly lenient: true
+      readonly schedule: Schedule
       readonly cron: string
       readonly strictError?: string
     }
@@ -31,22 +36,87 @@ export type GrammarRow =
     }
 
 /**
- * The grammar table: the source of truth for the grammar tests, the type-level tests, and the
- * `parse`, `cron`, and guard tests.
+ * The grammar table: the source of truth for the phrase tests at runtime and at the type level.
  */
 export const GRAMMAR = [
   // ---- Minute interval ----
-  { cron: "* * * * *", lenient: true, phrase: "every minute", strict: true },
-  { cron: "*/2 * * * *", lenient: true, phrase: "every 2 minutes", strict: true },
-  { cron: "*/3 * * * *", lenient: true, phrase: "every 3 minutes", strict: true },
-  { cron: "*/4 * * * *", lenient: true, phrase: "every 4 minutes", strict: true },
-  { cron: "*/5 * * * *", lenient: true, phrase: "every 5 minutes", strict: true },
-  { cron: "*/6 * * * *", lenient: true, phrase: "every 6 minutes", strict: true },
-  { cron: "*/10 * * * *", lenient: true, phrase: "every 10 minutes", strict: true },
-  { cron: "*/12 * * * *", lenient: true, phrase: "every 12 minutes", strict: true },
-  { cron: "*/15 * * * *", lenient: true, phrase: "every 15 minutes", strict: true },
-  { cron: "*/20 * * * *", lenient: true, phrase: "every 20 minutes", strict: true },
-  { cron: "*/30 * * * *", lenient: true, phrase: "every 30 minutes", strict: true },
+  {
+    cron: "* * * * *",
+    lenient: true,
+    phrase: "every minute",
+    schedule: { every: "minute" },
+    strict: true,
+  },
+  {
+    cron: "*/2 * * * *",
+    lenient: true,
+    phrase: "every 2 minutes",
+    schedule: { every: "minute", interval: 2 },
+    strict: true,
+  },
+  {
+    cron: "*/3 * * * *",
+    lenient: true,
+    phrase: "every 3 minutes",
+    schedule: { every: "minute", interval: 3 },
+    strict: true,
+  },
+  {
+    cron: "*/4 * * * *",
+    lenient: true,
+    phrase: "every 4 minutes",
+    schedule: { every: "minute", interval: 4 },
+    strict: true,
+  },
+  {
+    cron: "*/5 * * * *",
+    lenient: true,
+    phrase: "every 5 minutes",
+    schedule: { every: "minute", interval: 5 },
+    strict: true,
+  },
+  {
+    cron: "*/6 * * * *",
+    lenient: true,
+    phrase: "every 6 minutes",
+    schedule: { every: "minute", interval: 6 },
+    strict: true,
+  },
+  {
+    cron: "*/10 * * * *",
+    lenient: true,
+    phrase: "every 10 minutes",
+    schedule: { every: "minute", interval: 10 },
+    strict: true,
+  },
+  {
+    cron: "*/12 * * * *",
+    lenient: true,
+    phrase: "every 12 minutes",
+    schedule: { every: "minute", interval: 12 },
+    strict: true,
+  },
+  {
+    cron: "*/15 * * * *",
+    lenient: true,
+    phrase: "every 15 minutes",
+    schedule: { every: "minute", interval: 15 },
+    strict: true,
+  },
+  {
+    cron: "*/20 * * * *",
+    lenient: true,
+    phrase: "every 20 minutes",
+    schedule: { every: "minute", interval: 20 },
+    strict: true,
+  },
+  {
+    cron: "*/30 * * * *",
+    lenient: true,
+    phrase: "every 30 minutes",
+    schedule: { every: "minute", interval: 30 },
+    strict: true,
+  },
   {
     error: "7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30",
     lenient: false,
@@ -100,6 +170,7 @@ export const GRAMMAR = [
     cron: "*/5 * * * *",
     lenient: true,
     phrase: "every 5 minute",
+    schedule: { every: "minute", interval: 5 },
     strict: false,
     strictError: `use "minutes" after a number`,
   },
@@ -127,37 +198,49 @@ export const GRAMMAR = [
     cron: "*/15 9-16 * * *",
     lenient: true,
     phrase: "every 15 minutes between 9:00 and 17:00",
+    schedule: { between: { from: 9, to: 17 }, every: "minute", interval: 15 },
     strict: true,
   },
   {
     cron: "*/15 9-16 * * 1-5",
     lenient: true,
     phrase: "every 15 minutes between 9:00 and 17:00 on weekdays",
+    schedule: { between: { from: 9, to: 17 }, every: "minute", interval: 15, on: "weekdays" },
     strict: true,
   },
-  { cron: "* 9 * * *", lenient: true, phrase: "every minute between 9:00 and 10:00", strict: true },
+  {
+    cron: "* 9 * * *",
+    lenient: true,
+    phrase: "every minute between 9:00 and 10:00",
+    schedule: { between: { from: 9, to: 10 }, every: "minute" },
+    strict: true,
+  },
   {
     cron: "*/30 9,10 * * *",
     lenient: true,
     phrase: "every 30 minutes between 09:00 and 11:00",
+    schedule: { between: { from: 9, to: 11 }, every: "minute", interval: 30 },
     strict: true,
   },
   {
     cron: "*/10 18-23 * * *",
     lenient: true,
     phrase: "every 10 minutes between 6:00pm and midnight",
+    schedule: { between: { from: 18, to: 24 }, every: "minute", interval: 10 },
     strict: true,
   },
   {
     cron: "*/5 0-5 * * *",
     lenient: true,
     phrase: "every 5 minutes between midnight and 6:00am",
+    schedule: { between: { from: 0, to: 6 }, every: "minute", interval: 5 },
     strict: true,
   },
   {
     cron: "*/20 12-16 * * 0,6",
     lenient: true,
     phrase: "every 20 minutes between noon and 17:00 on weekends",
+    schedule: { between: { from: 12, to: 17 }, every: "minute", interval: 20, on: "weekends" },
     strict: true,
   },
   {
@@ -198,13 +281,32 @@ export const GRAMMAR = [
   },
 
   // ---- Minute interval with a day set ----
-  { cron: "*/15 * * * 1-5", lenient: true, phrase: "every 15 minutes on weekdays", strict: true },
-  { cron: "*/15 * * * 0,6", lenient: true, phrase: "every 15 minutes on weekends", strict: true },
-  { cron: "* * * * 1", lenient: true, phrase: "every minute on monday", strict: true },
+  {
+    cron: "*/15 * * * 1-5",
+    lenient: true,
+    phrase: "every 15 minutes on weekdays",
+    schedule: { every: "minute", interval: 15, on: "weekdays" },
+    strict: true,
+  },
+  {
+    cron: "*/15 * * * 0,6",
+    lenient: true,
+    phrase: "every 15 minutes on weekends",
+    schedule: { every: "minute", interval: 15, on: "weekends" },
+    strict: true,
+  },
+  {
+    cron: "* * * * 1",
+    lenient: true,
+    phrase: "every minute on monday",
+    schedule: { every: "minute", on: ["monday"] },
+    strict: true,
+  },
   {
     cron: "*/5 * * * 1,3,5",
     lenient: true,
     phrase: "every 5 minutes on monday, wednesday and friday",
+    schedule: { every: "minute", interval: 5, on: ["monday", "wednesday", "friday"] },
     strict: true,
   },
   {
@@ -223,20 +325,75 @@ export const GRAMMAR = [
     cron: "*/15 * * * 1-5",
     lenient: true,
     phrase: "every 15 minutes on weekday",
+    schedule: { every: "minute", interval: 15, on: "weekdays" },
     strict: false,
     strictError: `use "weekdays" after "on"`,
   },
 
   // ---- Hour interval ----
-  { cron: "0 * * * *", lenient: true, phrase: "every hour", strict: true },
-  { cron: "0 */2 * * *", lenient: true, phrase: "every 2 hours", strict: true },
-  { cron: "0 */3 * * *", lenient: true, phrase: "every 3 hours", strict: true },
-  { cron: "0 */4 * * *", lenient: true, phrase: "every 4 hours", strict: true },
-  { cron: "0 */6 * * *", lenient: true, phrase: "every 6 hours", strict: true },
-  { cron: "0 */8 * * *", lenient: true, phrase: "every 8 hours", strict: true },
-  { cron: "0 */12 * * *", lenient: true, phrase: "every 12 hours", strict: true },
-  { cron: "0 */6 * * 1-5", lenient: true, phrase: "every 6 hours on weekdays", strict: true },
-  { cron: "0 * * * 0", lenient: true, phrase: "every hour on sunday", strict: true },
+  {
+    cron: "0 * * * *",
+    lenient: true,
+    phrase: "every hour",
+    schedule: { every: "hour" },
+    strict: true,
+  },
+  {
+    cron: "0 */2 * * *",
+    lenient: true,
+    phrase: "every 2 hours",
+    schedule: { every: "hour", interval: 2 },
+    strict: true,
+  },
+  {
+    cron: "0 */3 * * *",
+    lenient: true,
+    phrase: "every 3 hours",
+    schedule: { every: "hour", interval: 3 },
+    strict: true,
+  },
+  {
+    cron: "0 */4 * * *",
+    lenient: true,
+    phrase: "every 4 hours",
+    schedule: { every: "hour", interval: 4 },
+    strict: true,
+  },
+  {
+    cron: "0 */6 * * *",
+    lenient: true,
+    phrase: "every 6 hours",
+    schedule: { every: "hour", interval: 6 },
+    strict: true,
+  },
+  {
+    cron: "0 */8 * * *",
+    lenient: true,
+    phrase: "every 8 hours",
+    schedule: { every: "hour", interval: 8 },
+    strict: true,
+  },
+  {
+    cron: "0 */12 * * *",
+    lenient: true,
+    phrase: "every 12 hours",
+    schedule: { every: "hour", interval: 12 },
+    strict: true,
+  },
+  {
+    cron: "0 */6 * * 1-5",
+    lenient: true,
+    phrase: "every 6 hours on weekdays",
+    schedule: { every: "hour", interval: 6, on: "weekdays" },
+    strict: true,
+  },
+  {
+    cron: "0 * * * 0",
+    lenient: true,
+    phrase: "every hour on sunday",
+    schedule: { every: "hour", on: ["sunday"] },
+    strict: true,
+  },
   {
     error: "5 does not divide 24. Use 2, 3, 4, 6, 8, or 12",
     lenient: false,
@@ -275,10 +432,28 @@ export const GRAMMAR = [
   },
 
   // ---- Shortcuts ----
-  { cron: "0 * * * *", lenient: true, phrase: "hourly", strict: true },
-  { cron: "0 0 * * *", lenient: true, phrase: "daily", strict: true },
-  { cron: "0 0 * * 0", lenient: true, phrase: "weekly", strict: true },
-  { cron: "0 0 1 * *", lenient: true, phrase: "monthly", strict: true },
+  { cron: "0 * * * *", lenient: true, phrase: "hourly", schedule: { every: "hour" }, strict: true },
+  {
+    cron: "0 0 * * *",
+    lenient: true,
+    phrase: "daily",
+    schedule: { at: { hour: 0, minute: 0 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "0 0 * * 0",
+    lenient: true,
+    phrase: "weekly",
+    schedule: { at: { hour: 0, minute: 0 }, every: "day", on: ["sunday"] },
+    strict: true,
+  },
+  {
+    cron: "0 0 1 * *",
+    lenient: true,
+    phrase: "monthly",
+    schedule: { at: { hour: 0, minute: 0 }, day: 1, every: "month" },
+    strict: true,
+  },
   {
     error: `unexpected text "at 9:00" after "daily"`,
     lenient: false,
@@ -287,16 +462,76 @@ export const GRAMMAR = [
   },
 
   // ---- Daily ----
-  { cron: "30 9 * * *", lenient: true, phrase: "every day at 9:30", strict: true },
-  { cron: "30 9 * * *", lenient: true, phrase: "every day at 09:30", strict: true },
-  { cron: "0 0 * * *", lenient: true, phrase: "every day at 0:00", strict: true },
-  { cron: "59 23 * * *", lenient: true, phrase: "every day at 23:59", strict: true },
-  { cron: "30 9 * * *", lenient: true, phrase: "every day at 9:30am", strict: true },
-  { cron: "30 21 * * *", lenient: true, phrase: "every day at 9:30pm", strict: true },
-  { cron: "30 0 * * *", lenient: true, phrase: "every day at 12:30am", strict: true },
-  { cron: "30 12 * * *", lenient: true, phrase: "every day at 12:30pm", strict: true },
-  { cron: "0 12 * * *", lenient: true, phrase: "every day at noon", strict: true },
-  { cron: "0 0 * * *", lenient: true, phrase: "every day at midnight", strict: true },
+  {
+    cron: "30 9 * * *",
+    lenient: true,
+    phrase: "every day at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "30 9 * * *",
+    lenient: true,
+    phrase: "every day at 09:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "0 0 * * *",
+    lenient: true,
+    phrase: "every day at 0:00",
+    schedule: { at: { hour: 0, minute: 0 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "59 23 * * *",
+    lenient: true,
+    phrase: "every day at 23:59",
+    schedule: { at: { hour: 23, minute: 59 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "30 9 * * *",
+    lenient: true,
+    phrase: "every day at 9:30am",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "30 21 * * *",
+    lenient: true,
+    phrase: "every day at 9:30pm",
+    schedule: { at: { hour: 21, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "30 0 * * *",
+    lenient: true,
+    phrase: "every day at 12:30am",
+    schedule: { at: { hour: 0, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "30 12 * * *",
+    lenient: true,
+    phrase: "every day at 12:30pm",
+    schedule: { at: { hour: 12, minute: 30 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "0 12 * * *",
+    lenient: true,
+    phrase: "every day at noon",
+    schedule: { at: { hour: 12, minute: 0 }, every: "day" },
+    strict: true,
+  },
+  {
+    cron: "0 0 * * *",
+    lenient: true,
+    phrase: "every day at midnight",
+    schedule: { at: { hour: 0, minute: 0 }, every: "day" },
+    strict: true,
+  },
   {
     error: `"9" is not a valid time. Write the minutes, such as "9:00"`,
     lenient: false,
@@ -378,27 +613,64 @@ export const GRAMMAR = [
   },
 
   // ---- Days of the week ----
-  { cron: "30 17 * * 1-5", lenient: true, phrase: "every weekday at 17:30", strict: true },
-  { cron: "0 10 * * 0,6", lenient: true, phrase: "every weekend at 10:00", strict: true },
-  { cron: "30 9 * * 1", lenient: true, phrase: "every monday at 9:30", strict: true },
-  { cron: "0 12 * * 1,5", lenient: true, phrase: "every monday and friday at 12:00", strict: true },
+  {
+    cron: "30 17 * * 1-5",
+    lenient: true,
+    phrase: "every weekday at 17:30",
+    schedule: { at: { hour: 17, minute: 30 }, every: "day", on: "weekdays" },
+    strict: true,
+  },
+  {
+    cron: "0 10 * * 0,6",
+    lenient: true,
+    phrase: "every weekend at 10:00",
+    schedule: { at: { hour: 10, minute: 0 }, every: "day", on: "weekends" },
+    strict: true,
+  },
+  {
+    cron: "30 9 * * 1",
+    lenient: true,
+    phrase: "every monday at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["monday"] },
+    strict: true,
+  },
+  {
+    cron: "0 12 * * 1,5",
+    lenient: true,
+    phrase: "every monday and friday at 12:00",
+    schedule: { at: { hour: 12, minute: 0 }, every: "day", on: ["monday", "friday"] },
+    strict: true,
+  },
   {
     cron: "0 8 * * 1,3,5",
     lenient: true,
     phrase: "every monday, wednesday and friday at 8:00",
+    schedule: { at: { hour: 8, minute: 0 }, every: "day", on: ["monday", "wednesday", "friday"] },
     strict: true,
   },
   {
     cron: "0 8 * * 1-3",
     lenient: true,
     phrase: "every monday, tuesday and wednesday at 8:00",
+    schedule: { at: { hour: 8, minute: 0 }, every: "day", on: ["monday", "tuesday", "wednesday"] },
     strict: true,
   },
-  { cron: "0 9 * * 0,6", lenient: true, phrase: "every saturday and sunday at 9:00", strict: true },
+  {
+    cron: "0 9 * * 0,6",
+    lenient: true,
+    phrase: "every saturday and sunday at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, every: "day", on: ["saturday", "sunday"] },
+    strict: true,
+  },
   {
     cron: "15 6 * * *",
     lenient: true,
     phrase: "every monday, tuesday, wednesday, thursday, friday, saturday and sunday at 6:15",
+    schedule: {
+      at: { hour: 6, minute: 15 },
+      every: "day",
+      on: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+    },
     strict: true,
   },
   {
@@ -429,6 +701,7 @@ export const GRAMMAR = [
     cron: "0 8 * * 1,3,5",
     lenient: true,
     phrase: "every monday, wednesday, and friday at 8:00",
+    schedule: { at: { hour: 8, minute: 0 }, every: "day", on: ["monday", "wednesday", "friday"] },
     strict: false,
     strictError: `write the list as "monday, wednesday and friday"`,
   },
@@ -443,6 +716,7 @@ export const GRAMMAR = [
     cron: "0 9 * * 1-5",
     lenient: true,
     phrase: "every weekdays at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, every: "day", on: "weekdays" },
     strict: false,
     strictError: `use "weekday" after "every"`,
   },
@@ -454,29 +728,62 @@ export const GRAMMAR = [
   },
 
   // ---- Day of the month ----
-  { cron: "0 8 1 * *", lenient: true, phrase: "on the 1st of every month at 8:00", strict: true },
+  {
+    cron: "0 8 1 * *",
+    lenient: true,
+    phrase: "on the 1st of every month at 8:00",
+    schedule: { at: { hour: 8, minute: 0 }, day: 1, every: "month" },
+    strict: true,
+  },
   {
     cron: "30 23 2 * *",
     lenient: true,
     phrase: "on the 2nd of every month at 11:30pm",
+    schedule: { at: { hour: 23, minute: 30 }, day: 2, every: "month" },
     strict: true,
   },
   {
     cron: "0 0 3 * *",
     lenient: true,
     phrase: "on the 3rd of every month at midnight",
+    schedule: { at: { hour: 0, minute: 0 }, day: 3, every: "month" },
     strict: true,
   },
   {
     cron: "0 12 11 * *",
     lenient: true,
     phrase: "on the 11th of every month at noon",
+    schedule: { at: { hour: 12, minute: 0 }, day: 11, every: "month" },
     strict: true,
   },
-  { cron: "0 9 21 * *", lenient: true, phrase: "on the 21st of every month at 9:00", strict: true },
-  { cron: "0 9 22 * *", lenient: true, phrase: "on the 22nd of every month at 9:00", strict: true },
-  { cron: "0 9 23 * *", lenient: true, phrase: "on the 23rd of every month at 9:00", strict: true },
-  { cron: "0 9 28 * *", lenient: true, phrase: "on the 28th of every month at 9:00", strict: true },
+  {
+    cron: "0 9 21 * *",
+    lenient: true,
+    phrase: "on the 21st of every month at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, day: 21, every: "month" },
+    strict: true,
+  },
+  {
+    cron: "0 9 22 * *",
+    lenient: true,
+    phrase: "on the 22nd of every month at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, day: 22, every: "month" },
+    strict: true,
+  },
+  {
+    cron: "0 9 23 * *",
+    lenient: true,
+    phrase: "on the 23rd of every month at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, day: 23, every: "month" },
+    strict: true,
+  },
+  {
+    cron: "0 9 28 * *",
+    lenient: true,
+    phrase: "on the 28th of every month at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, day: 28, every: "month" },
+    strict: true,
+  },
   {
     error: "the 29th does not occur in every month. Use 1st to 28th",
     lenient: false,
@@ -531,14 +838,22 @@ export const GRAMMAR = [
     cron: "*/15 * * * *",
     lenient: true,
     phrase: "Every 15 Minutes",
+    schedule: { every: "minute", interval: 15 },
     strict: false,
     strictError: "use lowercase words",
   },
-  { cron: "*/15 * * * *", lenient: true, phrase: "EVERY 15 MINUTES", strict: false },
+  {
+    cron: "*/15 * * * *",
+    lenient: true,
+    phrase: "EVERY 15 MINUTES",
+    schedule: { every: "minute", interval: 15 },
+    strict: false,
+  },
   {
     cron: "*/15 * * * *",
     lenient: true,
     phrase: "  every   15\tminutes  ",
+    schedule: { every: "minute", interval: 15 },
     strict: false,
     strictError: "use one space between words",
   },
@@ -546,45 +861,151 @@ export const GRAMMAR = [
     cron: "*/15 * * * *",
     lenient: true,
     phrase: "every 15 mins",
+    schedule: { every: "minute", interval: 15 },
     strict: false,
     strictError: `"mins" is not an interval unit`,
   },
-  { cron: "*/15 * * * *", lenient: true, phrase: "every 15 min", strict: false },
-  { cron: "*/15 * * * *", lenient: true, phrase: "every 15m", strict: false },
-  { cron: "*/15 * * * *", lenient: true, phrase: "every 15 m", strict: false },
-  { cron: "* * * * *", lenient: true, phrase: "every min", strict: false },
-  { cron: "0 */2 * * *", lenient: true, phrase: "every 2 hrs", strict: false },
-  { cron: "0 */2 * * *", lenient: true, phrase: "every 2h", strict: false },
-  { cron: "0 */2 * * *", lenient: true, phrase: "every 2 hour", strict: false },
-  { cron: "0 * * * *", lenient: true, phrase: "every hr", strict: false },
-  { cron: "0 * * * *", lenient: true, phrase: "Hourly", strict: false },
+  {
+    cron: "*/15 * * * *",
+    lenient: true,
+    phrase: "every 15 min",
+    schedule: { every: "minute", interval: 15 },
+    strict: false,
+  },
+  {
+    cron: "*/15 * * * *",
+    lenient: true,
+    phrase: "every 15m",
+    schedule: { every: "minute", interval: 15 },
+    strict: false,
+  },
+  {
+    cron: "*/15 * * * *",
+    lenient: true,
+    phrase: "every 15 m",
+    schedule: { every: "minute", interval: 15 },
+    strict: false,
+  },
+  {
+    cron: "* * * * *",
+    lenient: true,
+    phrase: "every min",
+    schedule: { every: "minute" },
+    strict: false,
+  },
+  {
+    cron: "0 */2 * * *",
+    lenient: true,
+    phrase: "every 2 hrs",
+    schedule: { every: "hour", interval: 2 },
+    strict: false,
+  },
+  {
+    cron: "0 */2 * * *",
+    lenient: true,
+    phrase: "every 2h",
+    schedule: { every: "hour", interval: 2 },
+    strict: false,
+  },
+  {
+    cron: "0 */2 * * *",
+    lenient: true,
+    phrase: "every 2 hour",
+    schedule: { every: "hour", interval: 2 },
+    strict: false,
+  },
+  {
+    cron: "0 * * * *",
+    lenient: true,
+    phrase: "every hr",
+    schedule: { every: "hour" },
+    strict: false,
+  },
+  {
+    cron: "0 * * * *",
+    lenient: true,
+    phrase: "Hourly",
+    schedule: { every: "hour" },
+    strict: false,
+  },
   {
     cron: "30 9 * * 1",
     lenient: true,
     phrase: "every mon at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["monday"] },
     strict: false,
     strictError: `"mon" is not a day`,
   },
-  { cron: "30 9 * * 1", lenient: true, phrase: "every Monday at 9:30", strict: false },
+  {
+    cron: "30 9 * * 1",
+    lenient: true,
+    phrase: "every Monday at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["monday"] },
+    strict: false,
+  },
   {
     cron: "30 9 * * 1,2,4",
     lenient: true,
     phrase: "every mon, tues and thurs at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["monday", "tuesday", "thursday"] },
     strict: false,
   },
-  { cron: "30 9 * * 1,2,4", lenient: true, phrase: "every mon,tue and thu at 9:30", strict: false },
-  { cron: "30 9 * * 0,6", lenient: true, phrase: "every sat and sun at 9:30", strict: false },
-  { cron: "30 21 * * *", lenient: true, phrase: "every day at 9:30 PM", strict: false },
-  { cron: "30 21 * * *", lenient: true, phrase: "every day at 9:30PM", strict: false },
-  { cron: "0 12 * * *", lenient: true, phrase: "Every Day At Noon", strict: false },
+  {
+    cron: "30 9 * * 1,2,4",
+    lenient: true,
+    phrase: "every mon,tue and thu at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["monday", "tuesday", "thursday"] },
+    strict: false,
+  },
+  {
+    cron: "30 9 * * 0,6",
+    lenient: true,
+    phrase: "every sat and sun at 9:30",
+    schedule: { at: { hour: 9, minute: 30 }, every: "day", on: ["saturday", "sunday"] },
+    strict: false,
+  },
+  {
+    cron: "30 21 * * *",
+    lenient: true,
+    phrase: "every day at 9:30 PM",
+    schedule: { at: { hour: 21, minute: 30 }, every: "day" },
+    strict: false,
+  },
+  {
+    cron: "30 21 * * *",
+    lenient: true,
+    phrase: "every day at 9:30PM",
+    schedule: { at: { hour: 21, minute: 30 }, every: "day" },
+    strict: false,
+  },
+  {
+    cron: "0 12 * * *",
+    lenient: true,
+    phrase: "Every Day At Noon",
+    schedule: { at: { hour: 12, minute: 0 }, every: "day" },
+    strict: false,
+  },
   {
     cron: "*/15 9-16 * * 1-5",
     lenient: true,
     phrase: "Every 15 Mins Between 9:00 AM And 5:00 PM On Weekdays",
+    schedule: { between: { from: 9, to: 17 }, every: "minute", interval: 15, on: "weekdays" },
     strict: false,
   },
-  { cron: "0 9 * * 1", lenient: true, phrase: "every mondays at 9:00", strict: false },
-  { cron: "0 8 1 * *", lenient: true, phrase: "On The 1st Of Every Month At 8:00", strict: false },
+  {
+    cron: "0 9 * * 1",
+    lenient: true,
+    phrase: "every mondays at 9:00",
+    schedule: { at: { hour: 9, minute: 0 }, every: "day", on: ["monday"] },
+    strict: false,
+  },
+  {
+    cron: "0 8 1 * *",
+    lenient: true,
+    phrase: "On The 1st Of Every Month At 8:00",
+    schedule: { at: { hour: 8, minute: 0 }, day: 1, every: "month" },
+    strict: false,
+  },
 
   // ---- Not in the language ----
   { error: "the phrase is empty", lenient: false, phrase: "", strict: false },
@@ -656,6 +1077,7 @@ export const GRAMMAR = [
     cron: "* * * * *",
     lenient: true,
     phrase: "every minutes",
+    schedule: { every: "minute" },
     strict: false,
     strictError: `use "every minute", or write a number before "minutes"`,
   },

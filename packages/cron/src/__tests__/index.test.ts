@@ -5,7 +5,7 @@ describe("public entry", () => {
   it("should export the public functions and the error", () => {
     expect(Object.keys(api).toSorted()).toEqual([
       "HOUR_INTERVALS",
-      "InvalidCronPhraseError",
+      "InvalidScheduleError",
       "MINUTE_INTERVALS",
       "WEEKDAYS",
       "cron",
@@ -22,6 +22,6 @@ describe("public entry", () => {
     )
     expect(api.parse("Every Mon, Wed and Fri at 9:30 PM")).toBe("30 21 * * 1,3,5")
     expect(api.safeParse("every 7 minutes")).toBeNull()
-    expect(() => api.parse("every 90 minutes")).toThrow(api.InvalidCronPhraseError)
+    expect(() => api.parse("every 90 minutes")).toThrow(api.InvalidScheduleError)
   })
 })

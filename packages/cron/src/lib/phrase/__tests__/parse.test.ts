@@ -3,7 +3,7 @@ import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import type { GrammarRow } from "#lib/grammar/__tests__/grammar.table.ts"
 import { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
-import { InvalidCronPhraseError } from "#lib/phrase/errors.ts"
+import { InvalidScheduleError } from "#lib/phrase/errors.ts"
 import { parse, safeParse } from "#lib/phrase/parse.ts"
 
 // The table phrases are literal types. The tests use them as `string`, the same as input from a
@@ -18,7 +18,7 @@ describe("parse", () => {
       })
     } else {
       it(`should reject ${JSON.stringify(row.phrase)} with "${row.error}"`, () => {
-        expect(() => parse(row.phrase)).toThrow(InvalidCronPhraseError)
+        expect(() => parse(row.phrase)).toThrow(InvalidScheduleError)
         expect(() => parse(row.phrase)).toThrow(row.error)
       })
     }
@@ -33,10 +33,10 @@ describe("parse", () => {
       caught = error
     }
 
-    expect(caught).toBeInstanceOf(InvalidCronPhraseError)
-    expect((caught as InvalidCronPhraseError).value).toBe("every 7 minutes")
-    expect((caught as InvalidCronPhraseError).message).toBe(
-      'Invalid cron phrase: 7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30. Received: "every 7 minutes"'
+    expect(caught).toBeInstanceOf(InvalidScheduleError)
+    expect((caught as InvalidScheduleError).value).toBe("every 7 minutes")
+    expect((caught as InvalidScheduleError).message).toBe(
+      'Invalid schedule: 7 does not divide 60. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30. Received: "every 7 minutes"'
     )
   })
 
@@ -47,13 +47,13 @@ describe("parse", () => {
     }
   })
 
-  it("should throw only InvalidCronPhraseError", () => {
+  it("should throw only InvalidScheduleError", () => {
     fc.assert(
       fc.property(fc.string(), (value) => {
         try {
           parse(value)
         } catch (error) {
-          expect(error).toBeInstanceOf(InvalidCronPhraseError)
+          expect(error).toBeInstanceOf(InvalidScheduleError)
         }
       })
     )
