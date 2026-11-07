@@ -43,6 +43,7 @@ const failingGate = buildGate({
 
 const details = await failingGate({ key: "beta-access", defaultValue: false }).details()
 
-details.source // "default"
-details.error.message // "provider down"
+if (details.source === "default") {
+  details.error.message // "provider down"
+}
 ```
