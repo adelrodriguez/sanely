@@ -1,0 +1,167 @@
+name: ratelimit-stores
+
+# The store tests of @sanely/ratelimit need a Redis or Valkey server, and the Bun checks need Bun.
+# They run only when the package changes, so they are not required checks on `main`.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/ratelimit/**"
+      - ".github/workflows/ratelimit-stores.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "packages/ratelimit/**"
+      - ".github/workflows/ratelimit-stores.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  redis-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Redis store tests
+        run: pnpm --filter @sanely/ratelimit run test:redis-store
+
+  valkey-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      valkey:
+        image: valkey/valkey:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Valkey store tests
+        run: pnpm --filter @sanely/ratelimit run test:valkey-store
+
+  bun-redis-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Bun store tests
+        run: pnpm --filter @sanely/ratelimit run test:bun-redis-store
+
+  # The `compat` job in `test.yml` runs the package on its `engines.node` floor. This job runs it on
+  # its `engines.bun` floor. Vitest needs a newer Node.js version than the floors, so the job builds
+  # with the default Node.js version first.
+  compat-bun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter=@sanely/ratelimit
+
+      - name: Setup minimum Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          # Keep equal to the `engines.bun` floor in packages/ratelimit/package.json.
+          bun-version: "1.4.0"
+
+      - name: Run compatibility smoke test
+        working-directory: packages/ratelimit
+        run: bun scripts/compat/bun.mjs dist
