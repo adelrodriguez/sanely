@@ -1,12 +1,12 @@
 <div align="center">
-  <h1 align="center">🗓️ <code>plaincron</code></h1>
+  <h1 align="center">🗓️ <code>@sanely/cron</code></h1>
 
   <p align="center">
     <strong>A small, type-safe English-like language that compiles to exact cron expressions</strong>
   </p>
 </div>
 
-Plaincron converts cron phrases such as `"every 15 minutes"` to cron expressions such as `"*/15 * * * *"`. It is not a free-text parser. It accepts a closed set of sentence shapes, and each valid cron phrase maps to exactly one cron expression.
+`@sanely/cron` converts cron phrases such as `"every 15 minutes"` to cron expressions such as `"*/15 * * * *"`. It is not a free-text parser. It accepts a closed set of sentence shapes, and each valid cron phrase maps to exactly one cron expression.
 
 - **Exact or throw.** The language contains only phrases that one standard cron expression can express exactly. `"every 7 minutes"` is an error, because `*/7` runs at :56 and then at :00.
 - **Type-safe.** An invalid string literal is a type error, with a reason that names the failed part.
@@ -122,9 +122,9 @@ The unit aliases mean the same units as in [Humanspan](https://github.com/adelro
 
 ## API
 
-Plaincron has the same API shape as Humanspan:
+`@sanely/cron` has the same API shape as Humanspan:
 
-| Use                                            | Plaincron           | Humanspan               |
+| Use                                            | `@sanely/cron`      | Humanspan               |
 | ---------------------------------------------- | ------------------- | ----------------------- |
 | A typed phrase in your code                    | `cron(phrase)`      | `ms(value)`             |
 | A `string` from a config file or a form        | `parse(value)`      | `parse(value)`          |

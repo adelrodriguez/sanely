@@ -1,11 +1,11 @@
-# Plaincron
+# Cron
 
-Plaincron is a zero-dependency TypeScript package that converts cron phrases, a small English-like language, to exact standard 5-field cron expressions.
+`@sanely/cron` is a zero-dependency TypeScript package that converts cron phrases, a small English-like language, to exact standard 5-field cron expressions.
 
 ## Language
 
 **Cron phrase**:
-A string in the Plaincron language, such as `"every 15 minutes"` or `"every weekday at 17:30"`.
+A string in the cron-phrase language, such as `"every 15 minutes"` or `"every weekday at 17:30"`.
 _Avoid_: Human cron, natural-language schedule, sentence
 
 **Cron expression**:
@@ -49,7 +49,7 @@ The fixed step between runs in an interval clause, such as 15 minutes.
 _Avoid_: Frequency, period
 
 **Phase**:
-The first run of an interval inside its cycle. Plaincron intervals start at the beginning of the next larger cycle.
+The first run of an interval inside its cycle. Intervals start at the beginning of the next larger cycle.
 _Avoid_: Offset, start
 
 **Window**:
@@ -77,7 +77,7 @@ A day of the month in a cron phrase, from `1st` to `28th`.
 _Avoid_: Date, day number
 
 **Normalizer**:
-The part of Plaincron that does normalization.
+The part of `@sanely/cron` that does normalization.
 _Avoid_: Sanitizer, cleaner
 
 **Dialect**:
@@ -85,5 +85,5 @@ A cron format and the set of schedules that it can express, such as standard 5-f
 _Avoid_: Flavor, variant
 
 **Package consumer**:
-A person or project that installs and uses Plaincron.
+A person or project that installs and uses `@sanely/cron`.
 _Avoid_: User, package author

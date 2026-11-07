@@ -19,7 +19,7 @@ Migrated packages contain their source libraries. The other packages still conta
 | [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     | Starter  |
 | [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         | Starter  |
 | [`@sanely/duration`](packages/duration)   | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Starter  |
-| [`@sanely/cron`](packages/cron)           | [`plaincron`](https://github.com/adelrodriguez/plaincron) | Migrated |
+| [`@sanely/cron`](packages/cron)           | None                                                      | Migrated |
 | [`@sanely/rpc`](packages/rpc)             | [`typedport`](https://github.com/adelrodriguez/typedport) | Starter  |
 | [`@sanely/skew`](packages/skew)           | [`crispen`](https://github.com/adelrodriguez/crispen)     | Starter  |
 
