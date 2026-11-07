@@ -178,7 +178,7 @@ Resolves with an object of the task results. When a task fails, every other `thi
 | `partial`             | The results of the tasks that succeeded before the failure. |
 | `signal`              | The signal of the orchestration.                            |
 
-`catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`. A `catch` that throws or rejects throws a `Panic`.
+`catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. Those reject the call instead. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
 
 ### `allSettled(tasks)`
 
