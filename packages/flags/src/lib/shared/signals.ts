@@ -52,6 +52,9 @@ export function createEvaluationSignal(
  * signal aborts only when every caller that joined has aborted, with the reason of the last one, so
  * one caller's cancellation or deadline never stops the work for the others. `release` detaches the
  * listeners after the work settles.
+ *
+ * Once the shared signal aborts, `join` has no effect: the work has stopped. Check `signal.aborted`
+ * before joining, and start new work when it is true.
  */
 export type SharedSignal = {
   join(signal: AbortSignal): void

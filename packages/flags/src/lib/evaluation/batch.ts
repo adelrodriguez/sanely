@@ -87,7 +87,10 @@ export async function executeGateBatch<TIdentity extends Identity>(
   let round: FlushRound | undefined
 
   const flushRound = async (current: FlushRound): Promise<void> => {
-    round = undefined
+    // A newer round can replace an aborted one before the aborted one flushes. Keep it open.
+    if (round === current) {
+      round = undefined
+    }
     // The provider signal also aborts when the round settles, so the provider can release its work.
     const settled = new AbortController()
     const roundSignal = AbortSignal.any([current.shared.signal, settled.signal])
@@ -110,7 +113,9 @@ export async function executeGateBatch<TIdentity extends Identity>(
     key: string,
     providerSignal: AbortSignal
   ): Promise<Record<string, Decision>> => {
-    if (!round) {
+    // A round whose entries have all left stays open until its flush, but it can no longer call the
+    // provider. A later entry opens a new round instead of joining it.
+    if (!round || round.shared.signal.aborted) {
       const { promise, reject, resolve } = Promise.withResolvers<Record<string, Decision>>()
       void promise.catch(() => null)
       const current: FlushRound = {
