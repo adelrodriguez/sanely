@@ -9,6 +9,7 @@ const LIB = join(import.meta.dirname, "..", "lib")
 //
 //   phrase      the public functions: cron, parse, safeParse, guards, and errors
 //   validate    schedule object -> schedule
+//   describe    schedule -> strict form
 //   normalize   lenient form -> strict form
 //   grammar     strict form  -> cron fields (and the type-level validator)
 //   serialize   cron fields  -> standard cron expression
@@ -25,6 +26,7 @@ const LAYERS = [
   "fields",
   "serialize",
   "grammar",
+  "describe",
   "normalize",
   "validate",
   "phrase",

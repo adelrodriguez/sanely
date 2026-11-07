@@ -1,9 +1,18 @@
 import type { Schedule } from "#lib/schedule/schedule.ts"
 import { parsePhrase } from "#lib/grammar/grammar.ts"
 import { normalize } from "#lib/normalize/normalize.ts"
-import { ParseError } from "#lib/schedule/rules.ts"
+import { ParseError, fail, show } from "#lib/schedule/rules.ts"
 import { validate } from "#lib/validate/validate.ts"
 import { withInput } from "./errors"
+
+// A string is a cron phrase, and any other object is a schedule object.
+function read(value: unknown): Schedule {
+  if (typeof value === "string") return parsePhrase(normalize(value))
+  if (typeof value !== "object" || value === null) {
+    fail(`${show(value)} is not a cron phrase or a schedule object`)
+  }
+  return validate(value)
+}
 
 /**
  * Parse input at runtime to a `Schedule`.
@@ -24,9 +33,7 @@ import { withInput } from "./errors"
  * @throws {InvalidScheduleError} If the value is not a valid schedule
  */
 export function parse(value: unknown): Schedule {
-  return withInput(value, () =>
-    typeof value === "string" ? parsePhrase(normalize(value)) : validate(value)
-  )
+  return withInput(value, () => read(value))
 }
 
 /**
@@ -42,7 +49,7 @@ export function parse(value: unknown): Schedule {
  */
 export function safeParse(value: unknown): Schedule | null {
   try {
-    return typeof value === "string" ? parsePhrase(normalize(value)) : validate(value)
+    return read(value)
   } catch (error) {
     if (error instanceof ParseError) return null
     throw error

@@ -60,9 +60,10 @@ describe("parse with a schedule object", () => {
   })
 
   it("should reject a value that is not a string or an object", () => {
-    for (const value of [undefined, null, 15, true, ["every minute"]]) {
+    for (const value of [undefined, null, 15, true]) {
       expect(() => parse(value)).toThrow("is not a cron phrase or a schedule object")
     }
+    expect(() => parse(["every minute"])).toThrow('["every minute"] is not a schedule object')
   })
 
   it("should read only own keys", () => {

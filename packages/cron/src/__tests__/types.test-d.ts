@@ -8,6 +8,7 @@ import {
   type CronPhrase,
   type DayOfMonth,
   type DaySet,
+  describe,
   HOUR_INTERVALS,
   type HourInterval,
   InvalidScheduleError,
@@ -321,6 +322,13 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(cron(parse(userInput))).toEqualTypeOf<CronExpression>()
 }
 
+// Returns a CronPhrase from describe that cron accepts.
+{
+  expectTypeOf(describe(anySchedule)).toEqualTypeOf<CronPhrase>()
+  expectTypeOf(cron(describe(anySchedule))).toEqualTypeOf<CronExpression>()
+  expectTypeOf(describe).parameters.toEqualTypeOf<[schedule: Schedule]>()
+}
+
 // Narrows any value to Schedule with isSchedule.
 {
   const value: unknown = JSON.parse("{}")
@@ -523,6 +531,9 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- cron takes a string or a Schedule, not a number
   cron(15)
+
+  // @ts-expect-error -- describe takes a Schedule, not a phrase
+  describe("every hour")
 
   // @ts-expect-error -- 7 does not divide 60
   cron({ every: "minute", interval: 7 })

@@ -69,3 +69,16 @@ export const scheduleArb: fc.Arbitrary<Schedule> = fc.oneof(
     { noNullPrototype: true }
   )
 )
+
+/**
+ * The canonical form of a schedule: each list of days in calendar order and without duplicates. Two
+ * schedules with the same canonical form run at the same times.
+ */
+export function toCanonical(schedule: Schedule): Schedule {
+  if (schedule.every === "month" || schedule.on === undefined || typeof schedule.on === "string") {
+    return schedule
+  }
+  const { on } = schedule
+  const days = WEEKDAYS.filter((day) => on.includes(day))
+  return isNonEmpty(days) ? { ...schedule, on: days } : schedule
+}

@@ -214,7 +214,7 @@ const KIND_CHOICES = formatChoices(Object.keys(SHAPES).map((kind) => JSON.string
  * @throws {ParseError} With the reason and the path of the key that failed
  */
 export function validate(value: unknown): Schedule {
-  if (!isObject(value)) fail(`${show(value)} is not a cron phrase or a schedule object`)
+  if (!isObject(value)) fail(`${show(value)} is not a schedule object`)
 
   const every = getOwn(value, "every")
   if (every === undefined) fail(`the key "every" is required. Use ${KIND_CHOICES}`, ["every"])
