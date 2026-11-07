@@ -1,0 +1,280 @@
+# `@sanely/try` reference
+
+The package has three entry points:
+
+| Entry point          | Exports                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `@sanely/try`        | `run`, `runSync`, `retry`, `retryOptions`, `timeout`, `signal`, `wrap`, `all`, `allSettled`, `flow`, `gen`, `disposer`                 |
+| `@sanely/try/errors` | `CancellationError`, `TimeoutError`, `RetryExhaustedError`, `UnhandledException`, `Panic`, their type guards, and the type `PanicCode` |
+| `@sanely/try/types`  | The types `AllSettledResult`, `SettledResult`, `SettledFulfilled`, `SettledRejected`, `AsyncDisposer`, and `FlowExit`                  |
+
+```ts
+import type { SettledResult } from "@sanely/try/types"
+import * as try$ from "@sanely/try"
+import { isTimeoutError } from "@sanely/try/errors"
+```
+
+## Terminal execution
+
+### `run(fn)` and `run({ try, catch })`
+
+```ts
+run<T>(fn: (ctx) => T | Promise<T>): Promise<T | UnhandledException | PolicyErrors>
+run<T, C>(options: { try: (ctx) => T | Promise<T>; catch: (error: unknown) => C | Promise<C> }): Promise<T | C | PolicyErrors>
+```
+
+Runs the work and resolves with a result union. It never rejects with an error from the work.
+
+- Without `catch`, a thrown error becomes an `UnhandledException`, or a `RetryExhaustedError` after a retry policy. The original error is the `cause`.
+- With `catch`, `catch` receives the thrown error, or the error of the last attempt after a retry policy. Its return value is part of the result.
+- `catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`.
+- A `catch` that throws or rejects throws a `Panic`.
+
+The context has these fields:
+
+| Field           | Type          | Present                     | Description                                                    |
+| --------------- | ------------- | --------------------------- | -------------------------------------------------------------- |
+| `signal`        | `AbortSignal` | After `timeout` or `signal` | Aborts when the deadline expires or an external signal aborts. |
+| `retry.attempt` | `number`      | After `retry`               | The current attempt, from 1.                                   |
+| `retry.limit`   | `number`      | After `retry`               | The attempt limit.                                             |
+
+```ts
+const status = await try$.run(async () => (await fetch(url)).status)
+// status is number | UnhandledException
+```
+
+### `runSync(fn)` and `runSync({ try, catch })`
+
+The synchronous form of `run`. It has the same result rules. It throws a `Panic` when `try` or `catch` returns a promise, or when a wrap returns a promise.
+
+```ts
+const url = try$.runSync(() => new URL(link))
+// url is URL | UnhandledException
+```
+
+### Result union rules
+
+| Chain                            | Result type                |
+| -------------------------------- | -------------------------- |
+| `run(fn)`                        | `T \| UnhandledException`  |
+| `run({ try, catch })`            | `T \| C`                   |
+| `retry(...).run(fn)`             | `T \| RetryExhaustedError` |
+| `retry(...).run({ try, catch })` | `T \| C`                   |
+| `timeout(...)` in the chain      | Adds `TimeoutError`.       |
+| `signal(...)` in the chain       | Adds `CancellationError`.  |
+
+## Policy builders
+
+A policy builder runs no work. It configures the next terminal call or orchestration call, and returns a builder.
+
+| Builder               | `run` | `runSync` | `wrap` | `all`, `allSettled`, `flow` |
+| --------------------- | ----- | --------- | ------ | --------------------------- |
+| `retry(limit)`        | Yes   | Yes       | No     | No                          |
+| `retry(policy)`       | Yes   | No        | No     | No                          |
+| `timeout(ms)`         | Yes   | No        | No     | Yes, unless after `retry`   |
+| `signal(abortSignal)` | Yes   | No        | No     | Yes, unless after `retry`   |
+| `wrap(fn)`            | Yes   | Yes       | Yes    | Yes                         |
+
+The table shows which methods stay available after each builder. The limits are type-level. At run time, orchestration after `retry` throws a `Panic` with the code `ORCHESTRATION_UNSUPPORTED_POLICY`.
+
+### `retry(limit)`
+
+```ts
+retry(limit: number)
+```
+
+Retries with no delay, up to `limit` attempts in total. `limit` counts the first attempt, and must be a positive integer. A literal `0`, a negative literal, or a fraction is a type error. Another invalid value throws a `Panic` with the code `RETRY_INVALID_LIMIT`.
+
+### `retry(policy)`
+
+```ts
+retry(policy: RetryPolicy)
+```
+
+| Option        | Type                                      | Default  | Description                                       |
+| ------------- | ----------------------------------------- | -------- | ------------------------------------------------- |
+| `limit`       | `number`                                  | Required | The most attempts, including the first.           |
+| `backoff`     | `"constant" \| "linear" \| "exponential"` | Required | How the delay grows.                              |
+| `delayMs`     | `number`                                  | `0`      | The base delay between attempts, in milliseconds. |
+| `maxDelayMs`  | `number`                                  | None     | The longest delay. Only for `"exponential"`.      |
+| `jitter`      | `boolean`                                 | `false`  | Use a random delay from 0 to the computed delay.  |
+| `shouldRetry` | `(error: unknown, ctx) => boolean`        | None     | Return `false` to stop after this error.          |
+
+The delay after attempt `n` is:
+
+| `backoff`       | Delay                                          |
+| --------------- | ---------------------------------------------- |
+| `"constant"`    | `delayMs`                                      |
+| `"linear"`      | `delayMs * n`                                  |
+| `"exponential"` | `delayMs * 2 ** (n - 1)`, at most `maxDelayMs` |
+
+```ts
+try$.retry({ backoff: "exponential", delayMs: 100, maxDelayMs: 5_000, jitter: true, limit: 5 })
+```
+
+### `retryOptions(options)`
+
+```ts
+function retryOptions(options: number | RetryPolicy): RetryPolicy
+```
+
+Returns the policy that `retry` uses for `options`. It throws a `Panic` with the code `RETRY_INVALID_LIMIT` for an invalid limit.
+
+```ts
+try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
+```
+
+### `timeout(ms)`
+
+```ts
+timeout(ms: number)
+```
+
+Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`.
+
+### `signal(abortSignal)`
+
+```ts
+signal(abortSignal: AbortSignal)
+```
+
+Adds external cancellation. You can call it more than once. Any of the signals cancels the work.
+
+### `wrap(fn)`
+
+```ts
+wrap(fn: (ctx: WrapCtx, next: () => unknown) => unknown)
+```
+
+Adds a hook around the whole terminal call, retries included. `fn` must call `next()` and return its result. `ctx` is a read-only view of the context, and `ctx.retry.attempt` is live. The first wrap that you add is the outermost.
+
+## Orchestration
+
+### Tasks
+
+`all`, `allSettled`, and `flow` take an object of tasks. Each task is a method. Inside a task, `this` has these members:
+
+| Member           | Type                     | Description                                                                                             |
+| ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `this.$result`   | `{ [task]: Promise<T> }` | The results of the other tasks. A task that reads its own result, or an unknown task, throws a `Panic`. |
+| `this.$signal`   | `AbortSignal`            | Aborts when the orchestration stops, from a failure, an exit, the deadline, or cancellation.            |
+| `this.$disposer` | `AsyncDisposer`          | Cleanup that runs when the orchestration settles.                                                       |
+| `this.$race(p)`  | `Promise<V>`             | Resolves with `p`, or rejects with the abort reason when `this.$signal` aborts first.                   |
+| `this.$exit(v)`  | `FlowExit<V>`            | Only in `flow`. Ends the flow with `v`.                                                                 |
+
+All tasks start together. Every orchestration call waits for every running task to settle before it resolves or rejects. When the deadline and cancellation both fire, the call rejects with `CancellationError`. A `Panic` wins over both.
+
+### `all(tasks, options?)`
+
+```ts
+all<T, C = never>(tasks: T, options?: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | C>
+```
+
+Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts, and the call rejects with the error. With `catch`, it resolves with the value of `catch` in place of the rejection.
+
+| `catch` context field | Description                                                 |
+| --------------------- | ----------------------------------------------------------- |
+| `failedTask`          | The name of the task that failed, or `undefined`.           |
+| `partial`             | The results of the tasks that succeeded before the failure. |
+| `signal`              | The signal of the orchestration.                            |
+
+`catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`. A `catch` that throws or rejects throws a `Panic`.
+
+### `allSettled(tasks)`
+
+```ts
+allSettled<T>(tasks: T): Promise<AllSettledResult<T>>
+```
+
+Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. A `Panic` is never an outcome. The call throws it after every task settles.
+
+### `flow(tasks)`
+
+```ts
+flow<T>(tasks: T): Promise<FlowResult<T>>
+```
+
+Resolves with the value of the first `this.$exit(value)`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
+
+## Composition and cleanup
+
+### `gen(factory)`
+
+```ts
+gen(factory: (use) => Generator): Result
+```
+
+Runs a generator. `yield* use(value)` returns the value of a success, and ends the generator with the failure when the value is an `Error` instance. `use` also accepts a promise. A value that is not an `Error` instance is a success.
+
+When every step is synchronous, `gen` returns its result directly. When a step can return a promise, the result type is `R | Promise<R>`. `gen` stays synchronous until it reaches a promise, so a failure before that step, or a skipped async step, returns a plain value. Always `await` that result, and do not call `.then()` on it.
+
+```ts
+const total = await try$.gen(function* (use) {
+  const orders = yield* use(try$.run(loadOrders))
+  return orders.length
+})
+```
+
+### `disposer()`
+
+```ts
+function disposer(): AsyncDisposer
+```
+
+Returns an `AsyncDisposer`:
+
+| Member                    | Description                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `defer(fn)`               | Registers a cleanup function. It can return a promise.                                                              |
+| `use(resource)`           | Registers an object with `Symbol.dispose` or `Symbol.asyncDispose`, and returns it. Accepts `null` and `undefined`. |
+| `dispose()`               | Runs the cleanup in reverse order of registration.                                                                  |
+| `[Symbol.asyncDispose]()` | Calls `dispose()`. `await using` calls it at the end of the scope.                                                  |
+
+## Errors
+
+The errors come from `@sanely/try/errors`.
+
+| Error                 | `name`                  | When                                                                                          |
+| --------------------- | ----------------------- | --------------------------------------------------------------------------------------------- |
+| `UnhandledException`  | `"UnhandledException"`  | The work threw, and the call has no `catch` and no retry policy. Returned.                    |
+| `RetryExhaustedError` | `"RetryExhaustedError"` | A retry policy gave up, and the call has no `catch`. Returned. The last error is the `cause`. |
+| `TimeoutError`        | `"TimeoutError"`        | The deadline expired. Returned by `run`, thrown by orchestration.                             |
+| `CancellationError`   | `"CancellationError"`   | An external signal aborted. Returned by `run`, thrown by orchestration.                       |
+| `Panic`               | `"Panic"`               | The API was used incorrectly. Always thrown. It has a `code` of type `PanicCode`.             |
+
+Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `isTimeoutError`, `isCancellationError`, and `isPanic`. A guard matches an instance of the class, or an `Error` with the same `name`, so it also works across realms and across two copies of the package.
+
+### `PanicCode`
+
+| Code                               | Cause                                                     |
+| ---------------------------------- | --------------------------------------------------------- |
+| `ALL_CATCH_HANDLER_REJECT`         | The `catch` of `all` rejected.                            |
+| `ALL_CATCH_HANDLER_THROW`          | The `catch` of `all` threw.                               |
+| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                       |
+| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                 |
+| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                |
+| `RUN_CATCH_HANDLER_REJECT`         | The `catch` of `run` rejected.                            |
+| `RUN_CATCH_HANDLER_THROW`          | The `catch` of `run` threw.                               |
+| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay or jitter. |
+| `RUN_SYNC_CATCH_HANDLER_THROW`     | The `catch` of `runSync` threw.                           |
+| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.              |
+| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                |
+| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                   |
+| `TASK_INVALID_HANDLER`             | A task is not a function.                                 |
+| `TASK_SELF_REFERENCE`              | A task read its own result.                               |
+| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                |
+| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                    |
+| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                |
+
+## Types
+
+The types come from `@sanely/try/types`.
+
+| Type                  | Describes                                  |
+| --------------------- | ------------------------------------------ |
+| `AllSettledResult<T>` | The value that `allSettled` resolves with. |
+| `SettledResult<T>`    | `SettledFulfilled<T> \| SettledRejected`.  |
+| `SettledFulfilled<T>` | `{ status: "fulfilled"; value: T }`.       |
+| `SettledRejected`     | `{ status: "rejected"; reason: unknown }`. |
+| `AsyncDisposer`       | The value that `disposer()` returns.       |
+| `FlowExit<T>`         | The value that `$exit` returns.            |

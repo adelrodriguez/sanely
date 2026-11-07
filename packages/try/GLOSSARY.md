@@ -1,4 +1,4 @@
-# tryharder
+# `@sanely/try`
 
 A small execution layer for TypeScript: callers keep writing plain functions, while execution policy and failure become explicit, typed parts of the returned value.
 

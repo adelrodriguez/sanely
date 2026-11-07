@@ -1,107 +1,64 @@
-# Contributing to tryharder
+# Contributing to `@sanely/try`
 
-Thank you for your interest in contributing to tryharder. This document provides the development workflow and contribution expectations for the project.
+The package lives in `packages/try` of the [sanely](https://github.com/adelrodriguez/sanely) monorepo. It uses pnpm and the Node.js version in the root `.node-version` (24).
 
-## Development Setup
+## Set up
 
-### Prerequisites
+Clone the repository and install the dependencies at the repository root:
 
-- [Node.js](https://nodejs.org) 24 or higher
-- [pnpm](https://pnpm.io) 12 or higher
-- TypeScript knowledge
+```bash
+git clone https://github.com/adelrodriguez/sanely.git
+cd sanely
+pnpm install
+```
 
-### Installation
-
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/your-username/sanely.git
-   cd sanely
-   ```
-3. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-Use the pnpm version pinned in `package.json`. pnpm 12 writes two YAML documents in
+Use the pnpm version that the root `package.json` pins. pnpm 12 writes two YAML documents in
 `pnpm-lock.yaml`: one for the package manager and one for project dependencies.
 Keep both documents. Older pnpm versions can reject this format.
 
-## Project Structure
+## Know the layout
 
 ```text
 src/
-├── index.ts              # Main public entry point
-├── errors.ts             # Public error exports
-├── types.ts              # Public types
+├── index.ts              # The @sanely/try entry point
+├── errors.ts             # The @sanely/try/errors entry point
+├── types.ts              # The @sanely/try/types entry point
 ├── __tests__/            # Public API tests and benchmarks (*.bench.ts)
-├── shims/                # Runtime shims (e.g. disposer support)
+├── shims/                # Runtime shims, such as the disposer
 └── lib/
-    ├── builder.ts        # Fluent builder implementation
-    ├── dispose.ts        # Resource cleanup helpers
-    ├── errors.ts         # Internal error helpers
-    ├── gen.ts            # Generator composition utilities
+    ├── builder.ts        # The builder chain
+    ├── dispose.ts        # disposer()
+    ├── errors.ts         # The error classes and type guards
+    ├── gen.ts            # gen()
     ├── utils.ts          # Internal utilities
     ├── execution/        # Terminal execution: run, runSync, and the shared engine
     ├── orchestration/    # Task graphs: all, allSettled, flow
     ├── policies/         # retry, timeout, signal
-    └── __tests__/        # Internal-focused tests
+    └── __tests__/        # Internal tests
 ```
 
-## Development Workflow
+## Run the checks
 
-### Running Tests
+Run the package commands in `packages/try`, and the workspace commands from any folder. CI runs the same checks.
 
-```bash
-# Run all tests
-pnpm run test
+| Command                             | What it does                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `pnpm --workspace-root run check`   | Check formatting, lint, and types, including `src/__tests__/types.test-d.ts`.       |
+| `pnpm --workspace-root run fix`     | Apply safe lint fixes and format all files. Run it after you edit files.            |
+| `pnpm --workspace-root run analyze` | Find unused files, exports, and dependencies. Run it after you change dependencies. |
+| `pnpm run test`                     | Run the unit tests.                                                                 |
+| `pnpm run test:watch`               | Run the unit tests in watch mode.                                                   |
+| `pnpm run test:coverage`            | Run the unit tests with coverage.                                                   |
+| `pnpm run build`                    | Build the package into `dist/`.                                                     |
+| `pnpm run dev`                      | Build the package in watch mode.                                                    |
+| `pnpm run build:verify`             | Pack and install the built package, then check its entry points and declarations.   |
+| `pnpm run test:compat`              | Run the built package on the minimum supported runtime.                             |
 
-# Watch mode for development
-pnpm run test:watch
+CI runs `test:compat` on the exact `engines.node` floor, Node.js 22.0.0.
 
-# With coverage
-pnpm run test:coverage
+Before you open a pull request, run `pnpm --workspace-root run check`, `pnpm run test`, and `pnpm run build:verify`.
 
-# Build, then run the bundle on the minimum supported runtime
-pnpm run test:compat
-```
-
-CI runs the compatibility check on the exact `engines.node` floor (Node.js 22.0.0).
-
-### Code Quality
-
-```bash
-# Check formatting, linting, and types
-pnpm --workspace-root run check
-
-# Auto-fix linting and formatting issues
-pnpm --workspace-root run fix
-
-# Analyze dependency usage
-pnpm --workspace-root run analyze
-```
-
-Run `pnpm --workspace-root run fix` after editing files. Before submitting a PR, run:
-
-```bash
-pnpm --workspace-root run check
-pnpm run test
-pnpm run build:verify
-```
-
-Run `pnpm --workspace-root run analyze` after installing or removing dependencies.
-
-### Building
-
-```bash
-# Build the package
-pnpm run build
-
-# Watch mode
-pnpm run dev
-```
-
-### Benchmarks
+## Run the benchmarks
 
 ```bash
 # Print a comparison table for each benchmark group
@@ -111,7 +68,7 @@ pnpm run bench
 pnpm run bench:ci
 ```
 
-Benchmarks track relative performance trends. They are not a required PR gate, because microbenchmarks are noisy. The `benchmarks` workflow runs `bench:ci` every Monday and publishes the summary.
+Benchmarks track relative performance trends. They are not a required PR gate, because microbenchmarks are noisy. The `try-benchmarks` workflow runs `bench:ci` every Monday and publishes the summary.
 
 Each public API has a `*.bench.ts` file next to its tests in `src/__tests__/`. Each `test()` in that file is one benchmark group. It uses the `bench` fixture and `bench.compare()`, so Vitest interleaves the cases in a group and prints one table for the group. Give every `bench()` a unique name across the suite.
 
@@ -132,26 +89,7 @@ Read the results like this:
 - Read orchestration cases (`all`, `allSettled`, `flow`) as fixed framework cost for very small graphs. They are expected to be much slower than `Promise.all`. Compare the `-with-signal`, `-with-disposer`, and dependency cases with the plain cases to see where the setup cost goes.
 - Only compare runs that use the same Node.js version (see `.node-version`), machine class, and suite version.
 
-## Making Changes
-
-### Branch Naming
-
-- `feat/description` - New features
-- `fix/description` - Bug fixes
-- `docs/description` - Documentation changes
-- `refactor/description` - Refactors and internal cleanup
-
-### Commit Messages
-
-Write clear, concise commit messages that describe what changed and why:
-
-```text
-feat: add signal support to flow execution
-
-Allows flow tasks to observe external cancellation consistently.
-```
-
-### Code Style
+## Follow the code style
 
 - Use the vocabulary defined in [GLOSSARY.md](GLOSSARY.md) when naming things in code, tests, issues, and docs
 - Follow the existing TypeScript style in the repository
@@ -161,7 +99,7 @@ Allows flow tasks to observe external cancellation consistently.
 - Use meaningful names and keep public APIs well documented through readable code and tests
 - Avoid `any` unless there is a strong justification
 
-### Testing
+## Write tests
 
 - Add tests for new behavior
 - Update tests when modifying existing behavior
@@ -174,90 +112,14 @@ Allows flow tasks to observe external cancellation consistently.
 - To replay a property failure, pass the reported `seed` and `path` to `fc.assert`.
 - After you fix a property failure, add the minimized counterexample as a fixed regression test beside the property.
 
-## Changesets Workflow
+## Add a changeset
 
-This project uses [Changesets](https://github.com/changesets/changesets) for version management and changelog generation.
+Add a changeset when your change affects package users. See the Changesets section of the root [`AGENTS.md`](../../AGENTS.md).
 
-### When to Add a Changeset
+## Report a problem
 
-Add a changeset for user-facing changes:
-
-- New features
-- Bug fixes
-- Breaking changes
-- Deprecations
-
-Skip changesets for:
-
-- Documentation updates
-- Internal refactors without behavior changes
-- Test-only updates
-
-### Creating a Changeset
-
-```bash
-pnpm exec changeset
-```
-
-Follow the prompts to:
-
-1. Select the type of change
-2. Write a summary of the change
-
-The generated file in `.changeset/` should be committed with your PR.
-
-#### Change Types
-
-- **Major** - Breaking changes
-- **Minor** - New features
-- **Patch** - Bug fixes
-
-This project is currently in `v0`, so breaking changes are acceptable when they simplify or improve the API. Do not create a major version bump unless it is explicitly intended.
-
-## Submitting a Pull Request
-
-### Before Submitting
-
-Ensure your PR meets these requirements:
-
-- [ ] Code follows the project's style guidelines
-- [ ] Formatting, linting, and checks pass (`pnpm --workspace-root run check`)
-- [ ] Tests pass (`pnpm run test`)
-- [ ] Build verification succeeds (`pnpm run build:verify`)
-- [ ] Changeset added, if applicable
-- [ ] Documentation updated, if needed
-
-### PR Process
-
-1. Push your changes to your fork
-2. Create a pull request against the `main` branch
-3. Include:
-   - A short description of the change
-   - The motivation or problem being solved
-   - Any breaking changes or migration notes
-   - Related issues, if any
-4. Wait for CI checks to pass
-5. Address review feedback
-
-### CI Checks
-
-Pull requests should pass:
-
-- **Format/Check** - Linting and formatting validation
-- **Typecheck** - TypeScript validation
-- **Test** - Automated test suite
-- **Build** - Package build verification
-
-## Getting Help
-
-- Open an [issue](https://github.com/adelrodriguez/tryharder/issues) for bug reports or feature requests
-- Check existing issues before creating a new one
-- Include enough context and a minimal reproduction when possible
-
-## Code of Conduct
-
-Be respectful, constructive, and precise in review and discussion.
+Open an issue at [adelrodriguez/sanely](https://github.com/adelrodriguez/sanely/issues). Search the open issues first, and include a minimal reproduction.
 
 ## License
 
-By contributing to tryharder, you agree that your contributions will be licensed under the MIT License.
+The package uses the MIT license. See [LICENSE](../../LICENSE).
