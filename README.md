@@ -10,7 +10,7 @@ Sanely is a pnpm and Turborepo monorepo for the `@sanely/*` libraries. Each pack
 
 ## Packages
 
-Each package is a skeleton until its code moves here from the repository it replaces.
+Each package is a skeleton until its code moves here. Most packages replace an existing repository.
 
 | Package                                   | Replaces                                                  |
 | ----------------------------------------- | --------------------------------------------------------- |
@@ -19,7 +19,7 @@ Each package is a skeleton until its code moves here from the repository it repl
 | [`@sanely/ratelimit`](packages/ratelimit) | [`richter`](https://github.com/adelrodriguez/richter)     |
 | [`@sanely/flags`](packages/flags)         | [`gated`](https://github.com/adelrodriguez/gated)         |
 | [`@sanely/duration`](packages/duration)   | [`humanspan`](https://github.com/adelrodriguez/humanspan) |
-| [`@sanely/cron`](packages/cron)           | [`plaincron`](https://github.com/adelrodriguez/plaincron) |
+| [`@sanely/cron`](packages/cron)           | None                                                      |
 | [`@sanely/rpc`](packages/rpc)             | [`typedport`](https://github.com/adelrodriguez/typedport) |
 | [`@sanely/skew`](packages/skew)           | [`crispen`](https://github.com/adelrodriguez/crispen)     |
 
