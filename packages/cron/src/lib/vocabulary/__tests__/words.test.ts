@@ -1,4 +1,4 @@
-import { MS_PER_HOUR, MS_PER_MINUTE, safeParse } from "humanspan"
+import { MS_PER_HOUR, MS_PER_MINUTE, safeParse } from "@sanely/duration"
 import { describe, expect, it } from "vitest"
 import {
   DAY_GROUPS,
@@ -11,8 +11,8 @@ import {
   getOrdinalSuffix,
 } from "#lib/vocabulary/words.ts"
 
-// Every unit alias in the Humanspan unit table.
-const HUMANSPAN_ALIASES = [
+// Every unit alias in the `@sanely/duration` unit table.
+const DURATION_ALIASES = [
   "years",
   "year",
   "yrs",
@@ -123,8 +123,8 @@ describe("UNITS", () => {
     UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit.plural] as const))
   )
 
-  for (const alias of HUMANSPAN_ALIASES) {
-    it(`should give "${alias}" the same unit as Humanspan`, () => {
+  for (const alias of DURATION_ALIASES) {
+    it(`should give "${alias}" the same unit as @sanely/duration`, () => {
       const milliseconds = safeParse(`2${alias}`)
       expect(milliseconds).not.toBeNull()
 
@@ -133,10 +133,8 @@ describe("UNITS", () => {
     })
   }
 
-  it("should contain no alias that Humanspan does not have", () => {
-    expect([...unitByAlias.keys()].filter((alias) => !HUMANSPAN_ALIASES.includes(alias))).toEqual(
-      []
-    )
+  it("should contain no alias that @sanely/duration does not have", () => {
+    expect([...unitByAlias.keys()].filter((alias) => !DURATION_ALIASES.includes(alias))).toEqual([])
   })
 })
 

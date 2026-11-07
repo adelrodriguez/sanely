@@ -49,12 +49,12 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@sanely/duration": "workspace:*",
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "croner": "10.0.1",
     "fast-check": "catalog:",
-    "humanspan": "0.3.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
