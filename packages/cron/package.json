@@ -1,7 +1,7 @@
 {
   "name": "@sanely/cron",
   "version": "0.0.1",
-  "description": "A small, type-safe English-like language that compiles to exact cron expressions",
+  "description": "Type-safe schedules that compile to exact cron expressions",
   "keywords": [
     "cron",
     "crontab",

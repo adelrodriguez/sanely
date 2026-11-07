@@ -1,7 +1,7 @@
 // Checks that the type checker stays fast on a file with many cron phrases.
 //
-// The script writes a consumer file with many `cron` calls, `CronPhrase` annotations, and arrays
-// of phrases. Then it runs `tsc --extendedDiagnostics` and reads the check time. It fails if the
+// The script writes a consumer file with many `cron` calls on phrases and on schedule objects,
+// `CronPhrase` annotations, and arrays of phrases. Then it runs `tsc --extendedDiagnostics` and reads the check time. It fails if the
 // check time is above the limit.
 //
 // Usage: node scripts/typecheck-perf.ts [limit in seconds]
@@ -13,6 +13,7 @@ import { join } from "node:path"
 
 const DEFAULT_LIMIT_SECONDS = 2
 const PHRASE_COUNT = 1000
+const SCHEDULE_COUNT = 200
 
 const packageRoot = join(import.meta.dirname, "..")
 const limitSeconds = Number(process.argv[2] ?? DEFAULT_LIMIT_SECONDS)
@@ -66,6 +67,15 @@ for (let index = 0; index < PHRASE_COUNT; index += 1) {
     `export const phrase${index}: CronPhrase = ${text}`
   )
 }
+const SCHEDULES = [
+  `{ every: "minute", interval: 15, between: { from: 9, to: 17 }, on: "weekdays" }`,
+  `{ every: "hour", interval: 6, on: ["saturday", "sunday"] }`,
+  `{ every: "day", at: { hour: 17, minute: 30 }, on: ["monday", "friday"] }`,
+  `{ every: "month", day: 15, at: { hour: 8, minute: 0 } }`,
+]
+for (let index = 0; index < SCHEDULE_COUNT; index += 1) {
+  lines.push(`export const schedule${index} = cron(${pick(SCHEDULES, index)})`)
+}
 lines.push(
   `export const all: CronPhrase[] = [${Array.from({ length: PHRASE_COUNT }, (_, index) => `phrase${index}`).join(", ")}]`
 )
@@ -109,7 +119,9 @@ try {
   const checkTime = Number(/Check time:\s+([\d.]+)s/.exec(output)?.[1])
   if (!Number.isFinite(checkTime)) throw new Error(`Cannot read the check time:\n${output}`)
 
-  console.info(`Type-checked ${PHRASE_COUNT} phrases in ${checkTime}s (limit ${limitSeconds}s).`)
+  console.info(
+    `Type-checked ${PHRASE_COUNT} phrases and ${SCHEDULE_COUNT} schedules in ${checkTime}s (limit ${limitSeconds}s).`
+  )
   if (checkTime > limitSeconds) {
     throw new Error(`The type check time ${checkTime}s is above the limit of ${limitSeconds}s`)
   }

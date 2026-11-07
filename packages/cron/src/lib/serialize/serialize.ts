@@ -1,5 +1,6 @@
-import type { CronFieldName, Schedule } from "#lib/schedule/schedule.ts"
-import { FIELD_RANGES } from "#lib/schedule/schedule.ts"
+import type { CronFieldName, Fields } from "#lib/fields/fields.ts"
+import type { CronExpression } from "#lib/schedule/schedule.ts"
+import { FIELD_RANGES } from "#lib/fields/fields.ts"
 
 const FIELD_ORDER: readonly CronFieldName[] = ["minute", "hour", "dayOfMonth", "month", "dayOfWeek"]
 
@@ -48,8 +49,9 @@ function formatField(field: CronFieldName, values: readonly number[]): string {
 }
 
 /**
- * Serialize a schedule to a standard 5-field cron expression.
+ * Serialize the cron fields to a standard 5-field cron expression.
  */
-export function toStandardCron(schedule: Schedule): string {
-  return FIELD_ORDER.map((field) => formatField(field, schedule[field])).join(" ")
+export function serialize(fields: Fields): CronExpression {
+  // The serializer is the only source of the brand: each result is a cron expression.
+  return FIELD_ORDER.map((field) => formatField(field, fields[field])).join(" ") as CronExpression
 }

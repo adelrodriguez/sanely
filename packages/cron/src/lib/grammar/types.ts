@@ -1,39 +1,12 @@
+import type { CronPhrase } from "#lib/schedule/schedule.ts"
+import type { HourChoices, MinuteChoices, Ordinal, PhraseDaySet } from "#lib/vocabulary/types.ts"
 import type {
-  DaySet,
   HourInterval,
   MinuteInterval,
-  OnDaySet,
-  Ordinal,
   Shortcut,
+  WEEKDAYS,
   Weekday,
-} from "#lib/vocabulary/types.ts"
-
-type MinuteBase = "every minute" | `every ${MinuteInterval} minutes`
-type HourBase = "every hour" | `every ${HourInterval} hours`
-
-/**
- * A cron phrase in the strict form.
- *
- * The sentence shapes, the intervals, the ordinals, and the day set after `every` are exact. The
- * time slots and the clauses of an interval (after `on` or `between`) are open: `cron` and
- * `ValidateCronPhrase` check them for a string literal.
- *
- * The open parts keep this union small. TypeScript compares its template literal types in pairs
- * when it reduces a union (for example, the type of `[phrase, otherPhrase]`). With more members,
- * TypeScript reports that the union is "too complex to represent".
- *
- * @example
- *   const phrase: CronPhrase = "every 15 minutes on weekdays"
- */
-export type CronPhrase =
-  | Shortcut
-  | MinuteBase
-  | `${MinuteBase} ${"on" | "between"} ${string}`
-  | HourBase
-  | `${HourBase} on ${string}`
-  | `every day at ${string}`
-  | `every ${DaySet} at ${string}`
-  | `on the ${Ordinal} of every month at ${string}`
+} from "#lib/vocabulary/words.ts"
 
 // ---------------------------------------------------------------------------------------------
 // The validator. It follows the same steps as the runtime grammar, so that the reasons agree.
@@ -62,9 +35,6 @@ type Unexpected<
 > = `unexpected text "${Rest}" after "${Before}"`
 
 // ---- Intervals ----
-
-type MinuteChoices = "Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30"
-type HourChoices = "Use 2, 3, 4, 6, 8, or 12"
 
 type IsBelow60<N extends string> = N extends Digit | `${"1" | "2" | "3" | "4" | "5"}${Digit}`
   ? true
@@ -188,7 +158,6 @@ type CheckAtClause<Rest extends string, Before extends string> = Rest extends ""
 
 // ---- Day sets ----
 
-type CalendarOrder = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 type DayGroupWord = "weekday" | "weekdays" | "weekend" | "weekends"
 type DaySetHint = "Use monday to sunday, weekday, weekend, or weekdays, weekends"
 
@@ -209,7 +178,7 @@ type FormatList<T extends readonly string[]> = T extends readonly [infer Only ex
 
 type InCalendarOrder<
   Names extends string,
-  Days extends readonly string[] = CalendarOrder,
+  Days extends readonly string[] = typeof WEEKDAYS,
 > = Days extends readonly [infer First extends string, ...infer Rest extends string[]]
   ? First extends Names
     ? [First, ...InCalendarOrder<Names, Rest>]
@@ -247,15 +216,14 @@ type CheckDayList<S extends string, Names extends string[] = ListNames<S>> =
           : `list the days in calendar order, Monday first: "${FormatList<Sorted>}"`
         : never
 
-type CheckDaySet<S extends string, Context extends "every" | "on"> = S extends (
-  Context extends "every" ? DaySet : OnDaySet
-)
-  ? true
-  : S extends "weekday" | "weekdays"
-    ? `use "${Context extends "every" ? "weekday" : "weekdays"}" after "${Context}"`
-    : S extends "weekend" | "weekends"
-      ? `use "${Context extends "every" ? "weekend" : "weekends"}" after "${Context}"`
-      : CheckDayList<S>
+type CheckDaySet<S extends string, Context extends "every" | "on"> =
+  S extends PhraseDaySet<Context>
+    ? true
+    : S extends "weekday" | "weekdays"
+      ? `use "${Context extends "every" ? "weekday" : "weekdays"}" after "${Context}"`
+      : S extends "weekend" | "weekends"
+        ? `use "${Context extends "every" ? "weekend" : "weekends"}" after "${Context}"`
+        : CheckDayList<S>
 
 // The day set after `on` ends at the end of the phrase, or before `at` or `between`.
 type CutDaySet<S extends string> = S extends `${infer Days} at ${infer Rest}`
@@ -444,15 +412,14 @@ type CheckPhrase<P extends string> = P extends ""
       : CheckShape<P>
     : "use lowercase words"
 
-type NotLiteral =
-  "a string is not a CronPhrase. Use parse, or narrow the string with isCronPhrase first"
+type NotLiteral = "a string is not a CronPhrase. Use parse for a string at runtime"
 
 /**
  * Check a type against the strict form. The result is `T` when `T` is a valid cron phrase, and a
  * reason that names the failed part when it is not.
  *
  * A string literal is checked word by word. A type that is not a literal is valid only if it is a
- * `CronPhrase` (for example, a value that `isCronPhrase` narrowed). A plain `string` is not valid.
+ * `CronPhrase` (for example, the result of `describe`). A plain `string` is not valid.
  *
  * Use this type to write functions that take a typed cron phrase:
  *

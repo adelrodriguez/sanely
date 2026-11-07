@@ -1,59 +1,34 @@
 import { describe, expect, it } from "vitest"
-import { FIELD_RANGES, createSchedule, every, range } from "#lib/schedule/schedule.ts"
+import type { ByKind, Schedule } from "#lib/schedule/schedule.ts"
+import { isWindow, match } from "#lib/schedule/schedule.ts"
 
-describe("range", () => {
-  it("should include both ends", () => {
-    expect(range(9, 12)).toEqual([9, 10, 11, 12])
-  })
+const NAMES = {
+  day: (schedule) => `day at ${schedule.at.hour}`,
+  hour: (schedule) => `hour ${schedule.interval ?? 1}`,
+  minute: (schedule) => `minute ${schedule.interval ?? 1}`,
+  month: (schedule) => `month on ${schedule.day}`,
+} satisfies ByKind<string>
 
-  it("should use the step", () => {
-    expect(range(0, 59, 15)).toEqual([0, 15, 30, 45])
-    expect(range(0, 23, 8)).toEqual([0, 8, 16])
-  })
-
-  it("should return one value when the ends are equal", () => {
-    expect(range(5, 5)).toEqual([5])
-  })
-})
-
-describe("every", () => {
-  it("should return all values of each cron field", () => {
-    for (const [field, [start, end]] of Object.entries(FIELD_RANGES)) {
-      expect(every(field as keyof typeof FIELD_RANGES)).toEqual(range(start, end))
-    }
-  })
-
-  it("should use the cron ranges", () => {
-    expect(FIELD_RANGES).toEqual({
-      dayOfMonth: [1, 31],
-      dayOfWeek: [0, 6],
-      hour: [0, 23],
-      minute: [0, 59],
-      month: [1, 12],
-    })
+describe("match", () => {
+  it.each<[Schedule, string]>([
+    [{ every: "minute", interval: 15 }, "minute 15"],
+    [{ every: "hour" }, "hour 1"],
+    [{ at: { hour: 9, minute: 30 }, every: "day" }, "day at 9"],
+    [{ at: { hour: 8, minute: 0 }, day: 3, every: "month" }, "month on 3"],
+  ])("should call the row for the kind of %j", (schedule, expected) => {
+    expect(match(schedule, NAMES)).toBe(expected)
   })
 })
 
-describe("createSchedule", () => {
-  it("should select every minute when no field is given", () => {
-    expect(createSchedule({})).toEqual({
-      dayOfMonth: every("dayOfMonth"),
-      dayOfWeek: every("dayOfWeek"),
-      hour: every("hour"),
-      minute: every("minute"),
-      month: every("month"),
-    })
+describe("isWindow", () => {
+  it("should accept a window that ends after it starts", () => {
+    expect(isWindow({ from: 9, to: 17 })).toBe(true)
+    expect(isWindow({ from: 23, to: 24 })).toBe(true)
+    expect(isWindow({ from: 0, to: 1 })).toBe(true)
   })
 
-  it("should keep the given fields", () => {
-    const schedule = createSchedule({ hour: [9], minute: [30] })
-
-    expect(schedule.minute).toEqual([30])
-    expect(schedule.hour).toEqual([9])
-    expect(schedule.dayOfWeek).toEqual(every("dayOfWeek"))
-  })
-
-  it("should sort the days of the week", () => {
-    expect(createSchedule({ dayOfWeek: [6, 0] }).dayOfWeek).toEqual([0, 6])
+  it("should reject a window that ends at or before its start", () => {
+    expect(isWindow({ from: 9, to: 9 })).toBe(false)
+    expect(isWindow({ from: 17, to: 9 })).toBe(false)
   })
 })
