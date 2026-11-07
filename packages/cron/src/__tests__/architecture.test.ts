@@ -95,7 +95,8 @@ const SRC = join(import.meta.dirname, "..")
 
 // The suffixes of the files in a `__tests__` folder. Each file is named after the source file next
 // to the folder that it tests, such as `grammar/__tests__/grammar.test.ts` for `grammar/grammar.ts`.
-const TEST_SUFFIXES = [".test.ts", ".test-d.ts", ".table.ts"]
+// A `.table.ts` file holds test data, and an `.arbitrary.ts` file holds fast-check arbitraries.
+const TEST_SUFFIXES = [".test.ts", ".test-d.ts", ".table.ts", ".arbitrary.ts"]
 
 // Tests of the whole package, not of one file. The types test is the only types test: it tests all
 // public types through the package entry.

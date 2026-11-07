@@ -13,6 +13,7 @@ import {
   isDayOfMonth,
   isHour,
   isMinute,
+  isNonEmpty,
   isOneOf,
   isWeekday,
   isWindowEnd,
@@ -85,10 +86,13 @@ describe("DAYS", () => {
 
 describe("DAY_GROUPS", () => {
   it("should select Monday to Friday and the weekend", () => {
-    expect(DAY_GROUPS.map((group) => [group.singular, group.name, group.days])).toEqual([
-      ["weekday", "weekdays", ["monday", "tuesday", "wednesday", "thursday", "friday"]],
-      ["weekend", "weekends", ["saturday", "sunday"]],
-    ])
+    expect(DAY_GROUPS).toEqual({
+      weekdays: {
+        days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        singular: "weekday",
+      },
+      weekends: { days: ["saturday", "sunday"], singular: "weekend" },
+    })
   })
 })
 
@@ -162,6 +166,11 @@ describe("guards", () => {
   it("should accept only the day names in isWeekday", () => {
     expect(WEEKDAYS.every((day) => isWeekday(day))).toBe(true)
     expect(["Monday", "mon", "weekday", "", 1, null].some((value) => isWeekday(value))).toBe(false)
+  })
+
+  it("should accept only a list with one or more values in isNonEmpty", () => {
+    expect(isNonEmpty([])).toBe(false)
+    expect(isNonEmpty(["monday"])).toBe(true)
   })
 
   it("should accept only a member of the list in isOneOf", () => {

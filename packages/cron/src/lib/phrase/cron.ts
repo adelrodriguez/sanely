@@ -1,24 +1,33 @@
 import type { ValidateCronPhrase } from "#lib/grammar/types.ts"
-import { parse } from "./parse"
+import type { CronExpression, Schedule } from "#lib/schedule/schedule.ts"
+import { toFields } from "#lib/fields/fields.ts"
+import { serialize } from "#lib/serialize/serialize.ts"
+import { InvalidCronPhraseError } from "./errors"
+import { parseLenient } from "./parse"
 
 /**
- * Convert a cron phrase to a standard 5-field cron expression.
+ * Convert a schedule to a standard 5-field cron expression.
  *
- * The phrase must be a `CronPhrase`: a string literal in the strict form, or a value that
- * `isCronPhrase` narrowed. An invalid literal is a type error with the reason. A plain `string` is
- * also a type error: use `parse`, or narrow it with `isCronPhrase` first.
+ * The input is a `Schedule` object, or a cron phrase in a string literal. The type checker checks
+ * both: an invalid phrase is a type error with the reason. A plain `string` is also a type error.
+ * Use `parse` for a string at runtime.
  *
  * @example
- *   cron("every 15 minutes") // "*\/15 * * * *"
- *   cron("every weekday at 17:30") // "30 17 * * 1-5"
- *   cron("on the 1st of every month at 8:00") // "0 8 1 * *"
+ *   cron("every 15 minutes between 9:00 and 17:00 on weekdays") // "*\/15 9-16 * * 1-5"
+ *   cron({ at: { hour: 17, minute: 30 }, every: "day", on: ["monday", "friday"] }) // "30 17 * * 1,5"
  *   cron("every 7 minutes") // Type error: 7 does not divide 60
  *
- * @param phrase - A cron phrase in the strict form
+ * @param input - A `Schedule`, or a cron phrase in the strict form
  *
  * @returns The cron expression
- * @throws {InvalidCronPhraseError} If the phrase is not valid at runtime
  */
-export function cron<T extends string>(phrase: ValidateCronPhrase<T>): string {
-  return parse(phrase)
+export function cron<const T extends string | Schedule>(
+  input: T extends string ? ValidateCronPhrase<T> : Schedule
+): CronExpression {
+  const value: string | Schedule = input
+  if (typeof value !== "string") return serialize(toFields(value))
+
+  const result = parseLenient(value)
+  if (!result.ok) throw new InvalidCronPhraseError(value, result.reason)
+  return serialize(result.fields)
 }

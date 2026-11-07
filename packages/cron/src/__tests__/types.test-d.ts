@@ -246,23 +246,42 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
 
 // cron
 
-// Accepts a strict string literal in cron, and returns string.
+// Accepts a strict phrase literal in cron, and returns CronExpression.
 {
-  expectTypeOf(cron("every 15 minutes")).toEqualTypeOf<string>()
-  expectTypeOf(cron("every 15 minutes between 9:00 and 17:00 on weekdays")).toEqualTypeOf<string>()
-  expectTypeOf(cron("every monday and friday at 12:00")).toEqualTypeOf<string>()
-  expectTypeOf(cron("on the 1st of every month at 8:00")).toEqualTypeOf<string>()
-  expectTypeOf(cron("every day at 9:30pm")).toEqualTypeOf<string>()
-  expectTypeOf(cron("hourly")).toEqualTypeOf<string>()
+  expectTypeOf(cron("every 15 minutes")).toEqualTypeOf<CronExpression>()
+  expectTypeOf(
+    cron("every 15 minutes between 9:00 and 17:00 on weekdays")
+  ).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron("every monday and friday at 12:00")).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron("on the 1st of every month at 8:00")).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron("every day at 9:30pm")).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron("hourly")).toEqualTypeOf<CronExpression>()
 }
 
-// Accepts a CronPhrase value in cron.
+// Accepts a Schedule object literal in cron, and returns CronExpression.
+{
+  expectTypeOf(
+    cron({ at: { hour: 17, minute: 30 }, every: "day", on: ["monday", "friday"] })
+  ).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron({ every: "minute", interval: 15 })).toEqualTypeOf<CronExpression>()
+  expectTypeOf(
+    cron({ between: { from: 9, to: 17 }, every: "minute", interval: 15, on: "weekdays" })
+  ).toEqualTypeOf<CronExpression>()
+  expectTypeOf(
+    cron({ at: { hour: 8, minute: 0 }, day: 1, every: "month" })
+  ).toEqualTypeOf<CronExpression>()
+}
+
+// Accepts a Schedule value and a CronPhrase value in cron.
 {
   const phrase: CronPhrase = "every weekday at 17:30"
   const phrases: CronPhrase[] = ["daily", "every 2 hours on weekends"]
+  const schedules: Schedule[] = [{ every: "hour" }, { at: { hour: 9, minute: 0 }, every: "day" }]
 
-  cron(phrase)
+  expectTypeOf(cron(anySchedule)).toEqualTypeOf<CronExpression>()
+  expectTypeOf(cron(phrase)).toEqualTypeOf<CronExpression>()
   phrases.map((value) => cron(value))
+  schedules.map((value) => cron(value))
 }
 
 // Accepts a template literal type that is a CronPhrase in cron.
@@ -270,7 +289,14 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   const day = "monday" as Weekday
   const time = "9:30" as `${number}:${number}`
 
-  expectTypeOf(cron(`every ${day} at ${time}`)).toEqualTypeOf<string>()
+  expectTypeOf(cron(`every ${day} at ${time}`)).toEqualTypeOf<CronExpression>()
+}
+
+// Gives a CronExpression where a scheduler takes a string.
+{
+  const pattern: string = cron("every 15 minutes")
+
+  void pattern
 }
 
 // Accepts a string that isCronPhrase narrowed in cron.
@@ -483,8 +509,23 @@ function _negativeTypeTests() {
   // @ts-expect-error -- an empty string is not a CronPhrase
   cron("")
 
-  // @ts-expect-error -- cron takes a string, not a number
+  // @ts-expect-error -- cron takes a string or a Schedule, not a number
   cron(15)
+
+  // @ts-expect-error -- 7 does not divide 60
+  cron({ every: "minute", interval: 7 })
+
+  // @ts-expect-error -- the window must end after it starts
+  cron({ between: { from: 17, to: 9 }, every: "minute" })
+
+  // @ts-expect-error -- a month schedule has no day set
+  cron({ at: { hour: 9, minute: 0 }, day: 1, every: "month", on: "weekdays" })
+
+  // @ts-expect-error -- "label" is not a key of a Schedule
+  cron({ every: "hour", label: "report" })
+
+  // @ts-expect-error -- a day list has one or more days
+  cron({ at: { hour: 9, minute: 0 }, every: "day", on: [] })
 
   // @ts-expect-error -- parse takes a string
   parse(15)

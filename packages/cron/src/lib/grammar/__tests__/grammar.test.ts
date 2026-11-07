@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { parseStrict } from "#lib/grammar/grammar.ts"
-import { toStandardCron } from "#lib/serialize/serialize.ts"
+import { serialize } from "#lib/serialize/serialize.ts"
 import type { GrammarRow } from "./grammar.table"
 import { GRAMMAR } from "./grammar.table"
 
@@ -21,7 +21,7 @@ describe("parseStrict", () => {
         const result = parseStrict(row.phrase)
 
         expect(result.ok).toBe(true)
-        if (result.ok) expect(toStandardCron(result.fields)).toBe(row.cron)
+        if (result.ok) expect(serialize(result.fields)).toBe(row.cron)
       })
     } else {
       it(`should reject ${JSON.stringify(row.phrase)}${reason ? ` with "${reason}"` : ""}`, () => {

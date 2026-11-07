@@ -39,7 +39,13 @@ const SHORTCUT_SCHEDULES: ReadonlyMap<string, Partial<Fields>> = new Map(
   } satisfies Record<Shortcut, Partial<Fields>>)
 )
 
-const DAY_SET_HINT = `Use monday to sunday, ${DAY_GROUPS.map((group) => group.singular).join(", ")}, or ${DAY_GROUPS.map((group) => group.name).join(", ")}`
+const GROUPS = Object.entries(DAY_GROUPS).map(([name, group]) => ({
+  days: group.days,
+  name,
+  singular: group.singular,
+}))
+
+const DAY_SET_HINT = `Use monday to sunday, ${GROUPS.map((group) => group.singular).join(", ")}, or ${GROUPS.map((group) => group.name).join(", ")}`
 
 class GrammarError extends Error {
   override name = "GrammarError"
@@ -168,7 +174,7 @@ function parseDayList(words: readonly string[]): number[] {
     .map((word) => (word.endsWith(",") ? word.slice(0, -1) : word))
 
   for (const name of names) {
-    if (DAY_GROUPS.some((group) => group.singular === name || group.name === name)) {
+    if (GROUPS.some((group) => group.singular === name || group.name === name)) {
       fail(`"${name}" cannot be part of a list of days`)
     }
     if (!isWeekday(name)) fail(`"${name}" is not a day. ${DAY_SET_HINT}`)
@@ -203,7 +209,7 @@ function parseDaySet(
   if (words.length === 0) fail(`expected a day set after "${before}"`)
 
   const [only] = words
-  const group = DAY_GROUPS.find((entry) => entry.singular === only || entry.name === only)
+  const group = GROUPS.find((entry) => entry.singular === only || entry.name === only)
   if (words.length === 1 && group) {
     const expected = context === "every" ? group.singular : group.name
     if (only !== expected) fail(`use "${expected}" after "${context}"`)
