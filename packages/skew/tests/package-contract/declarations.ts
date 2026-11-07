@@ -10,11 +10,11 @@ import {
   type RuntimeEnvironment,
 } from "@sanely/skew"
 import {
-  CrispenScript,
+  DeploymentScript,
   GET,
-  crispenPagesHandler,
-  withCrispen,
-  type CrispenNextOptions,
+  descriptorHandler,
+  withDeploymentCheck,
+  type NextAdapterOptions,
   type NextConfigExport,
 } from "@sanely/skew/next"
 import {
@@ -23,8 +23,8 @@ import {
   type DeploymentStatusOptions,
 } from "@sanely/skew/react"
 import {
-  crispen,
-  type CrispenViteOptions,
+  deploymentCheck,
+  type ViteAdapterOptions,
   type DeploymentIdOption,
   type DeploymentPlatform,
 } from "@sanely/skew/vite"
@@ -35,10 +35,12 @@ const monitor: DeploymentMonitor = createDeploymentMonitor(
 )
 const platform: DeploymentPlatform = "vercel"
 const deploymentIdOption: DeploymentIdOption = { platform }
-const vitePlugin = crispen({ deploymentId: deploymentIdOption } satisfies CrispenViteOptions)
-const nextConfig: NextConfigExport = withCrispen({}, {
-  deploymentId: { env: ["CRISPEN_SHA", "GIT_SHA"] },
-} satisfies CrispenNextOptions)
+const vitePlugin = deploymentCheck({
+  deploymentId: deploymentIdOption,
+} satisfies ViteAdapterOptions)
+const nextConfig: NextConfigExport = withDeploymentCheck({}, {
+  deploymentId: { env: ["DEPLOYMENT_CHECK_SHA", "GIT_SHA"] },
+} satisfies NextAdapterOptions)
 const hookOptions = {} satisfies DeploymentStatusOptions
 const declarationContract = {
   appRoute: GET,
@@ -49,9 +51,9 @@ const declarationContract = {
   hookStatus: undefined as unknown as DeploymentStatus,
   monitor,
   nextConfig,
-  pagesRoute: crispenPagesHandler,
+  pagesRoute: descriptorHandler,
   reloadStatus: undefined as unknown as ReloadStatus,
-  scriptComponent: CrispenScript,
+  scriptComponent: DeploymentScript,
   statusHook: useDeploymentStatus,
   vitePlugin,
 }

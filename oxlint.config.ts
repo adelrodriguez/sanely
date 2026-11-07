@@ -14,8 +14,7 @@ export default defineConfig({
   extends: [core, custom()],
   ignorePatterns: [
     ...core.ignorePatterns,
-    // These fixtures import the built package by name, so they lint only after a build. crispen
-    // ignored them too.
+    // These fixtures import the built package by name, so they lint only after a build.
     "packages/skew/tests/package-contract/**",
   ],
   options: {
@@ -272,7 +271,7 @@ export default defineConfig({
       files: ["packages/ratelimit/src/**/__tests__/**"],
       rules: { "no-restricted-imports": "off" },
     },
-    // Imports in `packages/skew/src` point one way, as crispen's agent guide described: the
+    // Imports in `packages/skew/src` point one way: the
     // protocol, then the runtime, then integrations. Adapters import only the protocol and
     // `adapters/shared.ts`, and an integration never imports an adapter. These rules follow the
     // generic `src/lib` rules above, because a later override replaces the rule options of an

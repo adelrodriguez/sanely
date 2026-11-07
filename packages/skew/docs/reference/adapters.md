@@ -4,10 +4,10 @@ An adapter runs at build time. It writes the embed into the page and makes the d
 
 ## Options
 
-| Option         | Type                 | Default                     | Description                               |
-| -------------- | -------------------- | --------------------------- | ----------------------------------------- |
-| `deploymentId` | `DeploymentIdOption` | Detected. See below.        | The running deployment ID for this build. |
-| `endpoint`     | `string`             | `/_crispen/deployment.json` | The descriptor URL.                       |
+| Option         | Type                 | Default                              | Description                               |
+| -------------- | -------------------- | ------------------------------------ | ----------------------------------------- |
+| `deploymentId` | `DeploymentIdOption` | Detected. See below.                 | The running deployment ID for this build. |
+| `endpoint`     | `string`             | `/_deployment-check/deployment.json` | The descriptor URL.                       |
 
 ## Deployment ID
 
@@ -48,7 +48,7 @@ An endpoint is **external** when it is an absolute URL (`https://...`) or a prot
 ## `@sanely/skew/vite`
 
 ```ts
-function crispen(options?: CrispenViteOptions): Plugin
+function deploymentCheck(options?: ViteAdapterOptions): Plugin
 ```
 
 A Vite plugin that runs only in `vite build`. Put it after the framework plugin. It needs `vite` 5 or later.
@@ -59,22 +59,25 @@ A Vite plugin that runs only in `vite build`. Put it after the framework plugin.
 
 The descriptor file is static. Your host decides its headers. See [How to stop hosts from caching the descriptor](../how-to/stop-hosts-from-caching-the-descriptor.md).
 
-Exported types: `CrispenViteOptions`, `DeploymentIdOption`, and `DeploymentPlatform`.
+Exported types: `DeploymentIdOption`, `DeploymentPlatform`, and `ViteAdapterOptions`.
 
 ## `@sanely/skew/next`
 
 It needs `next` 15 or later. It supports the App Router and the Pages Router.
 
-### `withCrispen(config?, options?)`
+### `withDeploymentCheck(config?, options?)`
 
 ```ts
-function withCrispen(config?: NextConfigExport, options?: CrispenNextOptions): NextConfigFunction
+function withDeploymentCheck(
+  config?: NextConfigExport,
+  options?: NextAdapterOptions
+): NextConfigFunction
 ```
 
 Wraps a Next.js config object or config function.
 
 - It keeps every value of your config.
-- It adds two values to `env`, `CRISPEN_NEXT_EMBED` and `CRISPEN_NEXT_DESCRIPTOR`. Both are empty in `next dev`.
+- It adds two values to `env`, `DEPLOYMENT_CHECK_EMBED` and `DEPLOYMENT_CHECK_DESCRIPTOR`. Both are empty in `next dev`.
 - For a local endpoint, it adds a `headers()` rule that sets `Cache-Control: no-store` on the endpoint. It keeps your own `headers()` rules first.
 - It adds `basePath` in front of a local endpoint.
 - It adds `@sanely/skew` to `transpilePackages`, so that Next.js bundles the package and puts the `env` values in it. Without this, the Pages Router loads the package from `node_modules` unchanged, and the embed and the descriptor are empty.
@@ -82,16 +85,16 @@ Wraps a Next.js config object or config function.
 
 Next.js does not apply `headers()` rules with `output: "export"`. Add the cache rule on your host.
 
-### `CrispenScript`
+### `DeploymentScript`
 
-A component that writes the embed with `next/script` and `strategy="beforeInteractive"`. It renders nothing in `next dev`. In the App Router, render `<CrispenScript />` in the root layout. In the Pages Router, write `{CrispenScript()}` in the `<body>` of `pages/_document`: Next.js finds a `beforeInteractive` script in `_document` only when the `<Script>` element is there directly, not inside another component.
+A component that writes the embed with `next/script` and `strategy="beforeInteractive"`. It renders nothing in `next dev`. In the App Router, render `<DeploymentScript />` in the root layout. In the Pages Router, write `{DeploymentScript()}` in the `<body>` of `pages/_document`: Next.js finds a `beforeInteractive` script in `_document` only when the `<Script>` element is there directly, not inside another component.
 
 ### `GET`
 
 An App Router route handler that returns the descriptor with `Cache-Control: no-store` and `Content-Type: application/json; charset=utf-8`. It returns status `404` when the descriptor is empty, for example in `next dev`.
 
-### `crispenPagesHandler`
+### `descriptorHandler`
 
-A Pages Router API handler with the same response as `GET`. The Pages Router runs API handlers only from `pages/api`, so set `endpoint` to the handler's path, such as `/api/crispen/deployment.json`.
+A Pages Router API handler with the same response as `GET`. The Pages Router runs API handlers only from `pages/api`, so set `endpoint` to the handler's path, such as `/api/deployment-check/deployment.json`.
 
-Exported types: `CrispenNextOptions`, `DeploymentIdOption`, `DeploymentPlatform`, `NextConfigContext`, `NextConfigExport`, and `NextConfigFunction`.
+Exported types: `DeploymentIdOption`, `DeploymentPlatform`, `NextAdapterOptions`, `NextConfigContext`, `NextConfigExport`, and `NextConfigFunction`.

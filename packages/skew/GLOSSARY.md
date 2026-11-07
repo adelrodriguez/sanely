@@ -34,9 +34,9 @@ Each word below belongs to one kind of text. Use it only there.
 
 ## Protocol
 
-**Descriptor.** The JSON file that holds the target deployment, at `/_crispen/deployment.json` by default. It has a version field (`v: 1`). The descriptor format must stay readable by old clients, because a tab that stays open for a week reads descriptors from newer adapters.
+**Descriptor.** The JSON file that holds the target deployment, at `/_deployment-check/deployment.json` by default. It has a version field (`v: 1`). The descriptor format must stay readable by old clients, because a tab that stays open for a week reads descriptors from newer adapters.
 
-**Embed.** The value that the adapter writes into the page as `globalThis.__CRISPEN__`. It holds the running deployment and the descriptor endpoint. The core reads the running deployment from the embed and does not know which adapter wrote it.
+**Embed.** The value that the adapter writes into the page as `globalThis.__DEPLOYMENT_CHECK__`. It holds the running deployment and the descriptor endpoint. The core reads the running deployment from the embed and does not know which adapter wrote it.
 
 **Endpoint.** The URL of the descriptor. A **local endpoint** is a path on the app origin, and the adapter writes the descriptor for it. An **external endpoint** is an absolute or protocol-relative URL, and another service serves the descriptor.
 

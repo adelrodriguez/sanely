@@ -48,7 +48,7 @@ interface ReloadMarker {
 
 export const DEFAULT_CHECK_TIMEOUT = 30_000
 
-const RELOAD_MARKER_KEY = "crispen:reload"
+const RELOAD_MARKER_KEY = "deployment-check:reload"
 const RELOAD_COOLDOWN = 10 * 60_000
 
 export interface DeploymentMonitorOptions {
@@ -109,7 +109,9 @@ class DeploymentMonitorImplementation
     this.#reloadGuard = new ReloadGuard(running, this.#environment)
     if (source === undefined && process.env.NODE_ENV !== "production" && "document" in globalThis) {
       // eslint-disable-next-line no-console -- Missing adapter data must be visible in development.
-      console.warn("Crispen is inert because no adapter registered a deployment embed.")
+      console.warn(
+        "[deployment-check] The monitor is inert because no adapter registered a deployment embed."
+      )
     }
     this.#scheduler = new DeploymentScheduler(this.#environment, () => {
       void this.check()
@@ -198,7 +200,11 @@ class DeploymentMonitorImplementation
     })
     const timeout = new Promise<never>((_resolve, reject) => {
       timeoutHandle = this.#environment.setTimeout(() => {
-        reject(new Error(`Crispen deployment check timed out after ${this.#checkTimeout}ms.`))
+        reject(
+          new Error(
+            `[deployment-check] The deployment check timed out after ${this.#checkTimeout}ms.`
+          )
+        )
         abortController.abort()
       }, this.#checkTimeout)
     })
@@ -307,7 +313,7 @@ class DeploymentMonitorImplementation
     this.#isCurrent = isCurrent ?? this.#defaultIsCurrent
     if (checkInterval < MINIMUM_CHECK_INTERVAL) {
       // eslint-disable-next-line no-console -- Excessive polling is a deployment configuration error.
-      console.warn(`Crispen increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
+      console.warn(`[deployment-check] Increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
     }
 
     return {

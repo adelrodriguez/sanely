@@ -1,6 +1,6 @@
 # How to stop hosts from caching the descriptor
 
-If a browser, CDN, or proxy caches `/_crispen/deployment.json`, the client reads an old target and never sees the new deployment. The descriptor response must have these headers:
+If a browser, CDN, or proxy caches `/_deployment-check/deployment.json`, the client reads an old target and never sees the new deployment. The descriptor response must have these headers:
 
 ```text
 Cache-Control: no-store
@@ -14,7 +14,7 @@ The Next.js adapter sets them for you, except with `output: "export"`. For a Vit
 Add a `_headers` file to the build output:
 
 ```text
-/_crispen/deployment.json
+/_deployment-check/deployment.json
   Cache-Control: no-store
   Content-Type: application/json
 ```
@@ -27,7 +27,7 @@ Add the rule to `vercel.json`:
 {
   "headers": [
     {
-      "source": "/_crispen/deployment.json",
+      "source": "/_deployment-check/deployment.json",
       "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     }
   ]
@@ -37,7 +37,7 @@ Add the rule to `vercel.json`:
 ## Nginx
 
 ```nginx
-location = /_crispen/deployment.json {
+location = /_deployment-check/deployment.json {
   add_header Cache-Control "no-store" always;
   try_files $uri =404;
 }
@@ -48,7 +48,7 @@ location = /_crispen/deployment.json {
 After each change to the host config, request the descriptor from production:
 
 ```sh
-curl -i https://example.com/_crispen/deployment.json
+curl -i https://example.com/_deployment-check/deployment.json
 ```
 
 Make sure that the response has these properties:

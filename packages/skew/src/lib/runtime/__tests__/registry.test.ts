@@ -4,7 +4,7 @@ import { getDefaultMonitor, getMonitor, resetRegistry } from "#lib/runtime/regis
 
 function isolateRegistry(): void {
   onTestFinished(() => {
-    globalThis.__CRISPEN__ = undefined
+    globalThis.__DEPLOYMENT_CHECK__ = undefined
     resetRegistry()
   })
 }
@@ -61,7 +61,7 @@ describe("deployment monitor registry", () => {
     expect.assertions(1)
     isolateRegistry()
 
-    globalThis.__CRISPEN__ = {
+    globalThis.__DEPLOYMENT_CHECK__ = {
       running: { id: "running" },
       v: 1,
     }
@@ -76,7 +76,7 @@ describe("deployment monitor registry", () => {
     expect.assertions(2)
     isolateRegistry()
 
-    globalThis.__CRISPEN__ = {
+    globalThis.__DEPLOYMENT_CHECK__ = {
       running: { id: "running" },
       v: 1,
     }

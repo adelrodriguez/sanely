@@ -59,7 +59,7 @@ describe("checkIsExternalEndpoint", () => {
   })
 
   it.each([
-    "/_crispen/deployment.json",
+    "/_deployment-check/deployment.json",
     "deployment.json",
     "./deployment.json",
     "../deployment.json",

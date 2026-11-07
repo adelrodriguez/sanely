@@ -8,7 +8,12 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants.js"
 import { isValidElement } from "react"
 import { describe, expect, it, onTestFinished } from "vitest"
-import { CrispenScript, crispenPagesHandler, GET, withCrispen } from "#adapters/next/index.ts"
+import {
+  DeploymentScript,
+  descriptorHandler,
+  GET,
+  withDeploymentCheck,
+} from "#adapters/next/index.ts"
 import { parseDescriptor } from "#lib/protocol/descriptor.ts"
 
 function generateUserBuildId(): Promise<string> {
@@ -16,7 +21,7 @@ function generateUserBuildId(): Promise<string> {
 }
 
 async function resolveNextConfig(
-  config: ReturnType<typeof withCrispen>,
+  config: ReturnType<typeof withDeploymentCheck>,
   phase = PHASE_PRODUCTION_BUILD
 ): Promise<NextConfig> {
   return config(phase, { defaultConfig: {} })
@@ -43,7 +48,7 @@ function applyConfigEnvironment(config: NextConfig): void {
 }
 
 function readEmbedJson(config: NextConfig): string {
-  return config.env?.CRISPEN_NEXT_EMBED ?? "{}"
+  return config.env?.DEPLOYMENT_CHECK_EMBED ?? "{}"
 }
 
 async function readHeaders(
@@ -52,19 +57,19 @@ async function readHeaders(
   return config.headers?.()
 }
 
-function readScriptHtml(script: ReturnType<typeof CrispenScript>): string {
+function readScriptHtml(script: ReturnType<typeof DeploymentScript>): string {
   if (
     !isValidElement<{
       readonly dangerouslySetInnerHTML: { readonly __html: string }
     }>(script)
   ) {
-    throw new Error("Expected CrispenScript to return a script element")
+    throw new Error("Expected DeploymentScript to return a script element")
   }
   return script.props.dangerouslySetInnerHTML.__html
 }
 
 describe("next adapter", () => {
-  it("adds Crispen config without replacing user config functions or values", async () => {
+  it("adds the adapter config without replacing user config functions or values", async () => {
     expect.assertions(5)
     const config: NextConfig = {
       env: { USER_VALUE: "preserved" },
@@ -79,7 +84,7 @@ describe("next adapter", () => {
       reactStrictMode: true,
     }
 
-    const wrapped = await resolveNextConfig(withCrispen(config, { deploymentId: "A" }))
+    const wrapped = await resolveNextConfig(withDeploymentCheck(config, { deploymentId: "A" }))
     const headers = await readHeaders(wrapped)
 
     expect(wrapped.deploymentId).toBeUndefined()
@@ -93,7 +98,7 @@ describe("next adapter", () => {
       },
       {
         headers: [{ key: "Cache-Control", value: "no-store" }],
-        source: "/_crispen/deployment.json",
+        source: "/_deployment-check/deployment.json",
       },
     ])
   })
@@ -103,9 +108,9 @@ describe("next adapter", () => {
       await readFile(join(process.cwd(), "package.json"), "utf8")
     )
     const wrapped = await resolveNextConfig(
-      withCrispen({ transpilePackages: ["user-package", packageJson.name] })
+      withDeploymentCheck({ transpilePackages: ["user-package", packageJson.name] })
     )
-    const plain = await resolveNextConfig(withCrispen())
+    const plain = await resolveNextConfig(withDeploymentCheck())
 
     expect(wrapped.transpilePackages).toStrictEqual(["user-package", packageJson.name])
     expect(plain.transpilePackages).toStrictEqual([packageJson.name])
@@ -124,12 +129,15 @@ describe("next adapter", () => {
         reactStrictMode: true,
       }
     }
-    const config = await withCrispen(userConfig, { deploymentId: "A" })(PHASE_PRODUCTION_BUILD, {
-      defaultConfig,
-    })
+    const config = await withDeploymentCheck(userConfig, { deploymentId: "A" })(
+      PHASE_PRODUCTION_BUILD,
+      {
+        defaultConfig,
+      }
+    )
 
     expect(config.env?.USER_VALUE).toBe("preserved")
-    expect(config.env?.CRISPEN_NEXT_EMBED).not.toBe("")
+    expect(config.env?.DEPLOYMENT_CHECK_EMBED).not.toBe("")
     expect(config.reactStrictMode).toBe(true)
   })
 
@@ -137,7 +145,9 @@ describe("next adapter", () => {
     expect.assertions(1)
     setEnvironment({ NEXT_DEPLOYMENT_ID: "vercel-deployment" })
 
-    const wrapped = await resolveNextConfig(withCrispen({}, { deploymentId: "crispen-deployment" }))
+    const wrapped = await resolveNextConfig(
+      withDeploymentCheck({}, { deploymentId: "adapter-deployment" })
+    )
 
     expect(wrapped.deploymentId).toBeUndefined()
   })
@@ -147,32 +157,32 @@ describe("next adapter", () => {
     setEnvironment({ COMMIT_REF: "netlify-sha" })
 
     const wrapped = await resolveNextConfig(
-      withCrispen({}, { deploymentId: { platform: "netlify" } })
+      withDeploymentCheck({}, { deploymentId: { platform: "netlify" } })
     )
 
-    expect(wrapped.env?.CRISPEN_NEXT_EMBED).toContain('"id":"netlify-sha"')
+    expect(wrapped.env?.DEPLOYMENT_CHECK_EMBED).toContain('"id":"netlify-sha"')
   })
 
   it("prefixes the default endpoint with the Next base path", async () => {
     expect.assertions(2)
     const wrapped = await resolveNextConfig(
-      withCrispen({ basePath: "/app" }, { deploymentId: "A" })
+      withDeploymentCheck({ basePath: "/app" }, { deploymentId: "A" })
     )
 
     expect(JSON.parse(readEmbedJson(wrapped))).toMatchObject({
-      endpoint: "/app/_crispen/deployment.json",
+      endpoint: "/app/_deployment-check/deployment.json",
     })
     await expect(readHeaders(wrapped)).resolves.toContainEqual({
       basePath: false,
       headers: [{ key: "Cache-Control", value: "no-store" }],
-      source: "/app/_crispen/deployment.json",
+      source: "/app/_deployment-check/deployment.json",
     })
   })
 
   it("resolves an explicit local endpoint under the Next base path", async () => {
     expect.assertions(2)
     const wrapped = await resolveNextConfig(
-      withCrispen({ basePath: "/app" }, { deploymentId: "A", endpoint: "/descriptor.json" })
+      withDeploymentCheck({ basePath: "/app" }, { deploymentId: "A", endpoint: "/descriptor.json" })
     )
 
     expect(JSON.parse(readEmbedJson(wrapped))).toMatchObject({
@@ -187,12 +197,14 @@ describe("next adapter", () => {
 
   it("does not add a base-path override for an empty base path", async () => {
     expect.assertions(1)
-    const wrapped = await resolveNextConfig(withCrispen({ basePath: "" }, { deploymentId: "A" }))
+    const wrapped = await resolveNextConfig(
+      withDeploymentCheck({ basePath: "" }, { deploymentId: "A" })
+    )
 
     await expect(readHeaders(wrapped)).resolves.toStrictEqual([
       {
         headers: [{ key: "Cache-Control", value: "no-store" }],
-        source: "/_crispen/deployment.json",
+        source: "/_deployment-check/deployment.json",
       },
     ])
   })
@@ -200,7 +212,7 @@ describe("next adapter", () => {
   it("keeps an external endpoint unchanged under a Next base path", async () => {
     expect.assertions(2)
     const wrapped = await resolveNextConfig(
-      withCrispen(
+      withDeploymentCheck(
         { basePath: "/app" },
         { deploymentId: "A", endpoint: "https://control.example/descriptor.json" }
       )
@@ -214,13 +226,13 @@ describe("next adapter", () => {
 
   it("renders the embed and serves the matching no-store descriptor", async () => {
     expect.assertions(4)
-    const config = await resolveNextConfig(withCrispen({}, { deploymentId: "A" }))
+    const config = await resolveNextConfig(withDeploymentCheck({}, { deploymentId: "A" }))
     applyConfigEnvironment(config)
 
-    const html = readScriptHtml(CrispenScript())
+    const html = readScriptHtml(DeploymentScript())
     const response = GET()
 
-    expect(html).toContain("globalThis.__CRISPEN__")
+    expect(html).toContain("globalThis.__DEPLOYMENT_CHECK__")
     expect(html).toContain('"id":"A"')
     expect(response.headers.get("Cache-Control")).toBe("no-store")
     await expect(response.json()).resolves.toMatchObject({ id: "A", v: 1 })
@@ -228,12 +240,12 @@ describe("next adapter", () => {
 
   it("serves the descriptor through the Pages Router handler", async () => {
     expect.assertions(3)
-    const config = await resolveNextConfig(withCrispen({}, { deploymentId: "A" }))
+    const config = await resolveNextConfig(withDeploymentCheck({}, { deploymentId: "A" }))
     applyConfigEnvironment(config)
     const headers = new Map<string, string>()
     let body = ""
     let status = 0
-    // SAFETY: crispenPagesHandler only calls setHeader, status, and end on the response.
+    // SAFETY: descriptorHandler only calls setHeader, status, and end on the response.
     const response = {
       end(value: string) {
         body = value
@@ -246,10 +258,10 @@ describe("next adapter", () => {
         return this
       },
     } as NextApiResponse
-    // SAFETY: crispenPagesHandler does not read the request.
+    // SAFETY: descriptorHandler does not read the request.
     const request = {} as NextApiRequest
 
-    crispenPagesHandler(request, response)
+    descriptorHandler(request, response)
 
     expect(status).toBe(200)
     expect(headers.get("Cache-Control")).toBe("no-store")
@@ -259,13 +271,13 @@ describe("next adapter", () => {
   it("leaves the embed and descriptor inert for the Next development phase", async () => {
     expect.assertions(1)
     const config = await resolveNextConfig(
-      withCrispen({}, { deploymentId: "A" }),
+      withDeploymentCheck({}, { deploymentId: "A" }),
       PHASE_DEVELOPMENT_SERVER
     )
 
     expect(config.env).toMatchObject({
-      CRISPEN_NEXT_DESCRIPTOR: "",
-      CRISPEN_NEXT_EMBED: "",
+      DEPLOYMENT_CHECK_DESCRIPTOR: "",
+      DEPLOYMENT_CHECK_EMBED: "",
     })
   })
 
@@ -274,23 +286,23 @@ describe("next adapter", () => {
 
     await serveNextFixture(
       {
-        "app/%5Fcrispen/deployment.json/route.ts":
+        "app/%5Fdeployment-check/deployment.json/route.ts":
           'export { GET } from "@sanely/skew/next"\nexport const dynamic = "force-static"\n',
         "app/layout.tsx":
-          'import { CrispenScript } from "@sanely/skew/next"\nexport default function Layout({ children }: { children: React.ReactNode }) { return <html><body><CrispenScript />{children}</body></html> }\n',
+          'import { DeploymentScript } from "@sanely/skew/next"\nexport default function Layout({ children }: { children: React.ReactNode }) { return <html><body><DeploymentScript />{children}</body></html> }\n',
         "app/page.tsx": "export default function Page() { return <main>Fixture</main> }\n",
         "next.config.mjs":
-          'import { withCrispen } from "@sanely/skew/next"\nexport default withCrispen({ basePath: "/app" }, { deploymentId: "A" })\n',
+          'import { withDeploymentCheck } from "@sanely/skew/next"\nexport default withDeploymentCheck({ basePath: "/app" }, { deploymentId: "A" })\n',
       },
       async (origin) => {
         const [html, descriptorResponse] = await Promise.all([
           fetch(`${origin}/app/`).then((response) => response.text()),
-          fetch(`${origin}/app/_crispen/deployment.json`),
+          fetch(`${origin}/app/_deployment-check/deployment.json`),
         ])
 
-        expect(html).toContain("globalThis.__CRISPEN__")
+        expect(html).toContain("globalThis.__DEPLOYMENT_CHECK__")
         expect(html).toContain('\\"id\\":\\"A\\"')
-        expect(html).toContain("/app/_crispen/deployment.json")
+        expect(html).toContain("/app/_deployment-check/deployment.json")
         expect(descriptorResponse.headers.get("Cache-Control")).toBe("no-store")
         expect(parseDescriptor(await descriptorResponse.text()).id).toBe("A")
       }
@@ -299,28 +311,28 @@ describe("next adapter", () => {
 
   // The Pages Router serves an API handler only from `pages/api`, so the endpoint points there. Next
   // finds a `beforeInteractive` script in `_document` only as a direct element, so the document
-  // calls `CrispenScript` instead of rendering it as a component.
+  // calls `DeploymentScript` instead of rendering it as a component.
   it("embeds and serves a descriptor from a real Pages Router build", async () => {
     expect.assertions(4)
 
     await serveNextFixture(
       {
         "next.config.mjs":
-          'import { withCrispen } from "@sanely/skew/next"\nexport default withCrispen({}, { deploymentId: "A", endpoint: "/api/crispen/deployment.json" })\n',
+          'import { withDeploymentCheck } from "@sanely/skew/next"\nexport default withDeploymentCheck({}, { deploymentId: "A", endpoint: "/api/deployment-check/deployment.json" })\n',
         "pages/_document.tsx":
-          'import { Head, Html, Main, NextScript } from "next/document"\nimport { CrispenScript } from "@sanely/skew/next"\nexport default function Document() { return <Html><Head /><body>{CrispenScript()}<Main /><NextScript /></body></Html> }\n',
-        "pages/api/crispen/deployment.json.ts":
-          'export { crispenPagesHandler as default } from "@sanely/skew/next"\n',
+          'import { Head, Html, Main, NextScript } from "next/document"\nimport { DeploymentScript } from "@sanely/skew/next"\nexport default function Document() { return <Html><Head /><body>{DeploymentScript()}<Main /><NextScript /></body></Html> }\n',
+        "pages/api/deployment-check/deployment.json.ts":
+          'export { descriptorHandler as default } from "@sanely/skew/next"\n',
         "pages/index.tsx": "export default function Page() { return <main>Fixture</main> }\n",
       },
       async (origin) => {
         const [html, descriptorResponse] = await Promise.all([
           fetch(`${origin}/`).then((response) => response.text()),
-          fetch(`${origin}/api/crispen/deployment.json`),
+          fetch(`${origin}/api/deployment-check/deployment.json`),
         ])
 
-        expect(html).toContain("globalThis.__CRISPEN__")
-        expect(html).toContain("/api/crispen/deployment.json")
+        expect(html).toContain("globalThis.__DEPLOYMENT_CHECK__")
+        expect(html).toContain("/api/deployment-check/deployment.json")
         expect(descriptorResponse.headers.get("Cache-Control")).toBe("no-store")
         expect(parseDescriptor(await descriptorResponse.text()).id).toBe("A")
       }

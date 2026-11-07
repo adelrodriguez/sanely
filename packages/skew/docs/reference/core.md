@@ -137,11 +137,11 @@ Parses descriptor JSON and returns a `Deployment`. Throws `TargetResolutionError
 
 ### `readEmbed()`
 
-Returns the embed from `globalThis.__CRISPEN__`, or `undefined` if the embed is missing or malformed. Logs a warning for a malformed embed outside production.
+Returns the embed from `globalThis.__DEPLOYMENT_CHECK__`, or `undefined` if the embed is missing or malformed. Logs a warning for a malformed embed outside production.
 
 ### `DEFAULT_DESCRIPTOR_ENDPOINT`
 
-`"/_crispen/deployment.json"`.
+`"/_deployment-check/deployment.json"`.
 
 ### `TargetResolutionError`
 
@@ -157,7 +157,7 @@ An `Error` with `name` set to `"TargetResolutionError"` and a `reason` of type `
 | `ReloadStatus`                | `"blocked" \| "ready" \| "unprotected"`.                                                                               |
 | `TargetResolutionErrorReason` | `"network" \| "http-status" \| "not-json" \| "invalid-json" \| "unsupported-version" \| "invalid-shape"`.              |
 | `DescriptorV1`                | The descriptor wire format. See the [descriptor reference](./descriptor.md).                                           |
-| `CrispenEmbed`                | The embed format. See the [descriptor reference](./descriptor.md#embed).                                               |
+| `DeploymentEmbed`             | The embed format. See the [descriptor reference](./descriptor.md#embed).                                               |
 | `RuntimeEnvironment`          | Timers that use `TimerHandle`, `addEventListener`, `removeEventListener`, `isVisible`, `now`, `reload`, and `storage`. |
 | `RuntimeEvent`                | `{ persisted?: boolean }`.                                                                                             |
 | `RuntimeEventType`            | `"online" \| "pageshow" \| "visibilitychange"`.                                                                        |

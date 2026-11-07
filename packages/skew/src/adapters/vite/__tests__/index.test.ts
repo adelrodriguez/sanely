@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { build, createServer } from "vite"
 import { describe, expect, it, onTestFinished } from "vitest"
-import { crispen } from "#adapters/vite/index.ts"
+import { deploymentCheck } from "#adapters/vite/index.ts"
 import { parseDescriptor } from "#lib/protocol/descriptor.ts"
 
 const deploymentEnvironmentVariables = [
@@ -42,7 +42,7 @@ function isolateDeploymentEnvironment(): void {
 }
 
 async function createFixture(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "crispen-vite-"))
+  const root = await mkdtemp(join(tmpdir(), "deployment-check-vite-"))
   onTestFinished(() => rm(root, { force: true, recursive: true }))
   await writeFile(
     join(root, "index.html"),
@@ -53,17 +53,18 @@ async function createFixture(): Promise<string> {
 }
 
 async function buildFixture(
-  options: Parameters<typeof crispen>[0],
+  options: Parameters<typeof deploymentCheck>[0],
   base?: string
 ): Promise<{ descriptor: string; html: string; root: string }> {
   const root = await createFixture()
   await build({
     base,
     logLevel: "silent",
-    plugins: [crispen(options)],
+    plugins: [deploymentCheck(options)],
     root,
   })
-  const descriptorPath = options?.endpoint?.replace(/^\/+/, "") ?? "_crispen/deployment.json"
+  const descriptorPath =
+    options?.endpoint?.replace(/^\/+/, "") ?? "_deployment-check/deployment.json"
 
   return {
     descriptor: await readFile(join(root, "dist", descriptorPath), "utf8"),
@@ -77,7 +78,7 @@ describe("vite adapter", () => {
     expect.assertions(2)
     const { descriptor, html } = await buildFixture({ deploymentId: "A" })
 
-    expect(html).toContain('<script>globalThis.__CRISPEN__={"v":1,"running":{"id":"A"')
+    expect(html).toContain('<script>globalThis.__DEPLOYMENT_CHECK__={"v":1,"running":{"id":"A"')
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
@@ -134,7 +135,7 @@ describe("vite adapter", () => {
     await build({
       logLevel: "silent",
       plugins: [
-        crispen({
+        deploymentCheck({
           deploymentId: "A",
           endpoint: "https://control.example/deployment.json",
         }),
@@ -144,14 +145,16 @@ describe("vite adapter", () => {
     const html = await readFile(join(root, "dist/index.html"), "utf8")
 
     expect(html).toContain("https://control.example/deployment.json")
-    await expect(access(join(root, "dist/_crispen/deployment.json"))).rejects.toThrow("ENOENT")
+    await expect(access(join(root, "dist/_deployment-check/deployment.json"))).rejects.toThrow(
+      "ENOENT"
+    )
   })
 
   it("prefixes the default endpoint with the Vite base", async () => {
     expect.assertions(2)
     const { descriptor, html } = await buildFixture({ deploymentId: "A" }, "/app/")
 
-    expect(html).toContain('"endpoint":"/app/_crispen/deployment.json"')
+    expect(html).toContain('"endpoint":"/app/_deployment-check/deployment.json"')
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
@@ -170,7 +173,7 @@ describe("vite adapter", () => {
     expect.assertions(2)
     const { descriptor, html } = await buildFixture({ deploymentId: "A" }, "./")
 
-    expect(html).toContain('"endpoint":"/_crispen/deployment.json"')
+    expect(html).toContain('"endpoint":"/_deployment-check/deployment.json"')
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
@@ -181,7 +184,7 @@ describe("vite adapter", () => {
       "https://cdn.example/app/"
     )
 
-    expect(html).toContain('"endpoint":"/_crispen/deployment.json"')
+    expect(html).toContain('"endpoint":"/_deployment-check/deployment.json"')
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
@@ -190,7 +193,7 @@ describe("vite adapter", () => {
     const root = await createFixture()
     const server = await createServer({
       logLevel: "silent",
-      plugins: [crispen({ deploymentId: "A" })],
+      plugins: [deploymentCheck({ deploymentId: "A" })],
       root,
       server: { middlewareMode: true },
     })
@@ -199,6 +202,6 @@ describe("vite adapter", () => {
     const html = await server.transformIndexHtml("/", source)
     await server.close()
 
-    expect(html).not.toContain("__CRISPEN__")
+    expect(html).not.toContain("__DEPLOYMENT_CHECK__")
   })
 })

@@ -3,7 +3,7 @@ import { parseDescriptor } from "./descriptor"
 import { readEmbed } from "./embed"
 import { TargetResolutionError } from "./errors"
 
-export const DEFAULT_DESCRIPTOR_ENDPOINT = "/_crispen/deployment.json"
+export const DEFAULT_DESCRIPTOR_ENDPOINT = "/_deployment-check/deployment.json"
 
 export type HttpSourceInit = Omit<RequestInit, "cache" | "signal"> & {
   readonly fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>

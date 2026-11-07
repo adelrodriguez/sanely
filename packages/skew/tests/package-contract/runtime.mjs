@@ -12,27 +12,27 @@ import {
   readEmbed,
   serializeDescriptor,
 } from "@sanely/skew"
-import { CrispenScript, GET, crispenPagesHandler, withCrispen } from "@sanely/skew/next"
+import { DeploymentScript, GET, descriptorHandler, withDeploymentCheck } from "@sanely/skew/next"
 import { useDeploymentStatus } from "@sanely/skew/react"
-import { crispen } from "@sanely/skew/vite"
+import { deploymentCheck } from "@sanely/skew/vite"
 
 const runtimeExports = {
-  CrispenScript,
+  DeploymentScript,
   GET,
   TargetResolutionError,
   createDeploymentMonitor,
   createEmbeddedSource,
   createHttpSource,
   createStaticSource,
-  crispen,
-  crispenPagesHandler,
+  deploymentCheck,
+  descriptorHandler,
   getDefaultMonitor,
   getMonitor,
   parseDescriptor,
   readEmbed,
   serializeDescriptor,
   useDeploymentStatus,
-  withCrispen,
+  withDeploymentCheck,
 }
 
 for (const [name, exportedValue] of Object.entries(runtimeExports)) {

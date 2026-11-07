@@ -404,7 +404,7 @@ describe("deployment monitor", () => {
     expect(result).toBe(monitor.getState())
     expect(result).toMatchObject({
       checkStatus: "idle",
-      error: new Error("Crispen deployment check timed out after 50ms."),
+      error: new Error("[deployment-check] The deployment check timed out after 50ms."),
       status: "unknown",
     })
     expect(environment.timeoutDelays).toStrictEqual([])
@@ -557,7 +557,9 @@ describe("deployment monitor", () => {
     const [firstResult, secondResult] = await Promise.all([first, second])
 
     expect(secondResult).toBe(firstResult)
-    expect(firstResult.error?.message).toBe("Crispen deployment check timed out after 50ms.")
+    expect(firstResult.error?.message).toBe(
+      "[deployment-check] The deployment check timed out after 50ms."
+    )
   })
 
   it("stays inert without an embedded deployment source", async () => {

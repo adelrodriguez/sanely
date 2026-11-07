@@ -4,7 +4,7 @@
 
 ## Descriptor
 
-The default URL is `/_crispen/deployment.json` on the application origin. An adapter `endpoint` option can change it.
+The default URL is `/_deployment-check/deployment.json` on the application origin. An adapter `endpoint` option can change it.
 
 ```json
 { "v": 1, "id": "3f9c2a1", "builtAt": "2026-08-10T12:00:00.000Z" }
@@ -38,18 +38,18 @@ The parser accepts a `v` higher than `1` when `id` is valid, and it ignores unkn
 The adapter writes the embed into the page before application scripts run:
 
 ```js
-globalThis.__CRISPEN__ = {
+globalThis.__DEPLOYMENT_CHECK__ = {
   v: 1,
   running: { id: "3f9c2a1", builtAt: "2026-08-10T12:00:00.000Z" },
-  endpoint: "/_crispen/deployment.json",
+  endpoint: "/_deployment-check/deployment.json",
 }
 ```
 
-| Field             | Type     | Required | Description                                                      |
-| ----------------- | -------- | -------- | ---------------------------------------------------------------- |
-| `v`               | `1`      | Yes      | The format version. Any other value makes the embed invalid.     |
-| `running.id`      | `string` | Yes      | The running deployment ID. Must not be empty.                    |
-| `running.builtAt` | `string` | No       | The build time of the running deployment, as an ISO 8601 string. |
-| `endpoint`        | `string` | No       | The descriptor URL. Defaults to `/_crispen/deployment.json`.     |
+| Field             | Type     | Required | Description                                                           |
+| ----------------- | -------- | -------- | --------------------------------------------------------------------- |
+| `v`               | `1`      | Yes      | The format version. Any other value makes the embed invalid.          |
+| `running.id`      | `string` | Yes      | The running deployment ID. Must not be empty.                         |
+| `running.builtAt` | `string` | No       | The build time of the running deployment, as an ISO 8601 string.      |
+| `endpoint`        | `string` | No       | The descriptor URL. Defaults to `/_deployment-check/deployment.json`. |
 
 `readEmbed()` returns `undefined` for an embed that does not match this shape.

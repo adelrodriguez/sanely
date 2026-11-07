@@ -1,4 +1,4 @@
-import type { CrispenEmbed } from "#lib/protocol/embed.ts"
+import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 
 export { DEFAULT_DESCRIPTOR_ENDPOINT } from "#lib/protocol/http-source.ts"
 
@@ -57,7 +57,7 @@ export function resolveDeploymentId(option?: DeploymentIdOption): string {
 
   // eslint-disable-next-line no-console -- A failed explicit strategy must be visible in the build log.
   console.warn(
-    `Crispen could not resolve a deployment ID from ${describeStrategy(option)}. This build uses a random ID.`
+    `[deployment-check] Could not resolve a deployment ID from ${describeStrategy(option)}. This build uses a random ID.`
   )
 
   return randomDeploymentId()
@@ -153,7 +153,7 @@ export function resolvePublicEndpoint(base: string, endpoint: string): string {
   return `${base.replace(/\/+$/u, "")}${rootedEndpoint}`
 }
 
-export function serializeEmbed(embed: CrispenEmbed): string {
+export function serializeEmbed(embed: DeploymentEmbed): string {
   return JSON.stringify(embed, ["v", "running", "id", "builtAt", "endpoint"])
     .replaceAll("<", "\\u003c")
     .replaceAll("\u2028", "\\u2028")

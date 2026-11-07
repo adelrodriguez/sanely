@@ -1,7 +1,7 @@
 export { parseDescriptor, serializeDescriptor } from "./lib/protocol/descriptor"
 export type { DescriptorV1 } from "./lib/protocol/descriptor"
 export { readEmbed } from "./lib/protocol/embed"
-export type { CrispenEmbed } from "./lib/protocol/embed"
+export type { DeploymentEmbed } from "./lib/protocol/embed"
 export { TargetResolutionError } from "./lib/protocol/errors"
 export type { TargetResolutionErrorReason } from "./lib/protocol/errors"
 export {

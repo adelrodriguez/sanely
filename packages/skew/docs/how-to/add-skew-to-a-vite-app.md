@@ -11,12 +11,12 @@ This guide adds an update notice to a Vite and React app. The notice appears whe
 2. Add the adapter to `vite.config.ts`, after the React plugin:
 
    ```ts
-   import { crispen } from "@sanely/skew/vite"
+   import { deploymentCheck } from "@sanely/skew/vite"
    import react from "@vitejs/plugin-react"
    import { defineConfig } from "vite"
 
    export default defineConfig({
-     plugins: [react(), crispen()],
+     plugins: [react(), deploymentCheck()],
    })
    ```
 
@@ -45,7 +45,7 @@ This guide adds an update notice to a Vite and React app. The notice appears whe
 
 4. Render `<UpdateNotice />` once, near the root of the app.
 
-5. Run `vite build`. Make sure that the output contains `_crispen/deployment.json`.
+5. Run `vite build`. Make sure that the output contains `_deployment-check/deployment.json`.
 
 6. Configure your host to serve the descriptor without a cache. See [How to stop hosts from caching the descriptor](./stop-hosts-from-caching-the-descriptor.md).
 
@@ -60,7 +60,7 @@ The adapter adds Vite `base` to the descriptor URL. You do not need to change an
 Set `endpoint` to the full URL. The adapter then writes no descriptor file, and your service must serve the [descriptor format](../reference/descriptor.md).
 
 ```ts
-crispen({ endpoint: "https://deployments.example.com/current.json" })
+deploymentCheck({ endpoint: "https://deployments.example.com/current.json" })
 ```
 
 ## If `reload()` stops working

@@ -6,9 +6,9 @@ A browser tab can stay open for days. During that time you can deploy many times
 
 The package compares two deployments.
 
-The **running deployment** is the build that produced the JavaScript in the tab. An adapter writes its ID into the page at build time as `globalThis.__CRISPEN__`, which is the **embed**. The running deployment never changes for the life of the page.
+The **running deployment** is the build that produced the JavaScript in the tab. An adapter writes its ID into the page at build time as `globalThis.__DEPLOYMENT_CHECK__`, which is the **embed**. The running deployment never changes for the life of the page.
 
-The **target deployment** is the build that the tab should use now. The adapter also writes it to a small JSON file, the **descriptor**, at `/_crispen/deployment.json`. A newer deployment replaces that file, so a fetch of the descriptor returns the new target. The runtime fetches the descriptor with `cache: "no-store"`.
+The **target deployment** is the build that the tab should use now. The adapter also writes it to a small JSON file, the **descriptor**, at `/_deployment-check/deployment.json`. A newer deployment replaces that file, so a fetch of the descriptor returns the new target. The runtime fetches the descriptor with `cache: "no-store"`.
 
 If the two IDs are equal, the status is `current`. If they differ, the status is `stale`. You can replace the exact-ID comparison with an `isCurrent` predicate. For example, a predicate can treat two builds from one release branch as equal.
 
@@ -30,7 +30,7 @@ This choice costs one component in your app, a notice or a banner. We think that
 
 A reload does not always reach the new deployment. A CDN can serve old HTML for a few minutes after a deploy. In that case, the page reloads, loads the old running deployment again, sees `stale` again, and the user clicks **Reload** again. Without a limit, the page loops.
 
-`reload()` records each request in session storage under the key `crispen:reload`. The record holds the running ID, the target ID, an attempt count, and a time. The guard counts a repeated request when the running ID and the target ID are the same as in the record and less than 10 minutes have passed. The guard allows the first request and one repeated request. It blocks the next repeated request and sets `reloadStatus` to `"blocked"`.
+`reload()` records each request in session storage under the key `deployment-check:reload`. The record holds the running ID, the target ID, an attempt count, and a time. The guard counts a repeated request when the running ID and the target ID are the same as in the record and less than 10 minutes have passed. The guard allows the first request and one repeated request. It blocks the next repeated request and sets `reloadStatus` to `"blocked"`.
 
 The block ends in three ways:
 

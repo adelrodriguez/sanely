@@ -1,6 +1,6 @@
 import type { Plugin } from "vite"
 import type { DeploymentIdOption } from "#adapters/shared.ts"
-import type { CrispenEmbed } from "#lib/protocol/embed.ts"
+import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import type { Deployment } from "#lib/protocol/types.ts"
 import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
@@ -13,12 +13,12 @@ import { serializeDescriptor } from "#lib/protocol/descriptor.ts"
 
 export type { DeploymentIdOption, DeploymentPlatform } from "#adapters/shared.ts"
 
-export interface CrispenViteOptions {
+export interface ViteAdapterOptions {
   readonly deploymentId?: DeploymentIdOption
   readonly endpoint?: string
 }
 
-export function crispen(options: CrispenViteOptions = {}): Plugin {
+export function deploymentCheck(options: ViteAdapterOptions = {}): Plugin {
   const descriptorEndpoint = options.endpoint ?? DEFAULT_DESCRIPTOR_ENDPOINT
   let endpoint = descriptorEndpoint
   let deployment: Deployment | undefined
@@ -43,10 +43,10 @@ export function crispen(options: CrispenViteOptions = {}): Plugin {
         })
       }
     },
-    name: "crispen",
+    name: "deployment-check",
     transformIndexHtml() {
       const currentDeployment = requireDeployment(deployment)
-      const embed: CrispenEmbed = {
+      const embed: DeploymentEmbed = {
         endpoint,
         running: {
           builtAt: currentDeployment.builtAt?.toISOString(),
@@ -57,7 +57,7 @@ export function crispen(options: CrispenViteOptions = {}): Plugin {
 
       return [
         {
-          children: `globalThis.__CRISPEN__=${serializeEmbed(embed)}`,
+          children: `globalThis.__DEPLOYMENT_CHECK__=${serializeEmbed(embed)}`,
           injectTo: "head-prepend",
           tag: "script",
         },
@@ -76,7 +76,7 @@ function descriptorFileName(endpoint: string): string | undefined {
 
 function requireDeployment(deployment: Deployment | undefined): Deployment {
   if (deployment === undefined) {
-    throw new Error("Crispen received a Vite hook before config resolution.")
+    throw new Error("[deployment-check] Received a Vite hook before config resolution.")
   }
 
   return deployment

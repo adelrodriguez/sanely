@@ -9,13 +9,13 @@ Use the same ID for every build of one deployment. If two servers build the same
 To use a variable that your CI sets, pass its name:
 
 ```ts
-crispen({ deploymentId: { env: "RELEASE_ID" } })
+deploymentCheck({ deploymentId: { env: "RELEASE_ID" } })
 ```
 
 To try several variables, pass a list. The adapter uses the first one that is not empty:
 
 ```ts
-crispen({ deploymentId: { env: ["RELEASE_ID", "GIT_SHA"] } })
+deploymentCheck({ deploymentId: { env: ["RELEASE_ID", "GIT_SHA"] } })
 ```
 
 ## Read the commit SHA of one platform
@@ -23,7 +23,7 @@ crispen({ deploymentId: { env: ["RELEASE_ID", "GIT_SHA"] } })
 To skip detection and read one platform's variable, name the platform:
 
 ```ts
-crispen({ deploymentId: { platform: "vercel" } })
+deploymentCheck({ deploymentId: { platform: "vercel" } })
 ```
 
 The values are `"vercel"`, `"cloudflare-pages"`, `"netlify"`, and `"github-actions"`.
@@ -35,7 +35,7 @@ To compute the ID at build time, pass a function:
 ```ts
 import { execSync } from "node:child_process"
 
-crispen({
+deploymentCheck({
   deploymentId: () => execSync("git rev-parse HEAD").toString().trim(),
 })
 ```
@@ -43,7 +43,7 @@ crispen({
 ## Pass the ID directly
 
 ```ts
-crispen({ deploymentId: process.env.RELEASE_ID })
+deploymentCheck({ deploymentId: process.env.RELEASE_ID })
 ```
 
 An empty or missing string falls back to detection.
@@ -53,9 +53,9 @@ An empty or missing string falls back to detection.
 If a strategy finds nothing, the adapter logs this warning in the build output and uses a random ID:
 
 ```text
-Crispen could not resolve a deployment ID from the RELEASE_ID environment variable. This build uses a random ID.
+[deployment-check] Could not resolve a deployment ID from the RELEASE_ID environment variable. This build uses a random ID.
 ```
 
-To see the ID of a build, open `/_crispen/deployment.json` and read `id`.
+To see the ID of a build, open `/_deployment-check/deployment.json` and read `id`.
 
-The same options work for `withCrispen` in `@sanely/skew/next`, as its second argument. The [adapters reference](../reference/adapters.md#deployment-id) lists the full resolution rules.
+The same options work for `withDeploymentCheck` in `@sanely/skew/next`, as its second argument. The [adapters reference](../reference/adapters.md#deployment-id) lists the full resolution rules.

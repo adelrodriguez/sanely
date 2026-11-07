@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest"
-import type { CrispenEmbed } from "#lib/protocol/embed.ts"
+import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import { TargetResolutionError } from "#lib/protocol/errors.ts"
 import { createEmbeddedSource, createHttpSource } from "#lib/protocol/http-source.ts"
 
@@ -15,10 +15,10 @@ function mockGlobalFetch() {
   return fetch
 }
 
-function setEmbed(embed: CrispenEmbed): void {
-  globalThis.__CRISPEN__ = embed
+function setEmbed(embed: DeploymentEmbed): void {
+  globalThis.__DEPLOYMENT_CHECK__ = embed
   onTestFinished(() => {
-    globalThis.__CRISPEN__ = undefined
+    globalThis.__DEPLOYMENT_CHECK__ = undefined
   })
 }
 
@@ -31,11 +31,11 @@ describe("deployment source over HTTP", () => {
         headers: { "content-type": "application/json; charset=utf-8" },
       })
     )
-    const source = createHttpSource({ id: "running" }, "/_crispen/deployment.json")
+    const source = createHttpSource({ id: "running" }, "/_deployment-check/deployment.json")
     const controller = new AbortController()
 
     await expect(source.resolveTarget(controller.signal)).resolves.toStrictEqual({ id: "target" })
-    expect(fetch).toHaveBeenCalledWith("/_crispen/deployment.json", {
+    expect(fetch).toHaveBeenCalledWith("/_deployment-check/deployment.json", {
       cache: "no-store",
       signal: controller.signal,
     })

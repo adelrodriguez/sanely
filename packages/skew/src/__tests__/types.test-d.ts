@@ -10,8 +10,8 @@ import type {
   IsDeploymentCurrent,
   ReloadStatus,
 } from "#index.ts"
-import { withCrispen } from "#adapters/next/index.ts"
-import { crispen } from "#adapters/vite/index.ts"
+import { withDeploymentCheck } from "#adapters/next/index.ts"
+import { deploymentCheck } from "#adapters/vite/index.ts"
 import { createDeploymentMonitor, createStaticSource } from "#index.ts"
 import { useDeploymentStatus } from "#integrations/react/index.ts"
 
@@ -57,7 +57,7 @@ describe("useDeploymentStatus", () => {
 
 describe("adapters", () => {
   it("return a Vite plugin and a Next.js config", () => {
-    expectTypeOf(crispen()).toEqualTypeOf<Plugin>()
-    expectTypeOf(withCrispen({})).toExtend<NextConfigExport>()
+    expectTypeOf(deploymentCheck()).toEqualTypeOf<Plugin>()
+    expectTypeOf(withDeploymentCheck({})).toExtend<NextConfigExport>()
   })
 })

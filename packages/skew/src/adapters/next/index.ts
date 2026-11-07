@@ -4,7 +4,7 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js"
 import Script from "next/script.js"
 import { createElement } from "react"
 import type { DeploymentIdOption } from "#adapters/shared.ts"
-import type { CrispenEmbed } from "#lib/protocol/embed.ts"
+import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import type { Deployment } from "#lib/protocol/types.ts"
 import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
@@ -18,10 +18,10 @@ import { serializeDescriptor } from "#lib/protocol/descriptor.ts"
 export type { DeploymentIdOption, DeploymentPlatform } from "#adapters/shared.ts"
 
 // The Pages Router loads a package from node_modules without bundling it, so Next would not
-// replace the `process.env.CRISPEN_NEXT_*` reads in this package. Next bundles a transpiled package.
+// replace the `process.env.DEPLOYMENT_CHECK_*` reads in this package. Next bundles a transpiled package.
 const PACKAGE_NAME = "@sanely/skew"
 
-export interface CrispenNextOptions {
+export interface NextAdapterOptions {
   readonly deploymentId?: DeploymentIdOption
   readonly endpoint?: string
 }
@@ -37,25 +37,25 @@ export type NextConfigFunction = (
 
 export type NextConfigExport = NextConfig | NextConfigFunction
 
-export function CrispenScript(): ReactNode {
+export function DeploymentScript(): ReactNode {
   // Next inlines `NextConfig.env` values only for literal `process.env.KEY`
   // member accesses, so these reads must not go through a computed key.
-  const embed = process.env.CRISPEN_NEXT_EMBED
+  const embed = process.env.DEPLOYMENT_CHECK_EMBED
   if (embed === undefined || embed.length === 0) {
     return null
   }
 
   return createElement(Script, {
     dangerouslySetInnerHTML: {
-      __html: `globalThis.__CRISPEN__=${embed}`,
+      __html: `globalThis.__DEPLOYMENT_CHECK__=${embed}`,
     },
-    id: "crispen-deployment",
+    id: "deployment-check-embed",
     strategy: "beforeInteractive",
   })
 }
 
 export function GET(): Response {
-  const descriptor = process.env.CRISPEN_NEXT_DESCRIPTOR
+  const descriptor = process.env.DEPLOYMENT_CHECK_DESCRIPTOR
 
   return new Response(descriptor ?? '{"error":"descriptor unavailable"}', {
     headers: {
@@ -66,8 +66,8 @@ export function GET(): Response {
   })
 }
 
-export function crispenPagesHandler(_request: NextApiRequest, response: NextApiResponse): void {
-  const descriptor = process.env.CRISPEN_NEXT_DESCRIPTOR
+export function descriptorHandler(_request: NextApiRequest, response: NextApiResponse): void {
+  const descriptor = process.env.DEPLOYMENT_CHECK_DESCRIPTOR
   response.setHeader("Cache-Control", "no-store")
   response.setHeader("Content-Type", "application/json; charset=utf-8")
   response
@@ -75,9 +75,9 @@ export function crispenPagesHandler(_request: NextApiRequest, response: NextApiR
     .end(descriptor ?? '{"error":"descriptor unavailable"}')
 }
 
-export function withCrispen(
+export function withDeploymentCheck(
   config: NextConfigExport = {},
-  options: CrispenNextOptions = {}
+  options: NextAdapterOptions = {}
 ): NextConfigFunction {
   return async (phase, context) => {
     const resolvedConfig = checkIsConfigFunction(config) ? await config(phase, context) : config
@@ -88,7 +88,7 @@ export function withCrispen(
       builtAt: new Date(),
       id: resolveDeploymentId(options.deploymentId ?? resolvedConfig.deploymentId),
     }
-    const embed: CrispenEmbed = {
+    const embed: DeploymentEmbed = {
       endpoint,
       running: {
         builtAt: deployment.builtAt?.toISOString(),
@@ -103,8 +103,8 @@ export function withCrispen(
       ...resolvedConfig,
       env: {
         ...resolvedConfig.env,
-        CRISPEN_NEXT_DESCRIPTOR: development ? "" : serializeDescriptor(deployment),
-        CRISPEN_NEXT_EMBED: development ? "" : serializeEmbed(embed),
+        DEPLOYMENT_CHECK_DESCRIPTOR: development ? "" : serializeDescriptor(deployment),
+        DEPLOYMENT_CHECK_EMBED: development ? "" : serializeEmbed(embed),
       },
       headers:
         descriptorHeader === undefined

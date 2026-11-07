@@ -8,7 +8,7 @@
 
 A browser tab can stay open for days while you deploy many times. The package tells the tab when a newer deployment is live, so your app can ask the user to reload. The package never reloads the page by itself.
 
-At build time, an adapter writes the deployment ID into the page and into `/_crispen/deployment.json`. In the browser, the package fetches that file when the tab becomes visible, when the network comes back, and every 5 minutes. If the IDs differ, the status is `stale`.
+At build time, an adapter writes the deployment ID into the page and into `/_deployment-check/deployment.json`. In the browser, the package fetches that file when the tab becomes visible, when the network comes back, and every 5 minutes. If the IDs differ, the status is `stale`.
 
 ## Quick start
 
@@ -21,12 +21,12 @@ npm install @sanely/skew
 Add the adapter to `vite.config.ts`:
 
 ```ts
-import { crispen } from "@sanely/skew/vite"
+import { deploymentCheck } from "@sanely/skew/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 export default defineConfig({
-  plugins: [react(), crispen()],
+  plugins: [react(), deploymentCheck()],
 })
 ```
 
@@ -53,7 +53,7 @@ export function UpdateNotice() {
 }
 ```
 
-Then configure your host to serve `/_crispen/deployment.json` with `Cache-Control: no-store`. See [How to stop hosts from caching the descriptor](docs/how-to/stop-hosts-from-caching-the-descriptor.md).
+Then configure your host to serve `/_deployment-check/deployment.json` with `Cache-Control: no-store`. See [How to stop hosts from caching the descriptor](docs/how-to/stop-hosts-from-caching-the-descriptor.md).
 
 For Next.js, follow [How to add `@sanely/skew` to a Next.js app](docs/how-to/add-skew-to-a-nextjs-app.md).
 

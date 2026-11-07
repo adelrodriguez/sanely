@@ -7,7 +7,7 @@ By default, the client reads its target from the descriptor that the adapter wri
 Set the adapter `endpoint` to the service URL. The client then fetches it with no other change:
 
 ```ts
-crispen({ endpoint: "https://deployments.example.com/current.json" })
+deploymentCheck({ endpoint: "https://deployments.example.com/current.json" })
 ```
 
 The service must return the [descriptor format](../reference/descriptor.md) with `Cache-Control: no-store`. If the request needs headers or credentials, create the source yourself:

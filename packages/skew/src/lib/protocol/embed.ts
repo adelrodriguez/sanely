@@ -1,4 +1,4 @@
-export interface CrispenEmbed {
+export interface DeploymentEmbed {
   readonly v: 1
   readonly running: {
     readonly id: string
@@ -8,11 +8,11 @@ export interface CrispenEmbed {
 }
 
 declare global {
-  var __CRISPEN__: CrispenEmbed | undefined
+  var __DEPLOYMENT_CHECK__: DeploymentEmbed | undefined
 }
 
-export function readEmbed(): CrispenEmbed | undefined {
-  const embed: unknown = globalThis.__CRISPEN__
+export function readEmbed(): DeploymentEmbed | undefined {
+  const embed: unknown = globalThis.__DEPLOYMENT_CHECK__
 
   if (embed === undefined) {
     return undefined
@@ -21,7 +21,7 @@ export function readEmbed(): CrispenEmbed | undefined {
   if (!checkIsEmbed(embed)) {
     if (process.env.NODE_ENV !== "production") {
       // eslint-disable-next-line no-console -- Invalid build-time data must be visible in development.
-      console.warn("Crispen ignored a malformed deployment embed.")
+      console.warn("[deployment-check] Ignored a malformed deployment embed.")
     }
 
     return undefined
@@ -41,7 +41,7 @@ interface RunningCandidate {
   readonly id?: unknown
 }
 
-function checkIsEmbed(value: unknown): value is CrispenEmbed {
+function checkIsEmbed(value: unknown): value is DeploymentEmbed {
   if (!checkIsEmbedCandidate(value)) {
     return false
   }
