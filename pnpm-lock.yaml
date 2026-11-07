@@ -226,6 +226,9 @@ importers:
 
   packages/cron:
     devDependencies:
+      '@sanely/duration':
+        specifier: workspace:*
+        version: link:../duration
       '@tooling/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
@@ -241,9 +244,6 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 4.10.2
-      humanspan:
-        specifier: 0.3.0
-        version: 0.3.0
       tsdown:
         specifier: 'catalog:'
         version: 0.23.5(oxc-resolver@11.24.2)(typescript@7.0.2)
@@ -1864,10 +1864,6 @@ packages:
     resolution: {integrity: sha512-Z+8unD6em/MJwyrkWQ2M3wygRGI1+MztbutiNwk1DCuEPXOZRWGjtcMPZYP1exY9iNZMhd7ZOSMQSo9WYtiQRw==}
     hasBin: true
 
-  humanspan@0.3.0:
-    resolution: {integrity: sha512-h63eDEYkf6WFkQF+7fAvPPfsxzJ0MbJALHNLj4OQb09VfoS6HLO0Pm/uEv76Ni2i8KYgyyfGWAjOUJI4XR9EyQ==}
-    engines: {node: '>=20.0.0'}
-
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
@@ -3430,8 +3426,6 @@ snapshots:
   hookable@6.1.2: {}
 
   human-id@4.2.2: {}
-
-  humanspan@0.3.0: {}
 
   iconv-lite@0.7.3:
     dependencies:

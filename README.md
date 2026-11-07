@@ -44,7 +44,7 @@ Migrated packages contain their source libraries. The other packages still conta
 
 ## Scripts
 
-Run these from the root. Turborepo runs the package tasks and caches their results.
+Run these from the root. Turborepo runs the package tasks and caches their results. Run `pnpm run build` before `pnpm run check`, because type-aware lint reads the built types of a workspace dependency.
 
 | Script                  | What it does                                                         |
 | ----------------------- | -------------------------------------------------------------------- |

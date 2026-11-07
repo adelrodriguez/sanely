@@ -118,13 +118,13 @@ The `CronPhrase` type accepts the **strict form**: lowercase words, one space be
 | Lists                 | `mon,wed,fri` spacing, and a comma before `and`                             |
 | Times                 | `9:30 PM`, `9:30PM`                                                         |
 
-The unit aliases mean the same units as in [Humanspan](https://github.com/adelrodriguez/humanspan): `m` is minutes, and `mo` (months) is not an interval unit.
+The unit aliases mean the same units as in [`@sanely/duration`](../duration): `m` is minutes, and `mo` (months) is not an interval unit.
 
 ## API
 
-`@sanely/cron` has the same API shape as Humanspan:
+`@sanely/cron` has the same API shape as `@sanely/duration`:
 
-| Use                                            | `@sanely/cron`      | Humanspan               |
+| Use                                            | `@sanely/cron`      | `@sanely/duration`      |
 | ---------------------------------------------- | ------------------- | ----------------------- |
 | A typed phrase in your code                    | `cron(phrase)`      | `ms(value)`             |
 | A `string` from a config file or a form        | `parse(value)`      | `parse(value)`          |

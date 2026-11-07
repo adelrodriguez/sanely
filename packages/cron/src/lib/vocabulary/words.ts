@@ -38,8 +38,8 @@ export const MAX_ORDINAL = 28
 
 /**
  * Interval units and their aliases. The aliases are a copy of the minute and hour rows of the
- * Humanspan unit table, so that an alias never means different units in the two packages. The
- * singular word follows `every`, and the plural word follows a number.
+ * `@sanely/duration` unit table, so that an alias never means different units in the two packages.
+ * The singular word follows `every`, and the plural word follows a number.
  */
 export const UNITS = [
   { aliases: ["minutes", "minute", "mins", "min", "m"], plural: "minutes", singular: "minute" },

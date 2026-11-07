@@ -44,5 +44,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Type-aware lint resolves a workspace dependency, such as @sanely/duration in cron's
+      # tests, through the dependency's built types in dist.
+      - name: Build packages
+        if: matrix.name == 'check'
+        run: pnpm run build
+
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
