@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { FIELD_RANGES, createFields, every, range } from "#lib/fields/fields.ts"
+import { FIELD_RANGES, createFields, every, range, toFields } from "#lib/fields/fields.ts"
 
 describe("range", () => {
   it("should include both ends", () => {
@@ -55,5 +55,31 @@ describe("createFields", () => {
 
   it("should sort the days of the week", () => {
     expect(createFields({ dayOfWeek: [6, 0] }).dayOfWeek).toEqual([0, 6])
+  })
+})
+
+describe("toFields", () => {
+  it("should start a minute interval at :00 and leave out the window end", () => {
+    expect(
+      toFields({ between: { from: 9, to: 12 }, every: "minute", interval: 20, on: "weekends" })
+    ).toEqual(createFields({ dayOfWeek: [0, 6], hour: [9, 10, 11], minute: [0, 20, 40] }))
+  })
+
+  it("should run an hour interval at :00 from 00:00", () => {
+    expect(toFields({ every: "hour", interval: 8 })).toEqual(
+      createFields({ hour: [0, 8, 16], minute: [0] })
+    )
+  })
+
+  it("should give a day list in cron numbers, sorted and without duplicates", () => {
+    expect(
+      toFields({ at: { hour: 9, minute: 5 }, every: "day", on: ["sunday", "monday", "sunday"] })
+    ).toEqual(createFields({ dayOfWeek: [0, 1], hour: [9], minute: [5] }))
+  })
+
+  it("should set only the day of the month for a month schedule", () => {
+    expect(toFields({ at: { hour: 8, minute: 0 }, day: 15, every: "month" })).toEqual(
+      createFields({ dayOfMonth: [15], hour: [8], minute: [0] })
+    )
   })
 })

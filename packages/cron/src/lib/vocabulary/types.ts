@@ -31,7 +31,7 @@ export type FormatList<T extends readonly string[]> = T extends readonly [infer 
  * A list of one or more day names in calendar order, such as `"monday, wednesday and friday"`.
  * There are 127 lists.
  */
-export type DayNameList = FormatList<Exclude<Subsets<typeof WEEKDAYS>, []>>
+type DayNameList = FormatList<Exclude<Subsets<typeof WEEKDAYS>, []>>
 
 /**
  * The day set of a cron phrase. After `every` a day group is singular (`"weekday"`), and after `on`

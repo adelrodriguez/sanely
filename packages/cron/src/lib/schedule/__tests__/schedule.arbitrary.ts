@@ -15,13 +15,13 @@ import {
 const hourArb = fc.integer({ max: 23, min: 0 }).filter((value) => isHour(value))
 const minuteArb = fc.integer({ max: 59, min: 0 }).filter((value) => isMinute(value))
 
-export const timeArb: fc.Arbitrary<Time> = fc.record(
+const timeArb: fc.Arbitrary<Time> = fc.record(
   { hour: hourArb, minute: minuteArb },
   { noNullPrototype: true }
 )
 
 // A window on whole hours. The end is not included, and 24 is the end of the day.
-export const windowArb: fc.Arbitrary<Window> = hourArb.chain((from) =>
+const windowArb: fc.Arbitrary<Window> = hourArb.chain((from) =>
   fc
     .integer({ max: 24, min: from + 1 })
     .filter((to) => isWindowEnd(to))
@@ -30,7 +30,7 @@ export const windowArb: fc.Arbitrary<Window> = hourArb.chain((from) =>
 )
 
 // A day group, or a list of days in any order and with duplicates.
-export const daySetArb: fc.Arbitrary<DaySet> = fc.oneof(
+const daySetArb: fc.Arbitrary<DaySet> = fc.oneof(
   fc.constant("weekdays"),
   fc.constant("weekends"),
   fc

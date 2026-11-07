@@ -1,10 +1,10 @@
 import fc from "fast-check"
 import { describe as group, expect, it } from "vitest"
 import type { Schedule } from "#lib/schedule/schedule.ts"
-import { cron } from "#lib/phrase/cron.ts"
-import { describe } from "#lib/phrase/describe.ts"
-import { InvalidScheduleError } from "#lib/phrase/errors.ts"
-import { parse } from "#lib/phrase/parse.ts"
+import { cron } from "#lib/api/cron.ts"
+import { describe } from "#lib/api/describe.ts"
+import { InvalidScheduleError } from "#lib/api/errors.ts"
+import { parse } from "#lib/api/parse.ts"
 import { scheduleArb, toCanonical } from "#lib/schedule/__tests__/schedule.arbitrary.ts"
 
 group("describe", () => {

@@ -1,8 +1,7 @@
-export { InvalidScheduleError } from "./lib/phrase/errors"
-export * from "./lib/phrase/cron"
-export { describe } from "./lib/phrase/describe"
-export { isSchedule, parse, safeParse } from "./lib/phrase/parse"
-export * from "./lib/phrase/guards"
+export { InvalidScheduleError } from "./lib/api/errors"
+export { cron } from "./lib/api/cron"
+export { describe } from "./lib/api/describe"
+export { isSchedule, parse, safeParse } from "./lib/api/parse"
 export type { ValidateCronPhrase } from "./lib/grammar/types"
 export type {
   CronExpression,
