@@ -1,0 +1,19 @@
+import { describe, expect, test } from "vitest"
+import { normalizeError } from "#lib/shared/utils.ts"
+
+describe("normalizeError", () => {
+  test("serializes a thrown non-Error object", () => {
+    expect(normalizeError({ code: "unavailable" }).message).toBe('{"code":"unavailable"}')
+  })
+
+  test("uses the object fallback when serialization fails", () => {
+    const circular: { self?: unknown } = {}
+    circular.self = circular
+
+    expect(normalizeError(circular).message).toBe("Non-Error object thrown")
+  })
+
+  test("uses a stable message for a thrown function", () => {
+    expect(normalizeError(() => null).message).toBe("Non-Error function thrown")
+  })
+})

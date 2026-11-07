@@ -1,5 +1,7 @@
 import core from "adamantite/lint"
 import custom from "adamantite/lint/custom"
+import react from "adamantite/lint/react"
+import reactStrict from "adamantite/lint/react-strict"
 import { defineConfig } from "oxlint"
 
 export default defineConfig({
@@ -11,6 +13,32 @@ export default defineConfig({
     typeCheck: true,
   },
   overrides: [
+    // gated linted its React integration with the React presets. Keep them for this package.
+    {
+      files: ["packages/flags/**/*.{ts,tsx}"],
+      jsPlugins: reactStrict.jsPlugins,
+      plugins: react.plugins,
+      rules: {
+        ...react.rules,
+        ...reactStrict.rules,
+        "adamantite/no-react-state-hooks": [
+          "error",
+          {
+            allow: [
+              "**/use[A-Z]*.{ts,tsx}",
+              "**/use-*.{ts,tsx}",
+              "**/hooks/**",
+              "packages/flags/src/integrations/**",
+            ],
+          },
+        ],
+      },
+    },
+    // gated's type tests scope each case in a block, and its lint config allowed that.
+    {
+      files: ["packages/flags/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
     // Each type-level case sits in its own block, including ones that declare nothing, as the
     // typedport lint config allowed.
     {

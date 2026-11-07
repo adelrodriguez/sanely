@@ -2,11 +2,15 @@ import { defineConfig } from "tsdown"
 
 export default defineConfig({
   clean: true,
+  deps: {
+    neverBundle: true,
+  },
   dts: true,
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/hooks/index.ts", "src/integrations/react.tsx"],
   fixedExtension: false,
-  minify: true,
+  format: "esm",
+  minify: false,
   outDir: "dist",
-  platform: "node",
-  sourcemap: false,
+  platform: "browser",
+  sourcemap: true,
 })
