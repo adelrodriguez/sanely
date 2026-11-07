@@ -10,9 +10,7 @@ describe("public entry", () => {
       "WEEKDAYS",
       "cron",
       "describe",
-      "isCronPhrase",
       "isSchedule",
-      "isValidCronPhrase",
       "parse",
       "safeParse",
     ])

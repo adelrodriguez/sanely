@@ -12,9 +12,7 @@ import {
   HOUR_INTERVALS,
   type HourInterval,
   InvalidScheduleError,
-  isCronPhrase,
   isSchedule,
-  isValidCronPhrase,
   MINUTE_INTERVALS,
   type MinuteInterval,
   parse,
@@ -301,11 +299,6 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   void pattern
 }
 
-// Accepts a string that isCronPhrase narrowed in cron.
-{
-  if (isCronPhrase(userInput)) cron(userInput)
-}
-
 // parse, safeParse, and isSchedule
 
 // Takes any value in parse and safeParse, and returns a Schedule.
@@ -335,33 +328,6 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
 
   if (isSchedule(value)) expectTypeOf(value).toEqualTypeOf<Schedule>()
   expectTypeOf(isSchedule).parameters.toEqualTypeOf<[value: unknown]>()
-}
-
-// Guards
-
-// Narrows a string to CronPhrase with isCronPhrase.
-{
-  if (isCronPhrase(userInput)) {
-    // A deep type comparison of the large CronPhrase union is slow, so check one direction.
-    expectTypeOf(userInput).toExtend<CronPhrase>()
-  } else {
-    expectTypeOf(userInput).toEqualTypeOf<string>()
-  }
-}
-
-// Returns a plain boolean from isValidCronPhrase, without narrowing.
-{
-  expectTypeOf(isValidCronPhrase).returns.toEqualTypeOf<boolean>()
-
-  if (isValidCronPhrase(userInput)) {
-    expectTypeOf(userInput).toEqualTypeOf<string>()
-  }
-}
-
-// Takes a string in both guards.
-{
-  expectTypeOf(isCronPhrase).parameters.toEqualTypeOf<[value: string]>()
-  expectTypeOf(isValidCronPhrase).parameters.toEqualTypeOf<[value: string]>()
 }
 
 // InvalidScheduleError
@@ -478,7 +444,7 @@ function _negativeTypeTests() {
   // @ts-expect-error -- 5 does not divide 24
   cron("every 5 hours")
 
-  // @ts-expect-error -- a plain string must be narrowed with isCronPhrase first, or use parse
+  // @ts-expect-error -- a plain string is not a CronPhrase: use parse
   cron(userInput)
 
   // @ts-expect-error -- a template literal type that is not a CronPhrase
@@ -549,12 +515,6 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- a day list has one or more days
   cron({ at: { hour: 9, minute: 0 }, every: "day", on: [] })
-
-  // @ts-expect-error -- isCronPhrase takes a string
-  isCronPhrase(15)
-
-  // @ts-expect-error -- isValidCronPhrase takes a string
-  isValidCronPhrase(null)
 
   const error = new InvalidScheduleError("every 7 minutes", "7 does not divide 60")
 

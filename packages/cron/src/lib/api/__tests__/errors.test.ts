@@ -1,6 +1,6 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
-import { InvalidScheduleError, withInput } from "#lib/phrase/errors.ts"
+import { InvalidScheduleError, withInput } from "#lib/api/errors.ts"
 import { ParseError } from "#lib/schedule/rules.ts"
 
 describe("InvalidScheduleError", () => {
