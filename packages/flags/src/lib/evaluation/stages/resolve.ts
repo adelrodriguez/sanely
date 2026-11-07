@@ -7,11 +7,11 @@ import type {
   DecisionSource,
   HookContext,
   Identity,
-  GateOptions,
+  FlagOptions,
   MaybePromise,
 } from "#lib/types/index.ts"
-import { validateDecision } from "#lib/gate/decision.ts"
-import { getEvaluationKey } from "#lib/gate/evaluation-key.ts"
+import { validateDecision } from "#lib/flag/decision.ts"
+import { getEvaluationKey } from "#lib/flag/evaluation-key.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
 import { createSharedSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
@@ -170,7 +170,7 @@ type StoreConsultation = {
 async function consultStore<TIdentity extends Identity, T extends string[]>(
   config: ResolvedConfig<TIdentity>,
   context: HookContext<TIdentity>,
-  options: GateOptions<T>,
+  options: FlagOptions<T>,
   store: DecisionCache,
   key: string
 ): Promise<StoreConsultation> {
@@ -260,7 +260,7 @@ function startSharedCall<TIdentity extends Identity>(
  * Resolves one decision through the factory's memory: join an in-flight coalesced call, fall back
  * to the cache store, and otherwise lead the provider call — sharing the decision with followers
  * and writing it through to the store. Owns decision validation on every path; a decision that
- * leaves this function satisfies the evaluation's gate shape.
+ * leaves this function satisfies the evaluation's flag shape.
  *
  * `provider` receives the signal for the provider work. It is the evaluation's own signal, except
  * for a coalesced call, where it is the call's shared signal.
@@ -268,7 +268,7 @@ function startSharedCall<TIdentity extends Identity>(
 export async function resolveDecision<TIdentity extends Identity, T extends string[]>(
   config: ResolvedConfig<TIdentity>,
   context: HookContext<TIdentity>,
-  options: GateOptions<T>,
+  options: FlagOptions<T>,
   provider: (signal: AbortSignal) => MaybePromise<Decision>,
   signal: AbortSignal
 ): Promise<DecisionResolution> {

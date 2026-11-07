@@ -32,7 +32,7 @@ Read [GLOSSARY.md](GLOSSARY.md) before you change behavior or terminology. Use t
 ```text
 src/
   index.ts                  Root public API
-  factory.ts                Gate factory and batch construction
+  factory.ts                Flag factory and batch construction
   decision.ts               Decision helpers
   hooks/                    defineHook, published as @sanely/flags/hooks
   integrations/react.tsx    React integration, published as @sanely/flags/react
@@ -40,7 +40,7 @@ src/
     evaluation/             Evaluation engine and batch
       stages/               Hook lifecycle and decision resolution (cache and coalescing)
     config/                 Resolved factory configuration and its decision memory
-    gate/                   Gate configuration, decision validation, evaluation keys, registry
+    flag/                   Flag configuration, decision validation, evaluation keys, registry
     promise-cache/          Promise-cache keys and helpers for integrations
     shared/                 Errors, signals, and other domain-free helpers
     types/                  Type contracts, with no runtime code
@@ -55,7 +55,7 @@ layer:
 
 1. `lib/types/`
 2. `lib/shared/`
-3. `lib/gate/` and `lib/promise-cache/`
+3. `lib/flag/` and `lib/promise-cache/`
 4. `lib/config/`
 5. `lib/evaluation/stages/`
 6. `lib/evaluation/`
@@ -92,7 +92,7 @@ script.
 
 ## Make a change
 
-- Keep the gate factory in `src/factory.ts`, the decision helpers in `src/decision.ts`,
+- Keep the flag factory in `src/factory.ts`, the decision helpers in `src/decision.ts`,
   and the core implementation in `src/lib/`.
 - Keep hooks in `src/hooks/`.
 - Keep the React integration in `src/integrations/react.tsx`.

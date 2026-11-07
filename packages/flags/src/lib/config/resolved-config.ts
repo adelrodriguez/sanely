@@ -1,8 +1,8 @@
 import type {
-  AnyGatedConfig,
+  AnyFlagFactoryConfig,
   Decision,
   DecisionCache,
-  GatedConfig,
+  FlagFactoryConfig,
   Hook,
   HookContext,
   Identity,
@@ -12,10 +12,10 @@ import { type ChangeBroadcaster, createChangeBroadcaster } from "./change-broadc
 import { createResolutionState, type ResolutionState } from "./resolution-state"
 
 /**
- * One gate factory's configuration with the strict/anonymous/caller-identity union resolved away.
+ * One flag factory's configuration with the strict/anonymous/caller-identity union resolved away.
  * Identity resolution and decisions are total functions with the anonymous rule baked in at
- * construction, so no internal module re-branches on the config shape. `AnyGatedConfig` survives
- * only at the `buildGate` boundary.
+ * construction, so no internal module re-branches on the config shape. `AnyFlagFactoryConfig`
+ * survives only at the `createFlags` boundary.
  */
 export type ResolvedConfig<TIdentity extends Identity> = {
   resolveIdentity(override?: TIdentity | null): Promise<TIdentity | null>
@@ -37,18 +37,18 @@ export type ResolvedConfig<TIdentity extends Identity> = {
   coalesce: boolean
   evaluationKey?: (context: HookContext<TIdentity>) => string
   /**
-   * Snapshot taken at resolution: mutating the source config's `hooks` array after `buildGate` does
-   * not affect evaluations.
+   * Snapshot taken at resolution: mutating the source config's `hooks` array after `createFlags`
+   * does not affect evaluations.
    */
   hooks: Array<Hook<TIdentity>>
   state: ResolutionState
   timeoutMs?: number
-  onHookError?: GatedConfig<TIdentity>["onHookError"]
-  onCacheError?: GatedConfig<TIdentity>["onCacheError"]
+  onHookError?: FlagFactoryConfig<TIdentity>["onHookError"]
+  onCacheError?: FlagFactoryConfig<TIdentity>["onCacheError"]
 }
 
 export function resolveConfig<TIdentity extends Identity>(
-  config: AnyGatedConfig<TIdentity>
+  config: AnyFlagFactoryConfig<TIdentity>
 ): ResolvedConfig<TIdentity> {
   const base = {
     cache: config.cache,

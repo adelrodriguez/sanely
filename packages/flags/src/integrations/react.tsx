@@ -10,22 +10,22 @@ import {
   useSyncExternalStore,
 } from "react"
 import type {
-  AnyGateEvaluator,
+  AnyFlagEvaluator,
   EvaluationDetails,
-  GateEvaluator,
+  FlagEvaluator,
   Identity,
 } from "#lib/types/index.ts"
-import { type EvaluatorFactoryRef, getEvaluatorRecord } from "#lib/gate/registry.ts"
-import { evictOnRejection, type GateCacheOptions } from "#lib/promise-cache/index.ts"
-import { type GateCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
-import { ForeignGateEvaluatorError } from "#lib/shared/errors.ts"
+import { type EvaluatorFactoryRef, getEvaluatorRecord } from "#lib/flag/registry.ts"
+import { evictOnRejection, type FlagCacheOptions } from "#lib/promise-cache/index.ts"
+import { type FlagCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
+import { ForeignFlagEvaluatorError } from "#lib/shared/errors.ts"
 import { isDevelopmentEnvironment } from "#lib/shared/utils.ts"
 
-export type GateValueOf<TFlag> = TFlag extends (...args: never[]) => Promise<infer TValue>
+export type FlagValueOf<TFlag> = TFlag extends (...args: never[]) => Promise<infer TValue>
   ? TValue
   : never
-export type GateIdentityOf<TFlag> =
-  TFlag extends GateEvaluator<
+export type FlagIdentityOf<TFlag> =
+  TFlag extends FlagEvaluator<
     infer TIdentity,
     boolean | string,
     infer _TCallIdentity,
@@ -34,30 +34,30 @@ export type GateIdentityOf<TFlag> =
   >
     ? TIdentity
     : never
-export type GateDetailsOf<TFlag> = TFlag extends {
+export type FlagDetailsOf<TFlag> = TFlag extends {
   details: (...args: never[]) => Promise<infer TDetails>
 }
   ? TDetails
   : never
-export type GateBatchValuesOf<TFlags extends readonly AnyGateEvaluator[]> = Readonly<{
-  [K in keyof TFlags]: GateValueOf<TFlags[K]>
+export type FlagBatchValuesOf<TFlags extends readonly AnyFlagEvaluator[]> = Readonly<{
+  [K in keyof TFlags]: FlagValueOf<TFlags[K]>
 }>
-type GateIdentityIntersection<TFlag> = (
-  TFlag extends unknown ? (identity: GateIdentityOf<TFlag>) => void : never
+type FlagIdentityIntersection<TFlag> = (
+  TFlag extends unknown ? (identity: FlagIdentityOf<TFlag>) => void : never
 ) extends (identity: infer TIdentity extends Identity) => void
   ? TIdentity
   : never
 /**
- * The identity that every gate in the batch accepts: the intersection of the gate identity types.
+ * The identity that every flag in the batch accepts: the intersection of the flag identity types.
  * An empty batch accepts any `Identity`.
  */
-export type GateBatchIdentityOf<TFlags extends readonly AnyGateEvaluator[]> = [
+export type FlagBatchIdentityOf<TFlags extends readonly AnyFlagEvaluator[]> = [
   TFlags[number],
 ] extends [never]
   ? Identity
-  : GateIdentityIntersection<TFlags[number]>
-export type ReactGateCacheKey = GateCacheKey
-export type ReactGateCacheOptions = GateCacheOptions
+  : FlagIdentityIntersection<TFlags[number]>
+export type ReactFlagCacheKey = FlagCacheKey
+export type ReactFlagCacheOptions = FlagCacheOptions
 
 type VersionStore = {
   bump: () => void
@@ -66,7 +66,7 @@ type VersionStore = {
 }
 
 /**
- * Counts the change notifications of one gate factory and records when each flag last changed. It
+ * Counts the change notifications of one flag factory and records when each flag last changed. It
  * listens for the lifetime of the factory, so it also covers entries that no component reads.
  */
 type ChangeClock = {
@@ -95,31 +95,31 @@ type Bucket = {
   stores: Map<string, VersionStore>
 }
 
-export type ReactGateCache = {
+export type ReactFlagCache = {
   clear(): void
-  invalidate<TFlag extends AnyGateEvaluator>(flag: TFlag, identity?: GateIdentityOf<TFlag>): void
-  invalidateBatch<TFlags extends readonly AnyGateEvaluator[]>(
+  invalidate<TFlag extends AnyFlagEvaluator>(flag: TFlag, identity?: FlagIdentityOf<TFlag>): void
+  invalidateBatch<TFlags extends readonly AnyFlagEvaluator[]>(
     flags: TFlags,
-    identity?: GateBatchIdentityOf<TFlags>
+    identity?: FlagBatchIdentityOf<TFlags>
   ): void
-  invalidateKey(key: ReactGateCacheKey): void
-  prefetch<TFlag extends AnyGateEvaluator>(
+  invalidateKey(key: ReactFlagCacheKey): void
+  prefetch<TFlag extends AnyFlagEvaluator>(
     flag: TFlag,
-    options?: { identity?: GateIdentityOf<TFlag>; ttlMs?: number }
+    options?: { identity?: FlagIdentityOf<TFlag>; ttlMs?: number }
   ): Promise<void>
-  prefetchBatch<TFlags extends readonly AnyGateEvaluator[]>(
+  prefetchBatch<TFlags extends readonly AnyFlagEvaluator[]>(
     flags: TFlags,
-    options?: { identity?: GateBatchIdentityOf<TFlags>; ttlMs?: number }
+    options?: { identity?: FlagBatchIdentityOf<TFlags>; ttlMs?: number }
   ): Promise<void>
 }
 
-type InternalGateCache = ReactGateCache & {
+type InternalFlagCache = ReactFlagCache & {
   allBuckets: Set<Bucket>
   batchBuckets: WeakMap<object, Bucket>
   customBucket: Bucket
-  gateBuckets: WeakMap<object, Bucket>
-  options: Required<Pick<GateCacheOptions, "maxEntries" | "ttlMs">>
-    & Pick<GateCacheOptions, "pendingTtlMs">
+  flagBuckets: WeakMap<object, Bucket>
+  options: Required<Pick<FlagCacheOptions, "maxEntries" | "ttlMs">>
+    & Pick<FlagCacheOptions, "pendingTtlMs">
 }
 
 const IDENTIFY_SENTINEL = "identify:core"
@@ -133,7 +133,7 @@ const EMPTY_VERSION_STORE: VersionStore = {
   subscribe: emptySubscribe,
 }
 
-function assertCacheOptions(options: GateCacheOptions): void {
+function assertCacheOptions(options: FlagCacheOptions): void {
   const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtlMs, ttlMs = DEFAULT_TTL_MS } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
     throw new RangeError("maxEntries must be a positive finite integer")
@@ -169,21 +169,21 @@ function evaluatorId(flag: object): number {
   return id
 }
 
-function batchKey(flags: readonly AnyGateEvaluator[], identity?: Identity): string {
+function batchKey(flags: readonly AnyFlagEvaluator[], identity?: Identity): string {
   return serializeKey([flags.map((flag) => evaluatorId(flag)), identityKey(identity)], "cacheKey")
 }
 
-function getBucket(cache: InternalGateCache, flag: object): Bucket {
-  let bucket = cache.gateBuckets.get(flag)
+function getBucket(cache: InternalFlagCache, flag: object): Bucket {
+  let bucket = cache.flagBuckets.get(flag)
   if (!bucket) {
     bucket = createBucket()
-    cache.gateBuckets.set(flag, bucket)
+    cache.flagBuckets.set(flag, bucket)
     cache.allBuckets.add(bucket)
   }
   return bucket
 }
 
-function getBatchBucket(cache: InternalGateCache, flags: readonly AnyGateEvaluator[]): Bucket {
+function getBatchBucket(cache: InternalFlagCache, flags: readonly AnyFlagEvaluator[]): Bucket {
   const ref = validateBatch(flags)
   let bucket = cache.batchBuckets.get(ref)
   if (!bucket) {
@@ -211,7 +211,7 @@ function getChangeClock(ref: EvaluatorFactoryRef, flagKey: string): ChangeClock 
   if (clock.attached) return clock
   const attaching = clock
   try {
-    // Never detached: an entry can outlive every component that reads it, in any gate cache.
+    // Never detached: an entry can outlive every component that reads it, in any flag cache.
     ref.changes.subscribe((keys) => {
       attaching.count += 1
       if (keys === undefined) {
@@ -262,7 +262,7 @@ function readEntry(bucket: Bucket, key: string): Promise<unknown> | undefined {
 }
 
 function setEntry(
-  cache: InternalGateCache,
+  cache: InternalFlagCache,
   bucket: Bucket,
   key: string,
   promise: Promise<unknown>,
@@ -303,7 +303,7 @@ function setEntry(
   return promise
 }
 
-function prune(cache: InternalGateCache, bucket: Bucket): void {
+function prune(cache: InternalFlagCache, bucket: Bucket): void {
   const now = Date.now()
   for (const [key, entry] of bucket.entries) {
     if (
@@ -320,28 +320,28 @@ function prune(cache: InternalGateCache, bucket: Bucket): void {
   }
 }
 
-function evaluateFlag(flag: AnyGateEvaluator, identity?: Identity): Promise<unknown> {
+function evaluateFlag(flag: AnyFlagEvaluator, identity?: Identity): Promise<unknown> {
   const details = flag.details as (options?: { identity?: Identity }) => Promise<unknown>
   return identity === undefined ? details() : details({ identity })
 }
 
-function validateBatch(flags: readonly AnyGateEvaluator[]) {
+function validateBatch(flags: readonly AnyFlagEvaluator[]) {
   const ref = flags[0] ? getEvaluatorRecord(flags[0])?.factoryRef : undefined
   if (!ref || flags.some((flag) => getEvaluatorRecord(flag)?.factoryRef !== ref)) {
-    throw new ForeignGateEvaluatorError()
+    throw new ForeignFlagEvaluatorError()
   }
   return ref
 }
 
-function evaluateBatch(flags: readonly AnyGateEvaluator[], identity?: Identity): Promise<unknown> {
+function evaluateBatch(flags: readonly AnyFlagEvaluator[], identity?: Identity): Promise<unknown> {
   const ref = validateBatch(flags)
   return ref.batch(flags, identity === undefined ? undefined : ({ identity } as never))
 }
 
-export function createGateCache(options: ReactGateCacheOptions = {}): ReactGateCache {
+export function createFlagCache(options: ReactFlagCacheOptions = {}): ReactFlagCache {
   assertCacheOptions(options)
   const buckets = new Set<Bucket>()
-  const cache: InternalGateCache = {
+  const cache: InternalFlagCache = {
     allBuckets: buckets,
     batchBuckets: new WeakMap(),
     clear() {
@@ -351,7 +351,7 @@ export function createGateCache(options: ReactGateCacheOptions = {}): ReactGateC
       }
     },
     customBucket: createBucket(),
-    gateBuckets: new WeakMap(),
+    flagBuckets: new WeakMap(),
     invalidate(flag, identity) {
       const bucket = getBucket(cache, flag)
       buckets.add(bucket)
@@ -406,7 +406,7 @@ export function createGateCache(options: ReactGateCacheOptions = {}): ReactGateC
 }
 
 function createCachedEvaluation(
-  cache: InternalGateCache,
+  cache: InternalFlagCache,
   bucket: Bucket,
   key: string,
   evaluate: () => Promise<unknown>,
@@ -421,46 +421,46 @@ function createCachedEvaluation(
   return setEntry(cache, bucket, key, cachedEvaluation, ttlMs, watch)
 }
 
-// `binding` marks the identity of a `createGateHooks` provider, so its hooks never read an
-// untyped identity from a plain `GateProvider`.
-type GateContextValue = { binding?: object; cache: ReactGateCache; identity?: Identity }
-const defaultCache = createGateCache()
-const GateContext = createContext<GateContextValue | undefined>(undefined)
+// `binding` marks the identity of a `createFlagHooks` provider, so its hooks never read an
+// untyped identity from a plain `FlagProvider`.
+type FlagContextValue = { binding?: object; cache: ReactFlagCache; identity?: Identity }
+const defaultCache = createFlagCache()
+const FlagContext = createContext<FlagContextValue | undefined>(undefined)
 let didWarnAboutServerDefaultCache = false
 
-type GateProviderProps<TIdentity extends Identity> = {
-  cache?: ReactGateCache
+type FlagProviderProps<TIdentity extends Identity> = {
+  cache?: ReactFlagCache
   identity?: TIdentity
   children: ReactNode
 }
 
-function GateContextProvider({
+function FlagContextProvider({
   binding,
   cache: suppliedCache,
   identity,
   children,
-}: GateProviderProps<Identity> & { binding?: object }): ReactNode {
+}: FlagProviderProps<Identity> & { binding?: object }): ReactNode {
   // oxlint-disable-next-line react/hook-use-state -- The mounted cache is never replaced, and useState is the only hook that guarantees a stable identity across renders.
-  const [mountedCache] = useState(createGateCache)
+  const [mountedCache] = useState(createFlagCache)
   const value = useMemo(
     () => ({ binding, cache: suppliedCache ?? mountedCache, identity }),
     [binding, identity, mountedCache, suppliedCache]
   )
-  return <GateContext value={value}>{children}</GateContext>
+  return <FlagContext value={value}>{children}</FlagContext>
 }
 
 /**
- * Supplies the gate cache and a default identity to gate consumers below it.
+ * Supplies the flag cache and a default identity to flag consumers below it.
  *
- * TypeScript does not check `identity` against the identity type of the gates. Use the provider
- * from `createGateHooks` when the gates require a specific identity type.
+ * TypeScript does not check `identity` against the identity type of the flags. Use the provider
+ * from `createFlagHooks` when the flags require a specific identity type.
  */
-export function GateProvider(props: GateProviderProps<Identity>): ReactNode {
-  return <GateContextProvider {...props} />
+export function FlagProvider(props: FlagProviderProps<Identity>): ReactNode {
+  return <FlagContextProvider {...props} />
 }
 
-function useGateContext(): GateContextValue {
-  const context = use(GateContext)
+function useFlagContext(): FlagContextValue {
+  const context = use(FlagContext)
   if (!context) {
     if (
       !didWarnAboutServerDefaultCache
@@ -471,7 +471,7 @@ function useGateContext(): GateContextValue {
       didWarnAboutServerDefaultCache = true
       // oxlint-disable-next-line no-console -- Development-only SSR safety warning.
       console.error(
-        "useGate is using the shared default cache during server rendering. Mount GateProvider above the consumer Suspense boundary."
+        "useFlag is using the shared default cache during server rendering. Mount FlagProvider above the consumer Suspense boundary."
       )
     }
     return { cache: defaultCache }
@@ -479,7 +479,7 @@ function useGateContext(): GateContextValue {
   return context
 }
 
-function bindCacheIdentity(cache: ReactGateCache, identity: Identity): ReactGateCache {
+function bindCacheIdentity(cache: ReactFlagCache, identity: Identity): ReactFlagCache {
   return {
     clear() {
       cache.clear()
@@ -508,8 +508,8 @@ function bindCacheIdentity(cache: ReactGateCache, identity: Identity): ReactGate
   }
 }
 
-export function useGateCache(): ReactGateCache {
-  const { cache, identity } = useGateContext()
+export function useFlagCache(): ReactFlagCache {
+  const { cache, identity } = useFlagContext()
   return useMemo(
     () => (identity === undefined ? cache : bindCacheIdentity(cache, identity)),
     [cache, identity]
@@ -551,7 +551,7 @@ function getVersionStore(
   return store
 }
 
-function changesSubscriber(flags: readonly AnyGateEvaluator[]) {
+function changesSubscriber(flags: readonly AnyFlagEvaluator[]) {
   const first = flags[0] ? getEvaluatorRecord(flags[0]) : undefined
   const keys = new Set(flags.map((flag) => getEvaluatorRecord(flag)?.options.key))
   return (bump: () => void): (() => void) => {
@@ -569,48 +569,48 @@ function changesSubscriber(flags: readonly AnyGateEvaluator[]) {
   }
 }
 
-export function useGate<TFlag extends AnyGateEvaluator>(
+export function useFlag<TFlag extends AnyFlagEvaluator>(
   flag: TFlag,
-  options?: { identity?: GateIdentityOf<TFlag>; ttlMs?: number; details?: false }
-): GateValueOf<TFlag>
-export function useGate<TFlag extends AnyGateEvaluator>(
+  options?: { identity?: FlagIdentityOf<TFlag>; ttlMs?: number; details?: false }
+): FlagValueOf<TFlag>
+export function useFlag<TFlag extends AnyFlagEvaluator>(
   flag: TFlag,
-  options: { identity?: GateIdentityOf<TFlag>; ttlMs?: number; details: true }
-): GateDetailsOf<TFlag>
-export function useGate<TValue>(
+  options: { identity?: FlagIdentityOf<TFlag>; ttlMs?: number; details: true }
+): FlagDetailsOf<TFlag>
+export function useFlag<TValue>(
   fn: () => Promise<TValue>,
-  options: { key: ReactGateCacheKey; ttlMs?: number }
+  options: { key: ReactFlagCacheKey; ttlMs?: number }
 ): TValue
-export function useGate(
-  input: AnyGateEvaluator | (() => Promise<unknown>),
+export function useFlag(
+  input: AnyFlagEvaluator | (() => Promise<unknown>),
   options: {
     identity?: Identity
     ttlMs?: number
     details?: boolean
-    key?: ReactGateCacheKey
+    key?: ReactFlagCacheKey
   } = {}
 ): unknown {
-  const context = useGateContext()
-  return useGateWithIdentity(context.cache, input, options, options.identity ?? context.identity)
+  const context = useFlagContext()
+  return useFlagWithIdentity(context.cache, input, options, options.identity ?? context.identity)
 }
 
-function useGateWithIdentity(
-  contextCache: ReactGateCache,
-  input: AnyGateEvaluator | (() => Promise<unknown>),
-  options: { ttlMs?: number; details?: boolean; key?: ReactGateCacheKey },
+function useFlagWithIdentity(
+  contextCache: ReactFlagCache,
+  input: AnyFlagEvaluator | (() => Promise<unknown>),
+  options: { ttlMs?: number; details?: boolean; key?: ReactFlagCacheKey },
   identity: Identity | undefined
 ): unknown {
-  const cache = contextCache as InternalGateCache
+  const cache = contextCache as InternalFlagCache
   const evaluator = getEvaluatorRecord(input) !== undefined
   if (!evaluator && !("key" in options)) {
-    throw new TypeError("useGate(fn, options) requires a key option")
+    throw new TypeError("useFlag(fn, options) requires a key option")
   }
   const bucket = evaluator ? getBucket(cache, input) : cache.customBucket
   const key = evaluator ? identityKey(identity) : serializeKey(options.key, "cacheKey")
   const store = getVersionStore(
     bucket,
     key,
-    evaluator ? changesSubscriber([input as AnyGateEvaluator]) : undefined
+    evaluator ? changesSubscriber([input as AnyFlagEvaluator]) : undefined
   )
   useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   let promise = readEntry(bucket, key)
@@ -619,7 +619,7 @@ function useGateWithIdentity(
     bucket,
     key,
     evaluator
-      ? () => evaluateFlag(input as AnyGateEvaluator, identity)
+      ? () => evaluateFlag(input as AnyFlagEvaluator, identity)
       : (input as () => Promise<unknown>),
     options.ttlMs,
     evaluator ? watchChanges([input]) : undefined
@@ -630,12 +630,12 @@ function useGateWithIdentity(
     : result
 }
 
-export function useGateBatch<const TFlags extends readonly AnyGateEvaluator[]>(
+export function useFlagBatch<const TFlags extends readonly AnyFlagEvaluator[]>(
   flags: TFlags,
-  options: { identity?: GateBatchIdentityOf<TFlags>; ttlMs?: number } = {}
-): GateBatchValuesOf<TFlags> {
-  const context = useGateContext()
-  return useGateBatchWithIdentity(
+  options: { identity?: FlagBatchIdentityOf<TFlags>; ttlMs?: number } = {}
+): FlagBatchValuesOf<TFlags> {
+  const context = useFlagContext()
+  return useFlagBatchWithIdentity(
     context.cache,
     flags,
     options.ttlMs,
@@ -643,20 +643,20 @@ export function useGateBatch<const TFlags extends readonly AnyGateEvaluator[]>(
   )
 }
 
-function useGateBatchWithIdentity<const TFlags extends readonly AnyGateEvaluator[]>(
-  contextCache: ReactGateCache,
+function useFlagBatchWithIdentity<const TFlags extends readonly AnyFlagEvaluator[]>(
+  contextCache: ReactFlagCache,
   flags: TFlags,
   ttlMs: number | undefined,
   identity: Identity | undefined
-): GateBatchValuesOf<TFlags> {
-  const cache = contextCache as InternalGateCache
+): FlagBatchValuesOf<TFlags> {
+  const cache = contextCache as InternalFlagCache
   const bucket = flags.length === 0 ? undefined : getBatchBucket(cache, flags)
   const key = batchKey(flags, identity)
   const store = bucket
     ? getVersionStore(bucket, key, changesSubscriber(flags))
     : EMPTY_VERSION_STORE
   useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-  if (!bucket) return [] as unknown as GateBatchValuesOf<TFlags>
+  if (!bucket) return [] as unknown as FlagBatchValuesOf<TFlags>
   let promise = readEntry(bucket, key)
   promise ??= createCachedEvaluation(
     cache,
@@ -666,128 +666,131 @@ function useGateBatchWithIdentity<const TFlags extends readonly AnyGateEvaluator
     ttlMs,
     watchChanges(flags)
   )
-  return use(promise) as GateBatchValuesOf<TFlags>
+  return use(promise) as FlagBatchValuesOf<TFlags>
 }
 
-type FeatureGateBase<TFlag extends AnyGateEvaluator> = {
+type FeatureFlagBase<TFlag extends AnyFlagEvaluator> = {
   children: ReactNode
   fallback?: ReactNode
-  gate: TFlag
-  identity?: GateIdentityOf<TFlag>
+  flag: TFlag
+  identity?: FlagIdentityOf<TFlag>
   loading?: ReactNode
 }
-type FeatureGateProps<TFlag extends AnyGateEvaluator> =
-  GateValueOf<TFlag> extends boolean
-    ? FeatureGateBase<TFlag> & { match?: boolean }
-    : FeatureGateBase<TFlag> & { match: GateValueOf<TFlag> }
+type FeatureFlagProps<TFlag extends AnyFlagEvaluator> =
+  FlagValueOf<TFlag> extends boolean
+    ? FeatureFlagBase<TFlag> & { match?: boolean }
+    : FeatureFlagBase<TFlag> & { match: FlagValueOf<TFlag> }
 
-type GateSlotRuntimeProps = {
+type FlagSlotRuntimeProps = {
   children: ReactNode
   fallback?: ReactNode
-  gate: AnyGateEvaluator
+  flag: AnyFlagEvaluator
   identity?: Identity
   match?: boolean | string
 }
 
-function GateSlot({ children, fallback, gate, identity, match }: GateSlotRuntimeProps): ReactNode {
-  const value = useGate(gate, { identity } as never)
+function FlagSlot({ children, fallback, flag, identity, match }: FlagSlotRuntimeProps): ReactNode {
+  const value = useFlag(flag, { identity } as never)
   if (typeof value === "string" && match === undefined) {
     if (isDevelopmentEnvironment()) {
       // oxlint-disable-next-line no-console -- Development-only JavaScript misuse warning.
-      console.error("FeatureGate requires a match prop when its gate returns a string variant.")
+      console.error("FeatureFlag requires a match prop when its flag returns a string variant.")
     }
     return fallback
   }
   return value === (match ?? true) ? children : fallback
 }
 
-export function FeatureGate<TFlag extends AnyGateEvaluator>(
-  props: FeatureGateProps<TFlag>
+export function FeatureFlag<TFlag extends AnyFlagEvaluator>(
+  props: FeatureFlagProps<TFlag>
 ): ReactNode {
-  const { loading, ...slotProps } = props as unknown as GateSlotRuntimeProps & {
+  const { loading, ...slotProps } = props as unknown as FlagSlotRuntimeProps & {
     loading?: ReactNode
   }
-  const slot = <GateSlot {...slotProps} />
+  const slot = <FlagSlot {...slotProps} />
   return loading === undefined ? slot : <Suspense fallback={loading}>{slot}</Suspense>
 }
 
-type FactoryGate<
+type FactoryFlag<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null,
   TCallRequired extends boolean,
-> = GateEvaluator<TIdentity, boolean | string, TCallIdentity, unknown, TCallRequired>
+> = FlagEvaluator<TIdentity, boolean | string, TCallIdentity, unknown, TCallRequired>
 
 /**
- * A provider and gate hooks that TypeScript checks against the identity type of one factory.
+ * A provider and flag hooks that TypeScript checks against the identity type of one factory.
  */
-export type GateHooks<
+export type FlagHooks<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null = TIdentity,
   TCallRequired extends boolean = false,
 > = {
   /**
-   * Supplies the gate cache and a default identity to the hooks from the same `createGateHooks`
-   * call. Plain `useGate`, `useGateBatch`, `useGateCache`, and `FeatureGate` below it also read the
+   * Supplies the flag cache and a default identity to the hooks from the same `createFlagHooks`
+   * call. Plain `useFlag`, `useFlagBatch`, `useFlagCache`, and `FeatureFlag` below it also read the
    * identity.
    */
-  GateProvider: (props: GateProviderProps<TIdentity>) => ReactNode
-  useGate: {
-    <TFlag extends FactoryGate<TIdentity, TCallIdentity, TCallRequired>>(
+  FlagProvider: (props: FlagProviderProps<TIdentity>) => ReactNode
+  useFlag: {
+    <TFlag extends FactoryFlag<TIdentity, TCallIdentity, TCallRequired>>(
       flag: TFlag,
       options?: { identity?: TIdentity; ttlMs?: number; details?: false }
-    ): GateValueOf<TFlag>
-    <TFlag extends FactoryGate<TIdentity, TCallIdentity, TCallRequired>>(
+    ): FlagValueOf<TFlag>
+    <TFlag extends FactoryFlag<TIdentity, TCallIdentity, TCallRequired>>(
       flag: TFlag,
       options: { identity?: TIdentity; ttlMs?: number; details: true }
-    ): GateDetailsOf<TFlag>
+    ): FlagDetailsOf<TFlag>
   }
-  useGateBatch: <
-    const TFlags extends ReadonlyArray<FactoryGate<TIdentity, TCallIdentity, TCallRequired>>,
+  useFlagBatch: <
+    const TFlags extends ReadonlyArray<FactoryFlag<TIdentity, TCallIdentity, TCallRequired>>,
   >(
     flags: TFlags,
     options?: { identity?: TIdentity; ttlMs?: number }
-  ) => GateBatchValuesOf<TFlags>
+  ) => FlagBatchValuesOf<TFlags>
 }
 
 /**
- * Creates a provider and gate hooks typed to the identity of `factory`. The provider rejects an
- * incomplete identity, and the hooks accept only gates with the factory's identity type.
+ * Creates a provider and flag hooks typed to the identity of `factory`. The provider rejects an
+ * incomplete identity, and the hooks accept only flags with the factory's identity type.
  *
  * The hooks read the identity only from their own provider. Without it, the factory resolves the
  * identity.
  *
  * @example
- *   const gate = buildGate({ identify: () => ({ distinctId: user.id, plan: user.plan }), decide })
- *   export const { GateProvider, useGate, useGateBatch } = createGateHooks(gate)
+ *   const flag = createFlags({
+ *     identify: () => ({ distinctId: user.id, plan: user.plan }),
+ *     decide,
+ *   })
+ *   export const { FlagProvider, useFlag, useFlagBatch } = createFlagHooks(flag)
  */
-export function createGateHooks<
+export function createFlagHooks<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null,
   TCallRequired extends boolean,
 >(
-  // Only the type is read: a gate factory returns gates of its identity type and call mode.
-  _factory: (options: never) => FactoryGate<TIdentity, TCallIdentity, TCallRequired>
-): GateHooks<TIdentity, TCallIdentity, TCallRequired> {
+  // Only the type is read: a flag factory returns flags of its identity type and call mode.
+  _factory: (options: never) => FactoryFlag<TIdentity, TCallIdentity, TCallRequired>
+): FlagHooks<TIdentity, TCallIdentity, TCallRequired> {
   const binding = {}
-  const useBoundContext = (): { cache: ReactGateCache; identity?: Identity } => {
-    const context = useGateContext()
+  const useBoundContext = (): { cache: ReactFlagCache; identity?: Identity } => {
+    const context = useFlagContext()
     return {
       cache: context.cache,
       identity: context.binding === binding ? context.identity : undefined,
     }
   }
   return {
-    GateProvider: (props) => <GateContextProvider {...props} binding={binding} />,
-    useGate: (
-      flag: AnyGateEvaluator,
+    FlagProvider: (props) => <FlagContextProvider {...props} binding={binding} />,
+    useFlag: (
+      flag: AnyFlagEvaluator,
       options: { identity?: Identity; ttlMs?: number; details?: boolean } = {}
     ) => {
       const context = useBoundContext()
-      return useGateWithIdentity(context.cache, flag, options, options.identity ?? context.identity)
+      return useFlagWithIdentity(context.cache, flag, options, options.identity ?? context.identity)
     },
-    useGateBatch: (flags, options = {}) => {
+    useFlagBatch: (flags, options = {}) => {
       const context = useBoundContext()
-      return useGateBatchWithIdentity(
+      return useFlagBatchWithIdentity(
         context.cache,
         flags,
         options.ttlMs,

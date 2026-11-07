@@ -1,10 +1,10 @@
-import type { Decision, GateOptions } from "#lib/types/index.ts"
+import type { Decision, FlagOptions } from "#lib/types/index.ts"
 import {
   DecisionTypeMismatchError,
   InvalidVariantError,
   MalformedDecisionError,
 } from "#lib/shared/errors.ts"
-import { getGateConfiguration } from "./configuration"
+import { getFlagConfiguration } from "./configuration"
 
 export function extractDecisionValue(decision: Decision) {
   return decision.type === "variant" ? decision.variant : decision.value
@@ -12,7 +12,7 @@ export function extractDecisionValue(decision: Decision) {
 
 export function validateDecision<T extends string[]>(
   decision: unknown,
-  options: GateOptions<T>
+  options: FlagOptions<T>
 ): asserts decision is Decision {
   if (typeof decision !== "object" || decision === null) {
     throw new MalformedDecisionError(decision, "expected an object")
@@ -34,7 +34,7 @@ export function validateDecision<T extends string[]>(
 
   const validDecision = decision as Decision
   const isVariant = validDecision.type === "variant"
-  const config = getGateConfiguration(options.variants)
+  const config = getFlagConfiguration(options.variants)
 
   if (config.kind === "variant" && !isVariant) {
     throw new DecisionTypeMismatchError("variant", validDecision)

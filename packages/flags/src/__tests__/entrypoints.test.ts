@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest"
 import * as hooks from "#hooks/index.ts"
-import * as gated from "#index.ts"
+import * as core from "#index.ts"
 import * as react from "#integrations/react.tsx"
 
 describe("public entry points", () => {
-  it("exposes the core gate factory", async () => {
-    const factory = gated.buildGate({
-      decide: () => gated.decision.boolean(true),
+  it("exposes the core flag factory", async () => {
+    const factory = core.createFlags({
+      decide: () => core.decision.boolean(true),
       identify: () => ({ distinctId: "consumer" }),
     })
     expect(await factory({ defaultValue: false, key: "beta" })()).toBe(true)
@@ -14,23 +14,23 @@ describe("public entry points", () => {
 
   it("exposes hook helpers without the core factory", () => {
     expect(hooks.defineHook({})).toBeTypeOf("object")
-    expect("buildGate" in hooks).toBe(false)
+    expect("createFlags" in hooks).toBe(false)
   })
 
-  it("no longer exposes the removed React factory from the core entry point", () => {
-    expect("createReactGate" in gated).toBe(false)
+  it("keeps the React integration out of the core entry point", () => {
+    expect(Object.keys(react).filter((name) => name in core)).toEqual([])
   })
 
   it("exposes the final React surface", () => {
     expect(Object.keys(react).toSorted()).toEqual(
       [
-        "FeatureGate",
-        "GateProvider",
-        "createGateCache",
-        "createGateHooks",
-        "useGate",
-        "useGateBatch",
-        "useGateCache",
+        "FeatureFlag",
+        "FlagProvider",
+        "createFlagCache",
+        "createFlagHooks",
+        "useFlag",
+        "useFlagBatch",
+        "useFlagCache",
       ].toSorted()
     )
   })

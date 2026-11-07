@@ -4,23 +4,23 @@ This guide shows you how to limit how long an evaluation can take, and how to ca
 
 ## Set a timeout
 
-Set `timeoutMs` on the factory for every gate, or on one gate to override it:
+Set `timeoutMs` on the factory for every flag, or on one flag to override it:
 
 ```typescript
-const gate = buildGate({
+const flag = createFlags({
   identify,
   decide: (key, identity, { signal } = {}) => provider.evaluate(key, identity, { signal }),
   timeoutMs: 500,
 })
 
-const checkout = gate({
+const checkout = flag({
   key: "checkout",
   defaultValue: false,
   timeoutMs: 100,
 })
 ```
 
-When the timeout expires before a decision commits, the evaluation returns the default, and `details()` reports a `GateTimeoutError`.
+When the timeout expires before a decision commits, the evaluation returns the default, and `details()` reports a `FlagTimeoutError`.
 
 The timeout covers identity resolution, the `before` hooks, cache reads, provider work, and decision validation. The `after` and `finally` hooks run after the commit and add no latency.
 

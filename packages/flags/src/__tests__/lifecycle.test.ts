@@ -7,8 +7,8 @@ import type {
   HookContext,
   HookErrorReport,
 } from "#lib/types/index.ts"
-import { buildGate } from "#factory.ts"
-import { GateTimeoutError, InvalidVariantError } from "#lib/shared/errors.ts"
+import { createFlags } from "#factory.ts"
+import { FlagTimeoutError, InvalidVariantError } from "#lib/shared/errors.ts"
 
 function createDeferred<T>() {
   let rejectDeferred!: (reason?: Error) => void
@@ -25,14 +25,14 @@ async function flushBackground(): Promise<void> {
   await sleep(0)
 }
 
-// A cached boolean gate whose provider value and change notifications the test controls.
-function changingGate(cache: DecisionCache) {
+// A cached boolean flag whose provider value and change notifications the test controls.
+function changingFlag(cache: DecisionCache) {
   const provider = {
     notify: (_change: { keys?: readonly string[] }): void => undefined,
     value: true,
   }
   const decide = vi.fn((): Decision => ({ type: "boolean", value: provider.value }))
-  const gate = buildGate({
+  const flag = createFlags({
     cache,
     decide,
     identify: () => ({ distinctId: "user123" }),
@@ -41,7 +41,7 @@ function changingGate(cache: DecisionCache) {
       return () => null
     },
   })
-  return { decide, evaluator: gate({ defaultValue: false, key: "beta-access" }), provider }
+  return { decide, evaluator: flag({ defaultValue: false, key: "beta-access" }), provider }
 }
 
 describe("observer hook lifecycle", () => {
@@ -49,7 +49,7 @@ describe("observer hook lifecycle", () => {
     const starts = new WeakMap<HookContext, number>()
     const contexts: HookContext[] = []
     const values: number[] = []
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       hooks: [
         {
@@ -71,7 +71,7 @@ describe("observer hook lifecycle", () => {
       identify: () => ({ distinctId: "user123" }),
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     await flushBackground()
 
     expect(values).toEqual([42, 42])
@@ -82,7 +82,7 @@ describe("observer hook lifecycle", () => {
     const snapshottedHook = vi.fn(() => Promise.resolve())
     const lateHook = vi.fn(() => Promise.resolve())
     const hooks = [{ before: snapshottedHook }]
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       hooks,
       identify: () => ({ distinctId: "user123" }),
@@ -90,7 +90,7 @@ describe("observer hook lifecycle", () => {
 
     hooks.push({ before: lateHook })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     await flushBackground()
 
     expect(snapshottedHook).toHaveBeenCalledTimes(1)
@@ -100,7 +100,7 @@ describe("observer hook lifecycle", () => {
   test("reports cache and provider decision sources to after hooks", async () => {
     const sources: string[] = []
     const cache = new Map<string, Decision>()
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: (key) => Promise.resolve(cache.get(key)),
         set: (key, value) => {
@@ -112,7 +112,7 @@ describe("observer hook lifecycle", () => {
       hooks: [{ after: (_context, _decision, meta) => void sources.push(meta.source) }],
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     const providerDetails = await evaluator.details()
     expect(providerDetails.source).toBe("provider")
@@ -128,7 +128,7 @@ describe("observer hook lifecycle", () => {
     const releaseErrorHook = createDeferred<null>()
     const finallyHook = vi.fn(() => Promise.resolve())
     const controller = new AbortController()
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => {
         throw new Error("provider failed")
       },
@@ -143,7 +143,7 @@ describe("observer hook lifecycle", () => {
       ],
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluation = gate({ defaultValue: false, key: "beta-access" }).details({
+    const evaluation = flag({ defaultValue: false, key: "beta-access" }).details({
       signal: controller.signal,
     })
     await errorHookStarted.promise
@@ -161,7 +161,7 @@ describe("observer hook lifecycle", () => {
     const releaseErrorHook = createDeferred<null>()
     const controller = new AbortController()
     controller.abort(new Error("caller stopped"))
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       hooks: [
         {
@@ -173,7 +173,7 @@ describe("observer hook lifecycle", () => {
       identify: () => ({ distinctId: "user123" }),
     })
 
-    const details = await gate({ defaultValue: false, key: "beta-access" }).details({
+    const details = await flag({ defaultValue: false, key: "beta-access" }).details({
       signal: controller.signal,
     })
 
@@ -195,7 +195,7 @@ describe("observer hook lifecycle", () => {
             : phase === "error"
               ? { error: fail }
               : { finally: fail }
-      const gate = buildGate({
+      const flag = createFlags({
         decide: () => {
           if (phase === "error") {
             throw new Error("provider failed")
@@ -207,7 +207,7 @@ describe("observer hook lifecycle", () => {
         onHookError: (report) => void reports.push(report),
       })
 
-      expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(phase !== "error")
+      expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(phase !== "error")
       await flushBackground()
       expect(reports).toHaveLength(1)
       expect(reports[0]?.phase).toBe(phase)
@@ -224,12 +224,12 @@ describe("first-class cache", () => {
       return Promise.resolve()
     })
     const decide = vi.fn(() => ({ type: "variant", variant: "dark" }) as const)
-    const gate = buildGate({
+    const flag = createFlags({
       cache: { get, set },
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const theme = gate({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
+    const theme = flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
 
     const providerDetails = await theme.details()
     expect(providerDetails.source).toBe("provider")
@@ -245,7 +245,7 @@ describe("first-class cache", () => {
 
   test("supports a custom identity-sensitive key", async () => {
     const keys: string[] = []
-    const gate = buildGate<{ distinctId: string; tenant: string }>({
+    const flag = createFlags<{ distinctId: string; tenant: string }>({
       cache: {
         get: (key) => {
           keys.push(key)
@@ -258,7 +258,7 @@ describe("first-class cache", () => {
       identify: () => ({ distinctId: "user123", tenant: "acme" }),
     })
 
-    await gate({ defaultValue: false, key: "beta-access" })()
+    await flag({ defaultValue: false, key: "beta-access" })()
     expect(keys).toEqual(["acme:beta-access"])
   })
 
@@ -266,7 +266,7 @@ describe("first-class cache", () => {
     const reports: DecisionCacheErrorReport[] = []
     const error = new Error("key failed")
     const get = vi.fn(() => Promise.resolve(null))
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get,
         set: () => Promise.resolve(),
@@ -279,7 +279,7 @@ describe("first-class cache", () => {
       onCacheError: (report) => void reports.push(report),
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     await flushBackground()
 
     expect(get).not.toHaveBeenCalled()
@@ -298,7 +298,7 @@ describe("first-class cache", () => {
       type: "boolean" as const,
       value: typeof identity.distinctId === "number",
     }))
-    const gate = buildGate<{ distinctId: number | string }>({
+    const flag = createFlags<{ distinctId: number | string }>({
       cache: {
         get: (key) => Promise.resolve(stored.get(key)),
         set: (key, value) => {
@@ -309,7 +309,7 @@ describe("first-class cache", () => {
       decide,
       identify: () => ({ distinctId: "unused" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await evaluator({ identity: { distinctId: 1 } })).toBe(true)
     expect(await evaluator({ identity: { distinctId: "1" } })).toBe(false)
@@ -324,7 +324,7 @@ describe("first-class cache", () => {
     const remove = vi.fn(() => Promise.resolve(true))
     const set = vi.fn(() => Promise.resolve())
     const decide = vi.fn(() => ({ type: "variant", variant: "dark" }) as const)
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: remove,
         get: () => Promise.resolve({ type: "variant", variant: "stale" }),
@@ -335,7 +335,7 @@ describe("first-class cache", () => {
       onCacheError: (report) => void reports.push(report),
     })
 
-    expect(await gate({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
+    expect(await flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
       "dark"
     )
     await flushBackground()
@@ -350,7 +350,7 @@ describe("first-class cache", () => {
 
   test("reports get and set failures without failing evaluation", async () => {
     const reports: DecisionCacheErrorReport[] = []
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: () => Promise.reject(new Error("read failed")),
         set: () => Promise.reject(new Error("write failed")),
@@ -360,14 +360,14 @@ describe("first-class cache", () => {
       onCacheError: (report) => void reports.push(report),
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     await flushBackground()
     expect(reports.map(({ operation }) => operation)).toEqual(["get", "set"])
   })
 
   test("ignores cache eviction when the store has no delete operation", async () => {
     const reports: DecisionCacheErrorReport[] = []
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: () => Promise.resolve({ type: "variant", variant: "stale" }),
         set: () => Promise.resolve(),
@@ -377,7 +377,7 @@ describe("first-class cache", () => {
       onCacheError: (report) => void reports.push(report),
     })
 
-    expect(await gate({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
+    expect(await flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
       "dark"
     )
     await flushBackground()
@@ -391,7 +391,7 @@ describe("first-class cache", () => {
       return detach
     })
     const detach = vi.fn(() => null)
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: () => Promise.resolve(true),
         get: () => Promise.resolve(null),
@@ -401,7 +401,7 @@ describe("first-class cache", () => {
       identify: () => ({ distinctId: "user123" }),
       subscribe,
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await evaluator()).toBe(true)
     expect(await evaluator()).toBe(true)
@@ -417,7 +417,7 @@ describe("first-class cache", () => {
       return detach
     })
     const cached = new Map<string, Decision>()
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: (key) => Promise.resolve(cached.delete(key)),
         get: (key) => Promise.resolve(cached.get(key)),
@@ -430,10 +430,10 @@ describe("first-class cache", () => {
       identify: () => ({ distinctId: "user123" }),
       subscribe,
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const changed: Array<readonly string[] | undefined> = []
 
-    const unsubscribe = gate.changes.subscribe((keys) => {
+    const unsubscribe = flag.changes.subscribe((keys) => {
       changed.push(keys)
     })
     expect(await evaluator()).toBe(true)
@@ -454,7 +454,7 @@ describe("first-class cache", () => {
   test("reports delete failures without failing invalidation", async () => {
     const reports: DecisionCacheErrorReport[] = []
     let notify!: (change: { keys?: readonly string[] }) => void
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: () => Promise.reject(new Error("delete failed")),
         get: () => Promise.resolve(null),
@@ -469,7 +469,7 @@ describe("first-class cache", () => {
       },
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     notify({ keys: ["beta-access"] })
     await flushBackground()
     expect(reports.map(({ operation }) => operation)).toContain("delete")
@@ -486,7 +486,7 @@ describe("first-class cache", () => {
       get: () => Promise.resolve(null),
       set: () => Promise.resolve(),
     }
-    const gate = buildGate({
+    const flag = createFlags({
       cache: store,
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
@@ -495,8 +495,8 @@ describe("first-class cache", () => {
         return () => void notify
       },
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: false, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: false, key: "second" })
 
     await first()
     await second()
@@ -520,7 +520,7 @@ describe("first-class cache", () => {
       return provider.promise
     })
     let notify!: (change: { keys?: readonly string[] }) => void
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: () => Promise.resolve(true),
         get: () => Promise.resolve(null),
@@ -533,7 +533,7 @@ describe("first-class cache", () => {
         return () => void notify
       },
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     const evaluation = evaluator()
     await providerStarted.promise
@@ -554,7 +554,7 @@ describe("first-class cache", () => {
     const stored = new Map<string, Decision>()
     const write = createDeferred<null>()
     const writeStarted = createDeferred<null>()
-    const { evaluator, provider } = changingGate({
+    const { evaluator, provider } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => Promise.resolve(stored.get(key)),
       set: async (key, value) => {
@@ -580,7 +580,7 @@ describe("first-class cache", () => {
     const firstWrite = createDeferred<null>()
     const firstWriteStarted = createDeferred<null>()
     let writes = 0
-    const { decide, evaluator, provider } = changingGate({
+    const { decide, evaluator, provider } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => Promise.resolve(stored.get(key)),
       set: async (key, value) => {
@@ -608,7 +608,7 @@ describe("first-class cache", () => {
   test("does not read a decision while the delete for a change is in flight", async () => {
     const stored = new Map<string, Decision>()
     const deletion = createDeferred<null>()
-    const { evaluator, provider } = changingGate({
+    const { evaluator, provider } = changingFlag({
       delete: async (key) => {
         await deletion.promise
         return stored.delete(key)
@@ -635,7 +635,7 @@ describe("first-class cache", () => {
     const firstReadStarted = createDeferred<null>()
     const written = createDeferred<null>()
     let reads = 0
-    const { decide, evaluator, provider } = changingGate({
+    const { decide, evaluator, provider } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => {
         reads += 1
@@ -672,14 +672,14 @@ describe("first-class cache", () => {
   test("does not read or write the cache for an anonymous identity", async () => {
     const get = vi.fn(() => Promise.resolve<Decision | null>(null))
     const set = vi.fn(() => Promise.resolve())
-    const gate = buildGate({
+    const flag = createFlags({
       anonymous: "allow",
       cache: { get, set },
       decide: () => ({ type: "boolean", value: true }),
       identify: () => null,
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     await flushBackground()
     expect(get).not.toHaveBeenCalled()
     expect(set).not.toHaveBeenCalled()
@@ -689,12 +689,12 @@ describe("first-class cache", () => {
     const pending = createDeferred<Decision | undefined>()
     const controller = new AbortController()
     const reason = new Error("caller stopped")
-    const gate = buildGate({
+    const flag = createFlags({
       cache: { get: () => pending.promise, set: () => Promise.resolve() },
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluation = gate({ defaultValue: false, key: "beta-access" }).details({
+    const evaluation = flag({ defaultValue: false, key: "beta-access" }).details({
       signal: controller.signal,
     })
 
@@ -714,13 +714,13 @@ describe("first-class cache", () => {
       await sleep(5)
       return { type: "boolean", value: true } as const
     })
-    const gate = buildGate({
+    const flag = createFlags({
       cache: { get: () => Promise.resolve(null), set },
       coalesce: true,
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await Promise.all([evaluator(), evaluator()])).toEqual([true, true])
     await flushBackground()
@@ -730,13 +730,13 @@ describe("first-class cache", () => {
 
   test("does not wait for a cache write", async () => {
     const write = createDeferred<null>()
-    const gate = buildGate({
+    const flag = createFlags({
       cache: { get: () => Promise.resolve(null), set: async () => void (await write.promise) },
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
     })
 
-    expect(await gate({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
     write.resolve(null)
   })
 })
@@ -747,11 +747,11 @@ describe("request coalescing", () => {
       await sleep(5)
       return { type: "boolean", value: true } as const
     })
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await Promise.all([evaluator(), evaluator(), evaluator()])).toEqual([true, true, true])
     expect(decide).toHaveBeenCalledTimes(1)
@@ -762,12 +762,12 @@ describe("request coalescing", () => {
       await sleep(5)
       return { type: "boolean", value: true } as const
     })
-    const gate = buildGate({
+    const flag = createFlags({
       coalesce: false,
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await Promise.all([evaluator(), evaluator(), evaluator()])).toEqual([true, true, true])
     expect(decide).toHaveBeenCalledTimes(3)
@@ -782,27 +782,27 @@ describe("request coalescing", () => {
       decide,
       identify: () => ({ distinctId: "user123" }),
     }
-    const first = buildGate(config)({ defaultValue: false, key: "beta-access" })
-    const second = buildGate(config)({ defaultValue: false, key: "beta-access" })
+    const first = createFlags(config)({ defaultValue: false, key: "beta-access" })
+    const second = createFlags(config)({ defaultValue: false, key: "beta-access" })
 
     expect(await Promise.all([first(), second()])).toEqual([true, true])
     expect(decide).toHaveBeenCalledTimes(2)
   })
 
-  test("does not share provider work across incompatible gate shapes", async () => {
+  test("does not share provider work across incompatible flag shapes", async () => {
     const decide = vi.fn(async () => {
       await sleep(5)
       return { type: "boolean", value: true } as const
     })
-    const gate = buildGate({
+    const flag = createFlags({
       coalesce: true,
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const booleanGate = gate({ defaultValue: false, key: "shared" })
-    const variantGate = gate({ defaultValue: "a", key: "shared", variants: ["a", "b"] })
+    const booleanFlag = flag({ defaultValue: false, key: "shared" })
+    const variantFlag = flag({ defaultValue: "a", key: "shared", variants: ["a", "b"] })
 
-    await Promise.all([booleanGate(), variantGate()])
+    await Promise.all([booleanFlag(), variantFlag()])
     expect(decide).toHaveBeenCalledTimes(2)
   })
 
@@ -811,13 +811,13 @@ describe("request coalescing", () => {
       await sleep(5)
       return { type: "boolean", value: true } as const
     })
-    const gate = buildGate<{ distinctId: string; tenant: string }>({
+    const flag = createFlags<{ distinctId: string; tenant: string }>({
       coalesce: true,
       decide,
       evaluationKey: (context) => `${context.identity?.tenant}:${context.flagKey}`,
       identify: () => ({ distinctId: "user123", tenant: "unused" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     await Promise.all([
       evaluator({ identity: { distinctId: "user123", tenant: "first" } }),
@@ -829,12 +829,12 @@ describe("request coalescing", () => {
   test("does not cancel the leader when a follower aborts", async () => {
     const provider = createDeferred<Decision>()
     const controller = new AbortController()
-    const gate = buildGate({
+    const flag = createFlags({
       coalesce: true,
       decide: () => provider.promise,
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const leader = evaluator()
     await sleep(0)
     const follower = evaluator.details({ signal: controller.signal })
@@ -858,7 +858,7 @@ describe("request coalescing", () => {
     })
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       // The second key read is the follower's, in the same synchronous step as its join.
       evaluationKey: (context) => {
@@ -868,7 +868,7 @@ describe("request coalescing", () => {
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const controller = new AbortController()
     const reason = new Error("leader stopped")
 
@@ -908,7 +908,7 @@ describe("request coalescing", () => {
       )
       const followerJoined = createDeferred<null>()
       let keyReads = 0
-      const gate = buildGate({
+      const flag = createFlags({
         decide,
         evaluationKey: (context) => {
           keyReads += 1
@@ -917,8 +917,8 @@ describe("request coalescing", () => {
         },
         identify: () => ({ distinctId: "user123" }),
       })
-      const fast = gate({ defaultValue: false, key: "beta-access", timeoutMs: 10 })
-      const slow = gate({ defaultValue: false, key: "beta-access", timeoutMs: 1000 })
+      const fast = flag({ defaultValue: false, key: "beta-access", timeoutMs: 10 })
+      const slow = flag({ defaultValue: false, key: "beta-access", timeoutMs: 1000 })
 
       const leader = fast.details()
       await providerStarted.promise
@@ -927,7 +927,7 @@ describe("request coalescing", () => {
       await vi.advanceTimersByTimeAsync(10)
       const leaderDetails = await leader
       expect(leaderDetails.source).toBe("default")
-      expect(leaderDetails.error).toBeInstanceOf(GateTimeoutError)
+      expect(leaderDetails.error).toBeInstanceOf(FlagTimeoutError)
 
       provider.resolve({ type: "boolean", value: true })
       expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
@@ -954,7 +954,7 @@ describe("request coalescing", () => {
     )
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       evaluationKey: (context) => {
         keyReads += 1
@@ -963,7 +963,7 @@ describe("request coalescing", () => {
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const leaderController = new AbortController()
     const followerController = new AbortController()
 
@@ -995,7 +995,7 @@ describe("request coalescing", () => {
     )
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: false }),
       decideMany,
       evaluationKey: (context) => {
@@ -1005,10 +1005,10 @@ describe("request coalescing", () => {
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const controller = new AbortController()
 
-    const batch = gate.batch([evaluator], { signal: controller.signal })
+    const batch = flag.batch([evaluator], { signal: controller.signal })
     const signal = await providerSignal.promise
     const follower = evaluator.details()
     await followerJoined.promise
@@ -1028,7 +1028,7 @@ describe("request coalescing", () => {
     const decide = vi.fn((): Decision | Promise<Decision> =>
       decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
     )
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         delete: () => Promise.resolve(true),
         get: () => Promise.resolve(null),
@@ -1042,7 +1042,7 @@ describe("request coalescing", () => {
         return () => null
       },
     })
-    const evaluator = gate({ defaultValue: true, key: "beta-access" })
+    const evaluator = flag({ defaultValue: true, key: "beta-access" })
 
     const leader = evaluator()
     await sleep(0)
@@ -1062,7 +1062,7 @@ describe("request coalescing", () => {
     const decide = vi.fn((): Decision | Promise<Decision> =>
       decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
     )
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       identify: () => ({ distinctId: "user123" }),
       subscribe: (notify) => {
@@ -1070,7 +1070,7 @@ describe("request coalescing", () => {
         return () => null
       },
     })
-    const evaluator = gate({ defaultValue: true, key: "beta-access" })
+    const evaluator = flag({ defaultValue: true, key: "beta-access" })
 
     const leader = evaluator()
     await sleep(0)
@@ -1090,7 +1090,7 @@ describe("request coalescing", () => {
     const decide = vi.fn((): Decision | Promise<Decision> =>
       decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
     )
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: () => Promise.resolve(null),
         set: () => Promise.resolve(),
@@ -1102,7 +1102,7 @@ describe("request coalescing", () => {
         return () => null
       },
     })
-    const evaluator = gate({ defaultValue: true, key: "beta-access" })
+    const evaluator = flag({ defaultValue: true, key: "beta-access" })
 
     const leader = evaluator()
     await sleep(0)
@@ -1123,7 +1123,7 @@ describe("request coalescing", () => {
     const decide = vi.fn((): Decision | Promise<Decision> =>
       decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
     )
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: (key) => Promise.resolve(store.get(key) ?? null),
         set: (key, decision) => {
@@ -1138,7 +1138,7 @@ describe("request coalescing", () => {
         return () => null
       },
     })
-    const evaluator = gate({ defaultValue: true, key: "beta-access" })
+    const evaluator = flag({ defaultValue: true, key: "beta-access" })
 
     const leader = evaluator()
     await sleep(0)
@@ -1155,7 +1155,7 @@ describe("request coalescing", () => {
 
   test("degrades softly when subscribe throws instead of poisoning coalescing", async () => {
     const reports: DecisionCacheErrorReport[] = []
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
       onCacheError: (report) => void reports.push(report),
@@ -1163,7 +1163,7 @@ describe("request coalescing", () => {
         throw new Error("subscribe failed")
       },
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await evaluator()).toBe(true)
     expect(await evaluator()).toBe(true)
@@ -1179,12 +1179,12 @@ describe("request coalescing", () => {
   test("rejects every follower with the normalized leader failure and permits a retry", async () => {
     const provider = createDeferred<Decision>()
     const decide = vi.fn(() => provider.promise)
-    const gate = buildGate({
+    const flag = createFlags({
       coalesce: true,
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const evaluator = gate({ defaultValue: false, key: "beta-access" })
+    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const evaluations = [evaluator.details(), evaluator.details(), evaluator.details()]
     await sleep(0)
 
@@ -1207,7 +1207,7 @@ describe("request coalescing", () => {
 
 describe("timeouts and fallback", () => {
   test("returns the default and reports a timeout", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () =>
         new Promise<Decision>((_resolve) => {
           void _resolve
@@ -1216,8 +1216,8 @@ describe("timeouts and fallback", () => {
       timeoutMs: 5,
     })
 
-    const details = await gate({ defaultValue: false, key: "beta-access" }).details()
+    const details = await flag({ defaultValue: false, key: "beta-access" }).details()
     expect(details.source).toBe("default")
-    expect(details.error).toBeInstanceOf(GateTimeoutError)
+    expect(details.error).toBeInstanceOf(FlagTimeoutError)
   })
 })

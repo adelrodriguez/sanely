@@ -31,7 +31,7 @@ This guide shows you how to send telemetry, track exposures, or log failures for
 2. Register the hook on the factory, and report hook failures with `onHookError`:
 
    ```typescript
-   const gate = buildGate({
+   const flag = createFlags({
      identify,
      decide,
      hooks: [telemetryHook],
@@ -66,7 +66,7 @@ const countingHook = defineHook((options: { label: string }) => {
   }
 })
 
-const gate = buildGate({ identify, decide, hooks: [countingHook({ label: "flags" })] })
+const flag = createFlags({ identify, decide, hooks: [countingHook({ label: "flags" })] })
 ```
 
 Refer to the [`Hook` reference](../reference.md#hooks) for the context fields.

@@ -1,29 +1,29 @@
 import type {
-  AnyGateEvaluator,
-  AnonymousGatedConfig,
-  CallerIdentityGatedConfig,
+  AnyFlagEvaluator,
+  AnonymousFlagFactoryConfig,
+  CallerIdentityFlagFactoryConfig,
   EvaluationDetails,
-  GateCallOptions,
-  GateChanges,
-  GateEvaluator,
-  GatedConfig,
+  FlagCallOptions,
+  FlagChanges,
+  FlagEvaluator,
+  FlagFactoryConfig,
   Identity,
 } from "#lib/types/index.ts"
 import { resolveConfig } from "#lib/config/resolved-config.ts"
-import { type BatchEntry, executeGateBatch } from "#lib/evaluation/batch.ts"
-import { executeGate, executeGateDetails } from "#lib/evaluation/engine.ts"
-import { assertGateOptions, assertTimeoutMs } from "#lib/gate/configuration.ts"
+import { type BatchEntry, executeFlagBatch } from "#lib/evaluation/batch.ts"
+import { executeFlag, executeFlagDetails } from "#lib/evaluation/engine.ts"
+import { assertFlagOptions, assertTimeoutMs } from "#lib/flag/configuration.ts"
 import {
   type EvaluatorFactoryRef,
   getEvaluatorRecord,
   registerEvaluator,
-} from "#lib/gate/registry.ts"
-import { ForeignGateEvaluatorError, BatchFlagNotFoundError } from "#lib/shared/errors.ts"
+} from "#lib/flag/registry.ts"
+import { ForeignFlagEvaluatorError, BatchFlagNotFoundError } from "#lib/shared/errors.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
 
-type GateValue<TEvaluator> =
-  TEvaluator extends GateEvaluator<
+type FlagValue<TEvaluator> =
+  TEvaluator extends FlagEvaluator<
     infer _TIdentity,
     infer TValue,
     infer _TCallIdentity,
@@ -32,8 +32,8 @@ type GateValue<TEvaluator> =
   >
     ? TValue
     : never
-type GatePayload<TEvaluator> =
-  TEvaluator extends GateEvaluator<
+type FlagPayload<TEvaluator> =
+  TEvaluator extends FlagEvaluator<
     infer _TIdentity,
     boolean | string,
     infer _TCallIdentity,
@@ -42,72 +42,73 @@ type GatePayload<TEvaluator> =
   >
     ? TPayload
     : never
-type GateDetails<TEvaluator> = EvaluationDetails<GateValue<TEvaluator>, GatePayload<TEvaluator>>
-type FactoryGateEvaluator<
+type FlagDetails<TEvaluator> = EvaluationDetails<FlagValue<TEvaluator>, FlagPayload<TEvaluator>>
+type FactoryFlagEvaluator<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null,
   TCallRequired extends boolean,
-> = GateEvaluator<TIdentity, boolean | string, TCallIdentity, unknown, TCallRequired>
+> = FlagEvaluator<TIdentity, boolean | string, TCallIdentity, unknown, TCallRequired>
 
-export type GateBatch<TFlags extends readonly AnyGateEvaluator[]> = Readonly<{
-  [K in keyof TFlags]: GateValue<TFlags[K]>
+export type FlagBatch<TFlags extends readonly AnyFlagEvaluator[]> = Readonly<{
+  [K in keyof TFlags]: FlagValue<TFlags[K]>
 }> & {
-  details<TFlag extends TFlags[number]>(flag: TFlag): GateDetails<TFlag>
-  get<TFlag extends TFlags[number]>(flag: TFlag): GateValue<TFlag>
+  details<TFlag extends TFlags[number]>(flag: TFlag): FlagDetails<TFlag>
+  get<TFlag extends TFlags[number]>(flag: TFlag): FlagValue<TFlag>
 }
 
-export interface GateFactory<
+export interface FlagFactory<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null = TIdentity,
   TCallRequired extends boolean = false,
 > {
-  readonly changes: GateChanges
+  readonly changes: FlagChanges
   (options: {
     key: string
     defaultValue: boolean
     timeoutMs?: number
-  }): GateEvaluator<TIdentity, boolean, TCallIdentity, unknown, TCallRequired>
+  }): FlagEvaluator<TIdentity, boolean, TCallIdentity, unknown, TCallRequired>
   <TPayload = unknown, const T extends string[] = string[]>(options: {
     key: string
     defaultValue: T[number]
     variants: T
     timeoutMs?: number
-  }): GateEvaluator<TIdentity, T[number], TCallIdentity, TPayload, TCallRequired>
+  }): FlagEvaluator<TIdentity, T[number], TCallIdentity, TPayload, TCallRequired>
   /**
-   * Evaluates several gates from this factory with one identity resolution.
+   * Evaluates several flags from this factory with one identity resolution.
    *
-   * TypeScript rejects gates whose identity type or call mode (anonymous, caller identity, or
-   * identify) does not match this factory exactly. Gates from a different factory with the same
+   * TypeScript rejects flags whose identity type or call mode (anonymous, caller identity, or
+   * identify) does not match this factory exactly. Flags from a different factory with the same
    * identity type and call mode pass the type check, and the call throws
-   * `ForeignGateEvaluatorError` at runtime.
+   * `ForeignFlagEvaluatorError` at runtime.
    */
   batch<
     const TFlags extends ReadonlyArray<
-      FactoryGateEvaluator<TIdentity, TCallIdentity, TCallRequired>
+      FactoryFlagEvaluator<TIdentity, TCallIdentity, TCallRequired>
     >,
   >(
     flags: TFlags,
     ...args: TCallRequired extends true
-      ? [options: GateCallOptions<TCallIdentity> & { identity: Extract<TCallIdentity, Identity> }]
-      : [options?: GateCallOptions<TCallIdentity>]
-  ): Promise<GateBatch<TFlags>>
+      ? [options: FlagCallOptions<TCallIdentity> & { identity: Extract<TCallIdentity, Identity> }]
+      : [options?: FlagCallOptions<TCallIdentity>]
+  ): Promise<FlagBatch<TFlags>>
 }
 
 /**
- * A builder function that creates a gated function to evaluate feature flags for a given identity.
+ * Creates a flag factory. The flag factory creates evaluators that evaluate feature flags for an
+ * identity.
  *
  * @example
- *   const gate = buildGate({
+ *   const flag = createFlags({
  *     identify: async () => ({ distinctId: getCurrentUserId() }),
  *     decide: async (key, identity) => yourProvider.evaluate(key, identity),
  *   })
  *
- *   const betaAccess = gate({ key: "beta-access", defaultValue: false })
+ *   const betaAccess = flag({ key: "beta-access", defaultValue: false })
  *
  *   await betaAccess()
  *   await betaAccess({ identity: { distinctId: "test-user" } }) // Evaluate for a specific identity
  *
- *   const theme = gate({
+ *   const theme = flag({
  *     key: "theme",
  *     defaultValue: "light",
  *     variants: ["light", "dark", "system"],
@@ -115,24 +116,24 @@ export interface GateFactory<
  *
  *   const result = await theme() // "light" | "dark" | "system"
  */
-export function buildGate<TIdentity extends Identity>(
-  config: GatedConfig<TIdentity>
-): GateFactory<TIdentity>
-export function buildGate<TIdentity extends Identity>(
-  config: AnonymousGatedConfig<TIdentity>
-): GateFactory<TIdentity, TIdentity | null>
-export function buildGate<TIdentity extends Identity>(
-  config: CallerIdentityGatedConfig<TIdentity>
-): GateFactory<TIdentity, TIdentity, true>
-export function buildGate<TIdentity extends Identity>(
+export function createFlags<TIdentity extends Identity>(
+  config: FlagFactoryConfig<TIdentity>
+): FlagFactory<TIdentity>
+export function createFlags<TIdentity extends Identity>(
+  config: AnonymousFlagFactoryConfig<TIdentity>
+): FlagFactory<TIdentity, TIdentity | null>
+export function createFlags<TIdentity extends Identity>(
+  config: CallerIdentityFlagFactoryConfig<TIdentity>
+): FlagFactory<TIdentity, TIdentity, true>
+export function createFlags<TIdentity extends Identity>(
   config:
-    | GatedConfig<TIdentity>
-    | AnonymousGatedConfig<TIdentity>
-    | CallerIdentityGatedConfig<TIdentity>
-): GateFactory<TIdentity, TIdentity | null> | GateFactory<TIdentity, TIdentity, true> {
+    | FlagFactoryConfig<TIdentity>
+    | AnonymousFlagFactoryConfig<TIdentity>
+    | CallerIdentityFlagFactoryConfig<TIdentity>
+): FlagFactory<TIdentity, TIdentity | null> | FlagFactory<TIdentity, TIdentity, true> {
   assertTimeoutMs(config.timeoutMs)
   const resolved = resolveConfig(config)
-  const changes: GateChanges = {
+  const changes: FlagChanges = {
     subscribe(listener) {
       return (
         resolved.changes?.subscribe((keys) => {
@@ -143,28 +144,28 @@ export function buildGate<TIdentity extends Identity>(
   }
 
   async function batch(
-    flags: readonly AnyGateEvaluator[],
-    callOptions?: GateCallOptions<TIdentity | null>
-  ): Promise<GateBatch<readonly AnyGateEvaluator[]>> {
+    flags: readonly AnyFlagEvaluator[],
+    callOptions?: FlagCallOptions<TIdentity | null>
+  ): Promise<FlagBatch<readonly AnyFlagEvaluator[]>> {
     const entries: BatchEntry[] = flags.map((flag) => {
       const record = getEvaluatorRecord(flag)
       if (!record || record.factoryRef !== factoryRef) {
-        throw new ForeignGateEvaluatorError()
+        throw new ForeignFlagEvaluatorError()
       }
       return { flag, options: record.options }
     })
-    const results = await executeGateBatch(resolved, entries, callOptions)
-    const getDetails = <TFlag extends AnyGateEvaluator>(flag: TFlag): GateDetails<TFlag> => {
+    const results = await executeFlagBatch(resolved, entries, callOptions)
+    const getDetails = <TFlag extends AnyFlagEvaluator>(flag: TFlag): FlagDetails<TFlag> => {
       const details = results.get(flag)
       if (!details) {
         throw new BatchFlagNotFoundError()
       }
-      return details as GateDetails<TFlag>
+      return details as FlagDetails<TFlag>
     }
     const values = flags.map((flag) => getDetails(flag).value)
     return Object.assign(values, {
       details: getDetails,
-      get<TFlag extends AnyGateEvaluator>(flag: TFlag): GateValue<TFlag> {
+      get<TFlag extends AnyFlagEvaluator>(flag: TFlag): FlagValue<TFlag> {
         return getDetails(flag).value
       },
     })
@@ -184,34 +185,34 @@ export function buildGate<TIdentity extends Identity>(
     },
   }
 
-  function gate(options: {
+  function flag(options: {
     key: string
     defaultValue: boolean
     timeoutMs?: number
-  }): GateEvaluator<TIdentity, boolean, TIdentity | null>
-  function gate<TPayload = unknown, const T extends string[] = string[]>(options: {
+  }): FlagEvaluator<TIdentity, boolean, TIdentity | null>
+  function flag<TPayload = unknown, const T extends string[] = string[]>(options: {
     key: string
     defaultValue: T[number]
     variants: T
     timeoutMs?: number
-  }): GateEvaluator<TIdentity, T[number], TIdentity | null, TPayload>
-  function gate<TPayload = unknown, const T extends string[] = string[]>(options: {
+  }): FlagEvaluator<TIdentity, T[number], TIdentity | null, TPayload>
+  function flag<TPayload = unknown, const T extends string[] = string[]>(options: {
     key: string
     defaultValue: boolean | T[number]
     variants?: T
     timeoutMs?: number
-  }): GateEvaluator<TIdentity, boolean | T[number], TIdentity | null, TPayload> {
-    assertGateOptions(options)
+  }): FlagEvaluator<TIdentity, boolean | T[number], TIdentity | null, TPayload> {
+    assertFlagOptions(options)
     assertTimeoutMs(options.timeoutMs)
 
     // Read on each call, as the batch does for its entries.
     const deadline = () => ({ timeoutMs: options.timeoutMs ?? resolved.timeoutMs })
-    const evaluator = async (callOptions?: GateCallOptions<TIdentity | null>) =>
-      executeGate(resolved, options, callOptions, resolved, deadline())
+    const evaluator = async (callOptions?: FlagCallOptions<TIdentity | null>) =>
+      executeFlag(resolved, options, callOptions, resolved, deadline())
 
     const assigned = Object.assign(evaluator, {
-      details: (callOptions?: GateCallOptions<TIdentity | null>) =>
-        executeGateDetails<TIdentity, T, TPayload>(
+      details: (callOptions?: FlagCallOptions<TIdentity | null>) =>
+        executeFlagDetails<TIdentity, T, TPayload>(
           resolved,
           options,
           callOptions,
@@ -221,14 +222,14 @@ export function buildGate<TIdentity extends Identity>(
     })
     registerEvaluator(assigned, { factoryRef, options })
     // The identity marker is type-only, so the runtime evaluator never has it.
-    return assigned as GateEvaluator<TIdentity, boolean | T[number], TIdentity | null, TPayload>
+    return assigned as FlagEvaluator<TIdentity, boolean | T[number], TIdentity | null, TPayload>
   }
 
-  return Object.assign(gate, {
-    batch: batch as <const TFlags extends readonly AnyGateEvaluator[]>(
+  return Object.assign(flag, {
+    batch: batch as <const TFlags extends readonly AnyFlagEvaluator[]>(
       flags: TFlags,
-      callOptions?: GateCallOptions<TIdentity | null>
-    ) => Promise<GateBatch<TFlags>>,
+      callOptions?: FlagCallOptions<TIdentity | null>
+    ) => Promise<FlagBatch<TFlags>>,
     changes,
   })
 }

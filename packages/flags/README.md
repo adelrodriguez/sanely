@@ -15,13 +15,13 @@ The package works in browsers and servers. React support is an optional entry po
 
 ## Features
 
-- **Type-safe gates.** TypeScript infers boolean values and string variant values.
+- **Type-safe flags.** TypeScript infers boolean values and string variant values.
 - **One API for any provider.** Connect a provider through one `decide` function.
 - **Safe fallback.** A failed evaluation returns the configured default.
 - **Evaluation details.** Read the decision source, the payload, and the fallback error.
 - **Efficient evaluation.** Cache decisions, coalesce requests, or evaluate a batch.
 - **Lifecycle hooks.** Observe evaluation without a change to its result.
-- **React support.** Use gates with React 19, Suspense, and a bounded gate cache.
+- **React support.** Use flags with React 19, Suspense, and a bounded flag cache.
 - **No core runtime dependencies.** Install React only when your application needs it.
 
 ## Install
@@ -34,12 +34,12 @@ The package needs Node.js 22 or later on the server. The React entry point needs
 
 ## Get started
 
-First, create a gate factory. The factory connects the package to your identity source and your feature flag provider:
+First, create a flag factory. The factory connects the package to your identity source and your feature flag provider:
 
 ```typescript
-import { buildGate, decision } from "@sanely/flags"
+import { createFlags, decision } from "@sanely/flags"
 
-const gate = buildGate({
+const flag = createFlags({
   identify: () => ({ distinctId: getCurrentUserId() }),
   decide: async (key, identity) => {
     const enabled = await provider.isEnabled(key, identity.distinctId)
@@ -48,10 +48,10 @@ const gate = buildGate({
 })
 ```
 
-Next, create and evaluate a boolean gate:
+Next, create and evaluate a boolean flag:
 
 ```typescript
-const betaAccess = gate({
+const betaAccess = flag({
   key: "beta-access",
   defaultValue: false,
 })
@@ -68,14 +68,14 @@ if (await betaAccess()) {
 How-to guides:
 
 - [How to connect a feature flag provider](docs/how-to/connect-a-provider.md)
-- [How to use variant gates and evaluation details](docs/how-to/use-variants-and-details.md)
+- [How to use variant flags and evaluation details](docs/how-to/use-variants-and-details.md)
 - [How to supply an identity](docs/how-to/supply-an-identity.md)
-- [How to evaluate several gates in a batch](docs/how-to/evaluate-a-batch.md)
+- [How to evaluate several flags in a batch](docs/how-to/evaluate-a-batch.md)
 - [How to set timeouts and cancel evaluations](docs/how-to/set-timeouts-and-cancel.md)
 - [How to observe evaluations with hooks](docs/how-to/observe-evaluations-with-hooks.md)
 - [How to cache provider decisions](docs/how-to/cache-provider-decisions.md)
-- [How to use gates in React](docs/how-to/use-gates-in-react.md)
-- [How to test code that uses a gate](docs/how-to/test-a-gate.md)
+- [How to use flags in React](docs/how-to/use-flags-in-react.md)
+- [How to test code that uses a flag](docs/how-to/test-a-flag.md)
 
 Reference:
 
@@ -83,7 +83,7 @@ Reference:
 
 Explanation:
 
-- [About gate evaluation](docs/explanation/about-gate-evaluation.md)
+- [About flag evaluation](docs/explanation/about-flag-evaluation.md)
 
 To work on the package, read [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, read [SECURITY.md](SECURITY.md).
 

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
-import type { AnyGatedConfig, Decision, HookContext, Identity } from "#lib/types/index.ts"
+import type { AnyFlagFactoryConfig, Decision, HookContext, Identity } from "#lib/types/index.ts"
 import { resolveConfig, type ResolvedConfig } from "#lib/config/resolved-config.ts"
 import { resolveDecision } from "#lib/evaluation/stages/resolve.ts"
 
@@ -20,7 +20,9 @@ function createContext(): HookContext {
   }
 }
 
-function createConfig(overrides: Partial<AnyGatedConfig<Identity>> = {}): ResolvedConfig<Identity> {
+function createConfig(
+  overrides: Partial<AnyFlagFactoryConfig<Identity>> = {}
+): ResolvedConfig<Identity> {
   return resolveConfig({
     decide: () => trueDecision,
     identify: () => ({ distinctId: "user123" }),

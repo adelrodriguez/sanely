@@ -1,4 +1,4 @@
-import { GateTimeoutError } from "./errors"
+import { FlagTimeoutError } from "./errors"
 import { normalizeError } from "./utils"
 
 const noop: () => void = () => null
@@ -35,7 +35,7 @@ export function createEvaluationSignal(
   }
 
   const timer = setTimeout(() => {
-    controller.abort(new GateTimeoutError(timeoutMs))
+    controller.abort(new FlagTimeoutError(timeoutMs))
   }, timeoutMs)
 
   return {

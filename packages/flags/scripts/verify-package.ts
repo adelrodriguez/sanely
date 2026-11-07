@@ -5,7 +5,7 @@ import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
 
 const packageRoot = join(import.meta.dirname, "..")
-const temporaryDirectory = mkdtempSync(join(tmpdir(), "gated-build-"))
+const temporaryDirectory = mkdtempSync(join(tmpdir(), "flags-build-"))
 const expectedFiles = Object.values(packageJson.exports).flatMap((entrypoint) => [
   entrypoint.import,
   entrypoint.types,
@@ -33,7 +33,7 @@ try {
   const tarballPath = join(temporaryDirectory, tarball)
   writeFileSync(
     join(temporaryDirectory, "package.json"),
-    `${JSON.stringify({ name: "gated-build-verification", private: true, type: "module" }, null, 2)}\n`
+    `${JSON.stringify({ name: "flags-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
   run(
     "npm",
@@ -44,10 +44,10 @@ try {
   writeFileSync(
     join(temporaryDirectory, "core.mjs"),
     `import assert from "node:assert/strict"
-import { buildGate, decision } from "@sanely/flags"
+import { createFlags, decision } from "@sanely/flags"
 import { defineHook } from "@sanely/flags/hooks"
 
-const factory = buildGate({
+const factory = createFlags({
   decide: () => decision.boolean(true),
   identify: () => ({ distinctId: "consumer" }),
 })
@@ -76,13 +76,13 @@ assert.deepEqual(defineHook({}), {})
 import * as react from "@sanely/flags/react"
 
 assert.deepEqual(Object.keys(react).toSorted(), [
-  "FeatureGate",
-  "GateProvider",
-  "createGateCache",
-  "createGateHooks",
-  "useGate",
-  "useGateBatch",
-  "useGateCache",
+  "FeatureFlag",
+  "FlagProvider",
+  "createFlagCache",
+  "createFlagHooks",
+  "useFlag",
+  "useFlagBatch",
+  "useFlagCache",
 ].toSorted())
 `
   )
@@ -90,22 +90,22 @@ assert.deepEqual(Object.keys(react).toSorted(), [
 
   writeFileSync(
     join(temporaryDirectory, "consumer.ts"),
-    `import { buildGate, decision, type EvaluationDetails } from "@sanely/flags"
+    `import { createFlags, decision, type EvaluationDetails } from "@sanely/flags"
 import { defineHook } from "@sanely/flags/hooks"
-import { createGateCache, type GateValueOf, type ReactGateCache } from "@sanely/flags/react"
+import { createFlagCache, type FlagValueOf, type ReactFlagCache } from "@sanely/flags/react"
 
-const factory = buildGate({
+const factory = createFlags({
   decide: () => decision.boolean(true),
   identify: () => ({ distinctId: "consumer" }),
 })
 const evaluator = factory({ defaultValue: false, key: "beta" })
-const value: GateValueOf<typeof evaluator> = true
+const value: FlagValueOf<typeof evaluator> = true
 const details: EvaluationDetails<boolean> = {
   flagKey: "beta",
   source: "provider",
   value,
 }
-const cache: ReactGateCache = createGateCache()
+const cache: ReactFlagCache = createFlagCache()
 
 defineHook({})
 void cache
@@ -135,7 +135,7 @@ void details
     temporaryDirectory
   )
 
-  console.info("Verified the packed Gated runtime and declarations.")
+  console.info("Verified the packed @sanely/flags runtime and declarations.")
 } finally {
   rmSync(temporaryDirectory, { force: true, recursive: true })
 }

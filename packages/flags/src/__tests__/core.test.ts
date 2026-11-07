@@ -2,18 +2,18 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type { Decision, EvaluationDetails, Hook, Identity } from "#lib/types/index.ts"
 import { decision } from "#decision.ts"
-import { buildGate } from "#factory.ts"
-import { getEvaluatorRecord } from "#lib/gate/registry.ts"
+import { createFlags } from "#factory.ts"
+import { getEvaluatorRecord } from "#lib/flag/registry.ts"
 import { IdentityNotFoundError, MalformedDecisionError } from "#lib/shared/errors.ts"
 
-describe("buildGate", () => {
+describe("createFlags", () => {
   test("registers one record for its evaluators", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => decision.boolean(true),
       identify: () => ({ distinctId: "user" }),
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: false, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: false, key: "second" })
     const ref = getEvaluatorRecord(first)?.factoryRef
 
     expect(ref).toBe(getEvaluatorRecord(second)?.factoryRef)
@@ -26,7 +26,7 @@ describe("buildGate", () => {
     "rejects an invalid factory timeout of %p",
     (timeoutMs) => {
       expect(() =>
-        buildGate({
+        createFlags({
           decide: () => ({ type: "boolean", value: true }),
           identify: () => ({ distinctId: "user123" }),
           timeoutMs,
@@ -36,14 +36,14 @@ describe("buildGate", () => {
   )
 
   test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
-    "rejects an invalid per-gate timeout of %p",
+    "rejects an invalid per-flag timeout of %p",
     (timeoutMs) => {
-      const gate = buildGate({
+      const flag = createFlags({
         decide: () => ({ type: "boolean", value: true }),
         identify: () => ({ distinctId: "user123" }),
       })
 
-      expect(() => gate({ defaultValue: false, key: "beta-access", timeoutMs })).toThrow(RangeError)
+      expect(() => flag({ defaultValue: false, key: "beta-access", timeoutMs })).toThrow(RangeError)
     }
   )
 
@@ -68,44 +68,44 @@ describe("buildGate", () => {
       field: "defaultValue",
       options: { defaultValue: "system", key: "theme", variants: ["light", "dark"] },
     },
-  ])("rejects invalid $field gate options at creation", ({ field, options }) => {
-    const gate = buildGate({
+  ])("rejects invalid $field flag options at creation", ({ field, options }) => {
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
     })
 
     // @ts-expect-error -- Exercise runtime validation for JavaScript and untyped callers.
-    expect(() => gate(options)).toThrow(field)
+    expect(() => flag(options)).toThrow(field)
   })
 
   test("constructs valid boolean and single-variant evaluators", () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
     })
 
-    expect(gate({ defaultValue: false, key: "beta-access" })).toBeTypeOf("function")
-    expect(gate({ defaultValue: "light", key: "theme", variants: ["light"] })).toBeTypeOf(
+    expect(flag({ defaultValue: false, key: "beta-access" })).toBeTypeOf("function")
+    expect(flag({ defaultValue: "light", key: "theme", variants: ["light"] })).toBeTypeOf(
       "function"
     )
   })
 
-  test("creates a gate factory function", () => {
-    const gate = buildGate({
+  test("creates a flag factory function", () => {
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    expect(typeof gate).toBe("function")
+    expect(typeof flag).toBe("function")
   })
 
   test("accepts synchronous identify and decide functions", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: (_key, identity) => ({ type: "boolean", value: identity.distinctId === "user123" }),
       identify: () => ({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag()).toBe(true)
   })
@@ -115,12 +115,12 @@ describe("buildGate", () => {
     const decide = vi.fn((_key: string, identity: RequestIdentity) =>
       decision.boolean(identity.plan === "pro")
     )
-    const gate = buildGate<RequestIdentity>({ decide })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const flag = createFlags<RequestIdentity>({ decide })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const identity: RequestIdentity = { distinctId: "user123", plan: "pro" }
 
     expect(await betaFlag({ identity })).toBe(true)
-    const batch = await gate.batch([betaFlag], { identity })
+    const batch = await flag.batch([betaFlag], { identity })
     expect(batch.get(betaFlag)).toBe(true)
 
     const runtimeFlag = betaFlag as unknown as {
@@ -140,7 +140,7 @@ describe("buildGate", () => {
       notify = listener
       return detachProvider
     })
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => decision.boolean(true),
       identify: () => ({ distinctId: "user123" }),
       subscribe,
@@ -151,8 +151,8 @@ describe("buildGate", () => {
     })
 
     expect(subscribe).not.toHaveBeenCalled()
-    const detachThrowingListener = gate.changes.subscribe(throwingListener)
-    const detachObservingListener = gate.changes.subscribe((keys) => {
+    const detachThrowingListener = flag.changes.subscribe(throwingListener)
+    const detachObservingListener = flag.changes.subscribe((keys) => {
       observed.push(keys)
     })
     expect(subscribe).toHaveBeenCalledTimes(1)
@@ -173,23 +173,23 @@ describe("buildGate", () => {
     const identity: Identity = { distinctId: "user123" }
     const decision: Decision = { type: "boolean", value: true }
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: vi.fn(() => Promise.resolve(decision)),
       identify: vi.fn(() => Promise.resolve(identity)),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(true)
   })
 
   test("returns provider evaluation details without changing the plain value", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag.details()).toEqual({
       flagKey: "beta-access",
@@ -200,7 +200,7 @@ describe("buildGate", () => {
   })
 
   test("returns cache evaluation details", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: () => Promise.resolve({ type: "boolean", value: true }),
         set: () => Promise.resolve(),
@@ -208,7 +208,7 @@ describe("buildGate", () => {
       decide: () => ({ type: "boolean", value: false }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag.details()).toEqual({
       flagKey: "beta-access",
@@ -219,11 +219,11 @@ describe("buildGate", () => {
 
   test("returns the provider error with default evaluation details", async () => {
     const error = new Error("Provider unavailable")
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.reject(error),
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag.details()).toEqual({
       error,
@@ -234,7 +234,7 @@ describe("buildGate", () => {
   })
 
   test("normalizes undefined rejections without hiding the failure", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       // oxlint-disable-next-line eslint/arrow-body-style -- Keep the intentional invalid rejection localized.
       decide: () => {
         // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Exercise hostile JavaScript callers.
@@ -242,7 +242,7 @@ describe("buildGate", () => {
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag()).toBe(false)
 
@@ -257,14 +257,14 @@ describe("buildGate", () => {
   test("never rejects when error inspection throws", async () => {
     const { proxy, revoke } = Proxy.revocable({}, {})
     revoke()
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => {
         // oxlint-disable-next-line typescript/only-throw-error -- Exercise hostile JavaScript callers.
         throw proxy
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag()).toBe(false)
 
@@ -277,11 +277,11 @@ describe("buildGate", () => {
   })
 
   test("returns the identity error with default evaluation details", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify: () => null,
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const details = await betaFlag.details()
 
     expect(details).toEqual({
@@ -296,11 +296,11 @@ describe("buildGate", () => {
   test("details accepts an override identity", async () => {
     const identify = vi.fn(() => ({ distinctId: "default" }))
     const overrideIdentity = { distinctId: "override" }
-    const gate = buildGate({
+    const flag = createFlags({
       decide: (_key, identity) => ({ type: "boolean", value: identity.distinctId === "override" }),
       identify,
     })
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     expect(await betaFlag.details({ identity: overrideIdentity })).toEqual({
       flagKey: "beta-access",
@@ -311,11 +311,11 @@ describe("buildGate", () => {
   })
 
   test("preserves variant value inference in evaluation details", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "variant", variant: "dark" }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark", "system"],
@@ -328,11 +328,11 @@ describe("buildGate", () => {
 
   test("surfaces variant payloads only through evaluation details", async () => {
     const payload = { experiment: "checkout-theme", version: 2 }
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ payload, type: "variant", variant: "dark" }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
@@ -349,11 +349,11 @@ describe("buildGate", () => {
 
   test("passes a declared variant payload through without validation", async () => {
     const payload = { experiment: "checkout-theme", metadata: new Map([["cohort", 4]]) }
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => decision.variant("dark", payload),
       identify: () => ({ distinctId: "user123" }),
     })
-    const themeFlag = gate<typeof payload>({
+    const themeFlag = flag<typeof payload>({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
@@ -365,11 +365,11 @@ describe("buildGate", () => {
   })
 
   test("leaves payload undefined for a variant decision without one", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "variant", variant: "dark" }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
@@ -381,11 +381,11 @@ describe("buildGate", () => {
   })
 
   test("does not expose payloads from rejected variant decisions", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ payload: { experiment: "stale" }, type: "variant", variant: "purple" }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
@@ -406,11 +406,11 @@ describe("buildGate", () => {
 
     const details = await Promise.all(
       malformed.map(async (providerDecision) => {
-        const gate = buildGate({
+        const flag = createFlags({
           decide: () => providerDecision as unknown as Decision,
           identify: () => ({ distinctId: "user123" }),
         })
-        return await gate({ defaultValue: false, key: "beta-access" }).details()
+        return await flag({ defaultValue: false, key: "beta-access" }).details()
       })
     )
 
@@ -425,12 +425,12 @@ describe("buildGate", () => {
     const identity: Identity = { distinctId: "user123" }
     const decision: Decision = { type: "boolean", value: false }
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: vi.fn(() => Promise.resolve(decision)),
       identify: vi.fn(() => Promise.resolve(identity)),
     })
 
-    const betaFlag = gate({ defaultValue: true, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: true, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(false)
@@ -440,12 +440,12 @@ describe("buildGate", () => {
     const identity: Identity = { distinctId: "user123" }
     const decision: Decision = { type: "variant", variant: "dark" }
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: vi.fn(() => Promise.resolve(decision)),
       identify: vi.fn(() => Promise.resolve(identity)),
     })
 
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark", "system"],
@@ -457,24 +457,24 @@ describe("buildGate", () => {
   })
 
   test("returns default value when identity not found", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       identify: () => Promise.resolve(null),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(false)
   })
 
   test("returns default value when decide throws error", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.reject(new Error("Provider error")),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(false)
@@ -489,12 +489,12 @@ describe("buildGate", () => {
       Promise.resolve({ type: "boolean", value: identity.distinctId === "override" } as const)
     )
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: decideFn,
       identify: identifyFn,
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag({ identity: overrideIdentity })
 
     expect(result).toBe(true)
@@ -506,19 +506,19 @@ describe("buildGate", () => {
     )
   })
 
-  test("passes hooks to gate execution", async () => {
+  test("passes hooks to flag execution", async () => {
     const beforeFn = vi.fn(() => Promise.resolve())
     const afterFn = vi.fn(() => Promise.resolve())
 
     const hooks: Hook[] = [{ after: afterFn, before: beforeFn }]
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       hooks,
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     await betaFlag()
 
     expect(beforeFn).toHaveBeenCalled()
@@ -529,7 +529,7 @@ describe("buildGate", () => {
     const cachedDecision: Decision = { type: "boolean", value: true }
     const decideFn = vi.fn(() => Promise.resolve({ type: "boolean", value: false } as const))
 
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: () => Promise.resolve(cachedDecision),
         set: () => Promise.resolve(),
@@ -538,21 +538,21 @@ describe("buildGate", () => {
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(true)
     expect(decideFn).not.toHaveBeenCalled() // Short-circuited
   })
 
-  test("multiple flags from same gate", async () => {
-    const gate = buildGate({
+  test("creates several flags from one flag factory", async () => {
+    const flag = createFlags({
       decide: (key) => Promise.resolve({ type: "boolean", value: key === "flag1" } as const),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const flag1 = gate({ defaultValue: false, key: "flag1" })
-    const flag2 = gate({ defaultValue: false, key: "flag2" })
+    const flag1 = flag({ defaultValue: false, key: "flag1" })
+    const flag2 = flag({ defaultValue: false, key: "flag2" })
 
     const result1 = await flag1()
     const result2 = await flag2()
@@ -562,12 +562,12 @@ describe("buildGate", () => {
   })
 
   test("validates variant decision against variants list", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "variant", variant: "invalid" } as const),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
@@ -580,12 +580,12 @@ describe("buildGate", () => {
   })
 
   test("accepts valid variant from variants list", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "variant", variant: "dark" } as const),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const themeFlag = gate({
+    const themeFlag = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark", "system"],
@@ -608,13 +608,13 @@ describe("buildGate", () => {
       plan: "pro",
     }
 
-    const gate = buildGate<CustomIdentity>({
+    const flag = createFlags<CustomIdentity>({
       decide: (_key, identity) =>
         Promise.resolve({ type: "boolean", value: identity.plan === "pro" } as const),
       identify: () => Promise.resolve(customIdentity),
     })
 
-    const proFlag = gate({ defaultValue: false, key: "pro-feature" })
+    const proFlag = flag({ defaultValue: false, key: "pro-feature" })
     const result = await proFlag()
 
     expect(result).toBe(true)
@@ -626,13 +626,13 @@ describe("buildGate", () => {
 
     const hooks: Hook[] = [{ error: errorFn }]
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.reject(error),
       hooks,
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     await betaFlag()
 
     expect(errorFn).toHaveBeenCalledWith(
@@ -653,13 +653,13 @@ describe("buildGate", () => {
 
     const hooks: Hook[] = [{ finally: finallyFn }]
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       hooks,
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     await betaFlag()
     await sleep(0)
 
@@ -671,38 +671,38 @@ describe("buildGate", () => {
 
     const hooks: Hook[] = [{ finally: finallyFn }]
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       hooks,
       identify: () => Promise.reject(new Error("Identity error")),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     await betaFlag()
 
     expect(finallyFn).toHaveBeenCalled()
   })
 
   test("works without hooks configuration", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(true)
   })
 
   test("works with empty hooks array", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       hooks: [],
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(true)
@@ -710,7 +710,7 @@ describe("buildGate", () => {
 
   test("flag function can be called multiple times", async () => {
     let callCount = 0
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => {
         callCount += 1
         return Promise.resolve({ type: "boolean", value: true } as const)
@@ -718,7 +718,7 @@ describe("buildGate", () => {
       identify: () => Promise.resolve({ distinctId: "user123" }),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
     await betaFlag()
     await betaFlag()
@@ -733,13 +733,13 @@ describe("buildGate", () => {
       Promise.resolve({ type: "boolean", value: true } as const)
     )
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: decideFn,
       identify: identifyFn,
     })
 
-    const flag1 = gate({ defaultValue: false, key: "flag1" })
-    const flag2 = gate({ defaultValue: false, key: "flag2" })
+    const flag1 = flag({ defaultValue: false, key: "flag1" })
+    const flag2 = flag({ defaultValue: false, key: "flag2" })
 
     await flag1()
     await flag2()
@@ -751,12 +751,12 @@ describe("buildGate", () => {
   test("handles numeric distinctId", async () => {
     const identity: Identity = { distinctId: 12_345 }
 
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.resolve({ type: "boolean", value: true } as const),
       identify: () => Promise.resolve(identity),
     })
 
-    const betaFlag = gate({ defaultValue: false, key: "beta-access" })
+    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
     const result = await betaFlag()
 
     expect(result).toBe(true)
@@ -778,12 +778,12 @@ describe("buildGate", () => {
       Promise.resolve({ type: "boolean", value: identity.role === "admin" } as const)
     )
 
-    const gate = buildGate<CustomIdentity>({
+    const flag = createFlags<CustomIdentity>({
       decide: decideFn,
       identify: () => Promise.resolve(customIdentity),
     })
 
-    const adminFlag = gate({ defaultValue: false, key: "admin-feature" })
+    const adminFlag = flag({ defaultValue: false, key: "admin-feature" })
     const result = await adminFlag()
 
     expect(result).toBe(true)

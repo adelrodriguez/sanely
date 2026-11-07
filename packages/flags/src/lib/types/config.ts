@@ -23,15 +23,15 @@ export type DecisionCacheErrorReport<TIdentity extends Identity = Identity> = {
   error: Error
 }
 
-export type GateChange = {
+export type FlagChange = {
   keys?: readonly string[]
 }
 
-export type GateChanges = {
+export type FlagChanges = {
   subscribe(listener: (keys?: readonly string[]) => void): () => void
 }
 
-export type GatedConfig<TIdentity extends Identity = Identity> = {
+export type FlagFactoryConfig<TIdentity extends Identity = Identity> = {
   anonymous?: "reject"
   cache?: DecisionCache
   /**
@@ -43,7 +43,7 @@ export type GatedConfig<TIdentity extends Identity = Identity> = {
   /**
    * Projects an evaluation context to its evaluation key — the collision-safe string that
    * identifies interchangeable evaluations. Used as the cache store key and the coalescing key. The
-   * default key uses the flag key, the gate shape, and the type and value of
+   * default key uses the flag key, the flag shape, and the type and value of
    * `identity.distinctId`.
    */
   evaluationKey?: (context: HookContext<TIdentity>) => string
@@ -62,18 +62,18 @@ export type GatedConfig<TIdentity extends Identity = Identity> = {
   onCacheError?: (report: DecisionCacheErrorReport<TIdentity>) => MaybePromise<void>
   onHookError?: (report: HookErrorReport<TIdentity>) => MaybePromise<void>
   /**
-   * Attaches to provider flag changes and returns a detach function. A gate factory attaches it at
+   * Attaches to provider flag changes and returns a detach function. A flag factory attaches it at
    * most once at a time and shares that attachment between invalidation and `changes` listeners. A
    * factory with a cache or request coalescing stays attached after its first evaluation. A factory
-   * also stays attached after a React gate cache first stores one of its evaluations. A factory
+   * also stays attached after a React flag cache first stores one of its evaluations. A factory
    * that only `changes` listeners use detaches when the last listener leaves.
    */
-  subscribe?: (notify: (change: GateChange) => void) => () => void
+  subscribe?: (notify: (change: FlagChange) => void) => () => void
   timeoutMs?: number
 }
 
-export type AnonymousGatedConfig<TIdentity extends Identity = Identity> = Omit<
-  GatedConfig<TIdentity>,
+export type AnonymousFlagFactoryConfig<TIdentity extends Identity = Identity> = Omit<
+  FlagFactoryConfig<TIdentity>,
   "anonymous" | "decide" | "decideMany"
 > & {
   anonymous: "allow"
@@ -89,15 +89,15 @@ export type AnonymousGatedConfig<TIdentity extends Identity = Identity> = Omit<
   ) => MaybePromise<Record<string, Decision>>
 }
 
-export type CallerIdentityGatedConfig<TIdentity extends Identity = Identity> = Omit<
-  GatedConfig<TIdentity>,
+export type CallerIdentityFlagFactoryConfig<TIdentity extends Identity = Identity> = Omit<
+  FlagFactoryConfig<TIdentity>,
   "anonymous" | "identify"
 > & {
   anonymous?: never
   identify?: never
 }
 
-export type AnyGatedConfig<TIdentity extends Identity> =
-  | GatedConfig<TIdentity>
-  | AnonymousGatedConfig<TIdentity>
-  | CallerIdentityGatedConfig<TIdentity>
+export type AnyFlagFactoryConfig<TIdentity extends Identity> =
+  | FlagFactoryConfig<TIdentity>
+  | AnonymousFlagFactoryConfig<TIdentity>
+  | CallerIdentityFlagFactoryConfig<TIdentity>

@@ -3,16 +3,16 @@ import type {
   Decision,
   DecisionSource,
   EvaluationDetails,
-  GateCallOptions,
+  FlagCallOptions,
   HookContext,
-  GateConfiguration,
-  GateOptions,
+  FlagConfiguration,
+  FlagOptions,
   Identity,
 } from "#lib/types/index.ts"
 import { createHookRunner } from "#lib/evaluation/stages/hooks.ts"
 import { resolveDecision } from "#lib/evaluation/stages/resolve.ts"
-import { getGateConfiguration } from "#lib/gate/configuration.ts"
-import { extractDecisionValue } from "#lib/gate/decision.ts"
+import { getFlagConfiguration } from "#lib/flag/configuration.ts"
+import { extractDecisionValue } from "#lib/flag/decision.ts"
 import { createEvaluationSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
 
@@ -32,7 +32,7 @@ type Evaluation<TIdentity extends Identity> = {
  * resolved config itself. The batch path passes one adapter for each `batch()` call that returns
  * the pre-resolved identity and joins the batch flush round.
  */
-export type GateSource<TIdentity extends Identity> = Pick<
+export type FlagSource<TIdentity extends Identity> = Pick<
   ResolvedConfig<TIdentity>,
   "resolveIdentity" | "decide"
 >
@@ -46,7 +46,7 @@ export type EvaluationDeadline = { timeoutMs: number | undefined } | { signal: A
 
 function createHookContext<TIdentity extends Identity>(
   evaluation: Evaluation<TIdentity>,
-  config: GateConfiguration
+  config: FlagConfiguration
 ): HookContext<TIdentity> {
   const { defaultValue } = evaluation
 
@@ -89,18 +89,18 @@ function createHookContext<TIdentity extends Identity>(
   }
 }
 
-export async function executeGateDetails<
+export async function executeFlagDetails<
   TIdentity extends Identity,
   T extends string[] = string[],
   TPayload = unknown,
 >(
   config: ResolvedConfig<TIdentity>,
-  options: GateOptions<T>,
-  callOptions: GateCallOptions<TIdentity | null> | undefined,
-  source: GateSource<TIdentity>,
+  options: FlagOptions<T>,
+  callOptions: FlagCallOptions<TIdentity | null> | undefined,
+  source: FlagSource<TIdentity>,
   deadline: EvaluationDeadline
 ): Promise<EvaluationDetails<boolean | T[number], TPayload>> {
-  const gateConfiguration = getGateConfiguration(options.variants)
+  const flagConfiguration = getFlagConfiguration(options.variants)
   const { cleanup, signal } =
     "signal" in deadline
       ? createEvaluationSignal(deadline.signal)
@@ -109,12 +109,12 @@ export async function executeGateDetails<
     defaultValue: options.defaultValue,
     identity: null,
     key: options.key,
-    kind: gateConfiguration.kind,
+    kind: flagConfiguration.kind,
     signal,
     source: "default",
-    variants: gateConfiguration.kind === "variant" ? gateConfiguration.variants : undefined,
+    variants: flagConfiguration.kind === "variant" ? flagConfiguration.variants : undefined,
   }
-  const hookContext = createHookContext(evaluation, gateConfiguration)
+  const hookContext = createHookContext(evaluation, flagConfiguration)
   const hookRunner = createHookRunner(config.hooks, hookContext, config.onHookError)
   let result: boolean | T[number] | undefined
   let failure: Error | undefined
@@ -145,15 +145,15 @@ export async function executeGateDetails<
     hookRunner.dispatchAfterThenFinally(decision, afterMeta)
     finallyDispatched = true
   } catch (error) {
-    const gateError = normalizeError(error)
-    failure = gateError
+    const flagError = normalizeError(error)
+    failure = flagError
     evaluation.source = "default"
 
     if (signal.aborted) {
-      hookRunner.dispatchError(gateError)
+      hookRunner.dispatchError(flagError)
     } else {
       try {
-        await raceWithSignal(() => hookRunner.error(gateError), signal)
+        await raceWithSignal(() => hookRunner.error(flagError), signal)
       } catch {
         // The deadline passed while the error hooks ran. They finish without blocking the result.
       }
@@ -189,13 +189,13 @@ export async function executeGateDetails<
   return { ...detailsBase, source: evaluation.source }
 }
 
-export async function executeGate<TIdentity extends Identity, T extends string[] = string[]>(
+export async function executeFlag<TIdentity extends Identity, T extends string[] = string[]>(
   config: ResolvedConfig<TIdentity>,
-  options: GateOptions<T>,
-  callOptions: GateCallOptions<TIdentity | null> | undefined,
-  source: GateSource<TIdentity>,
+  options: FlagOptions<T>,
+  callOptions: FlagCallOptions<TIdentity | null> | undefined,
+  source: FlagSource<TIdentity>,
   deadline: EvaluationDeadline
 ): Promise<boolean | T[number]> {
-  const details = await executeGateDetails(config, options, callOptions, source, deadline)
+  const details = await executeFlagDetails(config, options, callOptions, source, deadline)
   return details.value
 }

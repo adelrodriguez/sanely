@@ -1,17 +1,17 @@
 import { describe, expect, test, vi } from "vitest"
-import type { GateChange } from "#lib/types/index.ts"
+import type { FlagChange } from "#lib/types/index.ts"
 import { createChangeBroadcaster } from "#lib/config/change-broadcaster.ts"
 
 function createProvider() {
-  let notify: ((change: GateChange) => void) | undefined
+  let notify: ((change: FlagChange) => void) | undefined
   const detach = vi.fn(() => null)
-  const subscribe = vi.fn((listener: (change: GateChange) => void) => {
+  const subscribe = vi.fn((listener: (change: FlagChange) => void) => {
     notify = listener
     return detach
   })
   return {
     detach,
-    notify(change: GateChange) {
+    notify(change: FlagChange) {
       notify?.(change)
     },
     subscribe,
@@ -96,7 +96,7 @@ describe("createChangeBroadcaster", () => {
   test("stays detached when subscribe throws and lets the next listener retry", () => {
     const detach = vi.fn(() => null)
     const subscribe = vi
-      .fn<(notify: (change: GateChange) => void) => () => void>()
+      .fn<(notify: (change: FlagChange) => void) => () => void>()
       .mockImplementationOnce(() => {
         throw new Error("subscribe failed")
       })

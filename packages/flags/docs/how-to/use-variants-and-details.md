@@ -1,13 +1,13 @@
-# How to use variant gates and evaluation details
+# How to use variant flags and evaluation details
 
-This guide shows you how to evaluate a gate that returns one of several string values, and how to read why a gate returned its value.
+This guide shows you how to evaluate a flag that returns one of several string values, and how to read why a flag returned its value.
 
-## Create a variant gate
+## Create a variant flag
 
-Give the gate a list of `variants`, and a `defaultValue` from that list:
+Give the flag a list of `variants`, and a `defaultValue` from that list:
 
 ```typescript
-const theme = gate({
+const theme = flag({
   key: "theme",
   defaultValue: "light",
   variants: ["light", "dark", "system"],
@@ -16,9 +16,9 @@ const theme = gate({
 const selectedTheme = await theme() // "light" | "dark" | "system"
 ```
 
-TypeScript checks that the default is in `variants`. At run time, a default that is not in `variants` throws a `RangeError` when you create the gate.
+TypeScript checks that the default is in `variants`. At run time, a default that is not in `variants` throws a `RangeError` when you create the flag.
 
-In `decide`, return a variant decision for this gate:
+In `decide`, return a variant decision for this flag:
 
 ```typescript
 import { decision } from "@sanely/flags"
@@ -46,14 +46,14 @@ if (result.source === "default") {
 
 ## Type the variant payload
 
-A variant decision can carry a payload. To type it, give the payload type when you create the gate:
+A variant decision can carry a payload. To type it, give the payload type when you create the flag:
 
 ```typescript
 type ThemePayload = {
   experiment: string
 }
 
-const theme = gate<ThemePayload>({
+const theme = flag<ThemePayload>({
   key: "theme",
   defaultValue: "light",
   variants: ["light", "dark"],
@@ -65,6 +65,6 @@ result.payload?.experiment // string | undefined
 
 The package does not validate the payload at run time. Without a payload type, the payload type is `unknown`.
 
-When you give the payload type, TypeScript does not infer the variants, so the value type of the gate is `string`, not `"light" | "dark"`.
+When you give the payload type, TypeScript does not infer the variants, so the value type of the flag is `string`, not `"light" | "dark"`.
 
 Refer to the [`EvaluationDetails` reference](../reference.md#evaluationdetails) for every field.

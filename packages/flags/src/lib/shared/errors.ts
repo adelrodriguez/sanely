@@ -1,20 +1,20 @@
 import type { Decision } from "#lib/types/index.ts"
 
-export class GatedError extends Error {
+export class FlagError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
-    this.name = "GatedError"
+    this.name = "FlagError"
   }
 }
 
-export class IdentityNotFoundError extends GatedError {
+export class IdentityNotFoundError extends FlagError {
   constructor() {
     super("Identity not found")
     this.name = "IdentityNotFoundError"
   }
 }
 
-export class DecisionTypeMismatchError extends GatedError {
+export class DecisionTypeMismatchError extends FlagError {
   readonly decision: Decision
   readonly expected: "boolean" | "variant"
   readonly received: "boolean" | "variant"
@@ -39,7 +39,7 @@ export class DecisionTypeMismatchError extends GatedError {
   }
 }
 
-export class MalformedDecisionError extends GatedError {
+export class MalformedDecisionError extends FlagError {
   readonly decision: unknown
   readonly reason: string
 
@@ -51,7 +51,7 @@ export class MalformedDecisionError extends GatedError {
   }
 }
 
-export class InvalidVariantError extends GatedError {
+export class InvalidVariantError extends FlagError {
   readonly allowedVariants: readonly string[]
   readonly variant: string
 
@@ -63,17 +63,17 @@ export class InvalidVariantError extends GatedError {
   }
 }
 
-export class GateTimeoutError extends GatedError {
+export class FlagTimeoutError extends FlagError {
   readonly timeoutMs: number
 
   constructor(timeoutMs: number) {
-    super(`Gate evaluation timed out after ${timeoutMs}ms`)
-    this.name = "GateTimeoutError"
+    super(`Flag evaluation timed out after ${timeoutMs}ms`)
+    this.name = "FlagTimeoutError"
     this.timeoutMs = timeoutMs
   }
 }
 
-export class DuplicateBatchKeyError extends GatedError {
+export class DuplicateBatchKeyError extends FlagError {
   readonly key: string
 
   constructor(key: string) {
@@ -83,14 +83,14 @@ export class DuplicateBatchKeyError extends GatedError {
   }
 }
 
-export class ForeignGateEvaluatorError extends GatedError {
+export class ForeignFlagEvaluatorError extends FlagError {
   constructor() {
-    super("Batch flags must be created by this gate factory")
-    this.name = "ForeignGateEvaluatorError"
+    super("Batch flags must be created by this flag factory")
+    this.name = "ForeignFlagEvaluatorError"
   }
 }
 
-export class BatchFlagNotFoundError extends GatedError {
+export class BatchFlagNotFoundError extends FlagError {
   constructor() {
     super("Flag is not part of this batch")
     this.name = "BatchFlagNotFoundError"

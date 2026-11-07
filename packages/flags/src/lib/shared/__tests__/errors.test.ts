@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest"
 import {
   DecisionTypeMismatchError,
   DuplicateBatchKeyError,
-  ForeignGateEvaluatorError,
-  GatedError,
+  ForeignFlagEvaluatorError,
+  FlagError,
   IdentityNotFoundError,
   InvalidVariantError,
   MalformedDecisionError,
@@ -14,7 +14,7 @@ describe("contextual errors", () => {
   test("names missing identity failures", () => {
     const error = new IdentityNotFoundError()
 
-    expect(error).toBeInstanceOf(GatedError)
+    expect(error).toBeInstanceOf(FlagError)
     expect(error.name).toBe("IdentityNotFoundError")
     expect(error.message).toBe("Identity not found")
   })
@@ -41,7 +41,7 @@ describe("contextual errors", () => {
     const decision = { value: "true" }
     const error = new MalformedDecisionError(decision, 'type must be "boolean" or "variant"')
 
-    expect(error).toBeInstanceOf(GatedError)
+    expect(error).toBeInstanceOf(FlagError)
     expect(error).toMatchObject({
       decision,
       name: "MalformedDecisionError",
@@ -52,15 +52,15 @@ describe("contextual errors", () => {
   test("describes batch misuse with discriminable errors", () => {
     const duplicate = new DuplicateBatchKeyError("theme")
 
-    expect(duplicate).toBeInstanceOf(GatedError)
+    expect(duplicate).toBeInstanceOf(FlagError)
     expect(duplicate).toMatchObject({
       key: "theme",
       message: "Batch requires unique flag keys; duplicate: theme",
       name: "DuplicateBatchKeyError",
     })
-    expect(new ForeignGateEvaluatorError()).toMatchObject({
-      message: "Batch flags must be created by this gate factory",
-      name: "ForeignGateEvaluatorError",
+    expect(new ForeignFlagEvaluatorError()).toMatchObject({
+      message: "Batch flags must be created by this flag factory",
+      name: "ForeignFlagEvaluatorError",
     })
     expect(new BatchFlagNotFoundError()).toMatchObject({
       message: "Flag is not part of this batch",

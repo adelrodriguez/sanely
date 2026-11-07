@@ -1,29 +1,29 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type {
-  AnyGatedConfig,
+  AnyFlagFactoryConfig,
   Decision,
-  GateCallOptions,
-  GateOptions,
+  FlagCallOptions,
+  FlagOptions,
   Hook,
   Identity,
 } from "#lib/types/index.ts"
 import { resolveConfig } from "#lib/config/resolved-config.ts"
 import {
-  type GateSource,
-  executeGate as executeResolvedGate,
-  executeGateDetails,
+  type FlagSource,
+  executeFlag as executeResolvedFlag,
+  executeFlagDetails,
 } from "#lib/evaluation/engine.ts"
-import { extractDecisionValue, validateDecision } from "#lib/gate/decision.ts"
-import { GateTimeoutError, MalformedDecisionError } from "#lib/shared/errors.ts"
+import { extractDecisionValue, validateDecision } from "#lib/flag/decision.ts"
+import { FlagTimeoutError, MalformedDecisionError } from "#lib/shared/errors.ts"
 
-function executeGate<TIdentity extends Identity, T extends string[] = string[]>(
-  config: AnyGatedConfig<TIdentity>,
-  options: GateOptions<T>,
-  callOptions?: GateCallOptions<TIdentity | null>
+function executeFlag<TIdentity extends Identity, T extends string[] = string[]>(
+  config: AnyFlagFactoryConfig<TIdentity>,
+  options: FlagOptions<T>,
+  callOptions?: FlagCallOptions<TIdentity | null>
 ): Promise<boolean | T[number]> {
   const resolved = resolveConfig(config)
-  return executeResolvedGate(resolved, options, callOptions, resolved, {
+  return executeResolvedFlag(resolved, options, callOptions, resolved, {
     timeoutMs: options.timeoutMs ?? resolved.timeoutMs,
   })
 }
@@ -69,7 +69,7 @@ describe("extractDecisionValue", () => {
 })
 
 describe("validateDecision", () => {
-  test("accepts a boolean decision for a boolean gate", () => {
+  test("accepts a boolean decision for a boolean flag", () => {
     expect(() => {
       validateDecision(
         { type: "boolean", value: true },
@@ -78,7 +78,7 @@ describe("validateDecision", () => {
     }).not.toThrow()
   })
 
-  test("accepts an allowed variant for a variant gate", () => {
+  test("accepts an allowed variant for a variant flag", () => {
     expect(() => {
       validateDecision(
         { type: "variant", variant: "dark" },
@@ -87,7 +87,7 @@ describe("validateDecision", () => {
     }).not.toThrow()
   })
 
-  test("rejects a variant decision for a boolean gate", () => {
+  test("rejects a variant decision for a boolean flag", () => {
     expect(() => {
       validateDecision(
         { type: "variant", variant: "dark" },
@@ -96,7 +96,7 @@ describe("validateDecision", () => {
     }).toThrow('Type mismatch: expected boolean decision but received variant "dark"')
   })
 
-  test("rejects a boolean decision for a variant gate", () => {
+  test("rejects a boolean decision for a variant flag", () => {
     expect(() => {
       validateDecision(
         { type: "boolean", value: true },
@@ -159,8 +159,8 @@ describe("validateDecision", () => {
   })
 })
 
-describe("executeGate", () => {
-  test("executes boolean gate successfully", async () => {
+describe("executeFlag", () => {
+  test("executes boolean flag successfully", async () => {
     const identity: Identity = { distinctId: "user123" }
     const decision: Decision = { type: "boolean", value: true }
 
@@ -175,14 +175,14 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe(true)
     expect(config.identify).toHaveBeenCalled()
     expect(config.decide).toHaveBeenCalledWith("test-flag", identity, expect.any(Object))
   })
 
-  test("executes variant gate successfully", async () => {
+  test("executes variant flag successfully", async () => {
     const identity: Identity = { distinctId: "user123" }
     const decision: Decision = { type: "variant", variant: "dark" }
 
@@ -198,7 +198,7 @@ describe("executeGate", () => {
       variants: ["light", "dark", "system"],
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe("dark")
   })
@@ -218,7 +218,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options, { identity: overrideIdentity })
+    const result = await executeFlag(config, options, { identity: overrideIdentity })
 
     expect(result).toBe(true)
     expect(config.identify).not.toHaveBeenCalled()
@@ -236,7 +236,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe(false)
   })
@@ -268,7 +268,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    await executeGate(config, options)
+    await executeFlag(config, options)
     await sleep(0)
 
     expect(beforeFn).toHaveBeenCalled()
@@ -294,7 +294,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe(true)
     expect(config.decide).not.toHaveBeenCalled()
@@ -319,7 +319,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe(false)
     expect(errorFn).toHaveBeenCalledWith(
@@ -351,12 +351,12 @@ describe("executeGate", () => {
       variants: ["light", "dark"],
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe("light") // Returns default on error
   })
 
-  test("rejects a non-boolean default for a boolean gate at runtime", async () => {
+  test("rejects a non-boolean default for a boolean flag at runtime", async () => {
     const config = {
       decide: () => ({ type: "boolean", value: true }) as const,
       identify: () => ({ distinctId: "user123" }),
@@ -367,12 +367,12 @@ describe("executeGate", () => {
     }
 
     await expectRejection(
-      executeGate(config, options),
+      executeFlag(config, options),
       "A boolean evaluation requires a boolean default value"
     )
   })
 
-  test("rejects a non-string default for a variant gate at runtime", async () => {
+  test("rejects a non-string default for a variant flag at runtime", async () => {
     const config = {
       decide: () => ({ type: "variant", variant: "dark" }) as const,
       identify: () => ({ distinctId: "user123" }),
@@ -388,7 +388,7 @@ describe("executeGate", () => {
     }
 
     await expectRejection(
-      executeGate(config, options),
+      executeFlag(config, options),
       "A variant evaluation requires a string default value"
     )
   })
@@ -407,7 +407,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    const result = await executeGate(config, options)
+    const result = await executeFlag(config, options)
 
     expect(result).toBe(true)
   })
@@ -428,7 +428,7 @@ describe("executeGate", () => {
       key: "test-flag",
     }
 
-    await executeGate(config, options)
+    await executeFlag(config, options)
 
     expect(errorFn).toHaveBeenCalledWith(
       {
@@ -444,16 +444,16 @@ describe("executeGate", () => {
   })
 })
 
-describe("executeGateDetails with a gate source", () => {
+describe("executeFlagDetails with a flag source", () => {
   const identity = { distinctId: "user123" }
   const options = { defaultValue: false, key: "beta-access" }
 
   function createSource() {
     return {
-      decide: vi.fn<GateSource<Identity>["decide"]>(() =>
+      decide: vi.fn<FlagSource<Identity>["decide"]>(() =>
         Promise.resolve({ type: "boolean", value: true })
       ),
-      resolveIdentity: vi.fn<GateSource<Identity>["resolveIdentity"]>(() =>
+      resolveIdentity: vi.fn<FlagSource<Identity>["resolveIdentity"]>(() =>
         Promise.resolve(identity)
       ),
     }
@@ -476,9 +476,9 @@ describe("executeGateDetails with a gate source", () => {
     const source = createSource()
     const deadline = { timeoutMs: undefined }
 
-    const first = await executeGateDetails(config, options, undefined, source, deadline)
+    const first = await executeFlagDetails(config, options, undefined, source, deadline)
     await sleep(0)
-    const second = await executeGateDetails(config, options, undefined, source, deadline)
+    const second = await executeFlagDetails(config, options, undefined, source, deadline)
 
     expect(first).toMatchObject({ source: "provider", value: true })
     expect(second).toMatchObject({ source: "cache", value: true })
@@ -499,15 +499,15 @@ describe("executeGateDetails with a gate source", () => {
     source.decide.mockImplementation(() => Promise.withResolvers<Decision>().promise)
     const controller = new AbortController()
 
-    const evaluation = executeGateDetails(config, options, undefined, source, {
+    const evaluation = executeFlagDetails(config, options, undefined, source, {
       signal: controller.signal,
     })
-    controller.abort(new GateTimeoutError(5))
+    controller.abort(new FlagTimeoutError(5))
     const details = await evaluation
 
     expect(details.source).toBe("default")
     expect(details.value).toBe(false)
-    expect(details.error).toBeInstanceOf(GateTimeoutError)
+    expect(details.error).toBeInstanceOf(FlagTimeoutError)
   })
 
   test("adds no timeout of its own when the deadline is a signal", async () => {
@@ -522,7 +522,7 @@ describe("executeGateDetails with a gate source", () => {
       return { type: "boolean", value: true }
     })
 
-    const details = await executeGateDetails(
+    const details = await executeFlagDetails(
       config,
       { ...options, timeoutMs: 1 },
       undefined,

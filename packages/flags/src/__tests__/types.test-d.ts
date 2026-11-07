@@ -1,41 +1,41 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
 import { expectTypeOf } from "vitest"
 import type {
-  AnonymousGatedConfig,
-  CallerIdentityGatedConfig,
+  AnonymousFlagFactoryConfig,
+  CallerIdentityFlagFactoryConfig,
   Decision,
   DecisionSource,
   EvaluationDetails,
-  GateBatch,
-  GateCallOptions,
-  GatedConfig,
-  GateEvaluator,
-  GateFactory,
+  FlagBatch,
+  FlagCallOptions,
+  FlagFactoryConfig,
+  FlagEvaluator,
+  FlagFactory,
   Hook,
   HookContext,
   Identity,
-  GatedError,
+  FlagError,
   InvalidVariantError,
 } from "#index.ts"
 import type {
-  GateBatchIdentityOf,
-  GateBatchValuesOf,
-  GateDetailsOf,
-  GateHooks,
-  GateIdentityOf,
-  GateValueOf,
-  ReactGateCache,
+  FlagBatchIdentityOf,
+  FlagBatchValuesOf,
+  FlagDetailsOf,
+  FlagHooks,
+  FlagIdentityOf,
+  FlagValueOf,
+  ReactFlagCache,
 } from "#integrations/react.tsx"
 import { defineHook as defineHookFromHooks } from "#hooks/index.ts"
-import { buildGate, decision, defineHook } from "#index.ts"
+import { createFlags, decision, defineHook } from "#index.ts"
 import {
-  createGateCache,
-  createGateHooks,
-  FeatureGate,
-  GateProvider,
-  useGate,
-  useGateBatch,
-  useGateCache,
+  createFlagCache,
+  createFlagHooks,
+  FeatureFlag,
+  FlagProvider,
+  useFlag,
+  useFlagBatch,
+  useFlagCache,
 } from "#integrations/react.tsx"
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
@@ -50,73 +50,73 @@ interface OrganizationIdentity extends Identity {
 type Theme = "light" | "dark"
 type ThemePayload = { experiment: string }
 
-const factory = buildGate<ConsumerIdentity>({
+const factory = createFlags<ConsumerIdentity>({
   decide: () => decision.boolean(true),
   identify: () => ({ distinctId: "consumer", plan: "pro" }),
 })
-const anonymousFactory = buildGate<ConsumerIdentity>({
+const anonymousFactory = createFlags<ConsumerIdentity>({
   anonymous: "allow",
   decide: () => decision.boolean(true),
   identify: () => null,
 })
-const callerFactory = buildGate<ConsumerIdentity>({
+const callerFactory = createFlags<ConsumerIdentity>({
   decide: () => decision.boolean(true),
 })
 
-const booleanGate = factory({ defaultValue: false, key: "beta" })
-const variantGate = factory<ThemePayload, ["light", "dark"]>({
+const booleanFlag = factory({ defaultValue: false, key: "beta" })
+const variantFlag = factory<ThemePayload, ["light", "dark"]>({
   defaultValue: "light",
   key: "theme",
   variants: ["light", "dark"],
 })
-const organizationFactory = buildGate<OrganizationIdentity>({
+const organizationFactory = createFlags<OrganizationIdentity>({
   decide: () => decision.boolean(true),
   identify: () => ({ distinctId: "consumer", organizationId: "org" }),
 })
-const organizationGate = organizationFactory({ defaultValue: false, key: "beta" })
-const wideFactory = buildGate<Identity>({
+const organizationFlag = organizationFactory({ defaultValue: false, key: "beta" })
+const wideFactory = createFlags<Identity>({
   decide: () => decision.boolean(true),
   identify: () => ({ distinctId: "consumer" }),
 })
-const wideGate = wideFactory({ defaultValue: false, key: "beta" })
-const anonymousGate = anonymousFactory({ defaultValue: false, key: "beta" })
-const callerGate = callerFactory({ defaultValue: false, key: "beta" })
+const wideFlag = wideFactory({ defaultValue: false, key: "beta" })
+const anonymousFlag = anonymousFactory({ defaultValue: false, key: "beta" })
+const callerFlag = callerFactory({ defaultValue: false, key: "beta" })
 
-type Flags = readonly [typeof booleanGate, typeof variantGate]
+type Flags = readonly [typeof booleanFlag, typeof variantFlag]
 
-const consumerHooks = createGateHooks(factory)
+const consumerHooks = createFlagHooks(factory)
 
 // ── Positive type-level tests ────────────────────────────────────────────────
 // Returns a factory that resolves the configured identity for each call.
 {
-  expectTypeOf(factory).toEqualTypeOf<GateFactory<ConsumerIdentity>>()
+  expectTypeOf(factory).toEqualTypeOf<FlagFactory<ConsumerIdentity>>()
 }
 
 // Lets an anonymous factory accept a null caller identity.
 {
   expectTypeOf(anonymousFactory).toEqualTypeOf<
-    GateFactory<ConsumerIdentity, ConsumerIdentity | null>
+    FlagFactory<ConsumerIdentity, ConsumerIdentity | null>
   >()
 }
 
 // Requires caller identity when the config has no identify function.
 {
-  expectTypeOf(callerFactory).toEqualTypeOf<GateFactory<ConsumerIdentity, ConsumerIdentity, true>>()
+  expectTypeOf(callerFactory).toEqualTypeOf<FlagFactory<ConsumerIdentity, ConsumerIdentity, true>>()
 }
 
 // Infers the identity type from identify when no type argument is given.
 {
-  const inferred = buildGate({
+  const inferred = createFlags({
     decide: () => decision.boolean(true),
     identify: () => ({ distinctId: 1, team: "core" }),
   })
 
-  expectTypeOf(inferred).toEqualTypeOf<GateFactory<{ distinctId: number; team: string }>>()
+  expectTypeOf(inferred).toEqualTypeOf<FlagFactory<{ distinctId: number; team: string }>>()
 }
 
 // Types the identity passed to decide, decideMany, hooks, and error callbacks.
 {
-  buildGate<ConsumerIdentity>({
+  createFlags<ConsumerIdentity>({
     decide: (key, identity) => {
       expectTypeOf(key).toEqualTypeOf<string>()
       expectTypeOf(identity).toEqualTypeOf<ConsumerIdentity>()
@@ -143,7 +143,7 @@ const consumerHooks = createGateHooks(factory)
     },
   })
 
-  buildGate<ConsumerIdentity>({
+  createFlags<ConsumerIdentity>({
     anonymous: "allow",
     decide: (_key, identity) => {
       expectTypeOf(identity).toEqualTypeOf<ConsumerIdentity | null>()
@@ -153,72 +153,76 @@ const consumerHooks = createGateHooks(factory)
   })
 }
 
-// Exports the three config shapes that buildGate accepts.
+// Exports the three config shapes that createFlags accepts.
 {
-  expectTypeOf<AnonymousGatedConfig<ConsumerIdentity>["anonymous"]>().toEqualTypeOf<"allow">()
-  expectTypeOf<GatedConfig<ConsumerIdentity>["anonymous"]>().toEqualTypeOf<"reject" | undefined>()
-  expectTypeOf<CallerIdentityGatedConfig<ConsumerIdentity>["identify"]>().toEqualTypeOf<undefined>()
+  expectTypeOf<AnonymousFlagFactoryConfig<ConsumerIdentity>["anonymous"]>().toEqualTypeOf<"allow">()
+  expectTypeOf<FlagFactoryConfig<ConsumerIdentity>["anonymous"]>().toEqualTypeOf<
+    "reject" | undefined
+  >()
+  expectTypeOf<
+    CallerIdentityFlagFactoryConfig<ConsumerIdentity>["identify"]
+  >().toEqualTypeOf<undefined>()
 }
 
-// Types boolean gates as boolean evaluators.
+// Types boolean flags as boolean evaluators.
 {
-  expectTypeOf(booleanGate).toEqualTypeOf<
-    GateEvaluator<ConsumerIdentity, boolean, ConsumerIdentity>
+  expectTypeOf(booleanFlag).toEqualTypeOf<
+    FlagEvaluator<ConsumerIdentity, boolean, ConsumerIdentity>
   >()
-  expectTypeOf(booleanGate).returns.resolves.toEqualTypeOf<boolean>()
-  expectTypeOf(booleanGate).parameters.toEqualTypeOf<
-    [options?: GateCallOptions<ConsumerIdentity>]
+  expectTypeOf(booleanFlag).returns.resolves.toEqualTypeOf<boolean>()
+  expectTypeOf(booleanFlag).parameters.toEqualTypeOf<
+    [options?: FlagCallOptions<ConsumerIdentity>]
   >()
 }
 
-// Keeps the identity marker out of the string keys of a gate.
+// Keeps the identity marker out of the string keys of a flag.
 {
-  expectTypeOf<Extract<keyof typeof booleanGate, string>>().toEqualTypeOf<"details">()
+  expectTypeOf<Extract<keyof typeof booleanFlag, string>>().toEqualTypeOf<"details">()
 }
 
-// Types variant gates with the variant union and payload type.
+// Types variant flags with the variant union and payload type.
 {
-  expectTypeOf(variantGate).toEqualTypeOf<
-    GateEvaluator<ConsumerIdentity, Theme, ConsumerIdentity, ThemePayload>
+  expectTypeOf(variantFlag).toEqualTypeOf<
+    FlagEvaluator<ConsumerIdentity, Theme, ConsumerIdentity, ThemePayload>
   >()
-  expectTypeOf(variantGate).returns.resolves.toEqualTypeOf<Theme>()
+  expectTypeOf(variantFlag).returns.resolves.toEqualTypeOf<Theme>()
 }
 
 // Infers the variant union from a variants literal without type arguments.
 {
-  const gate = factory({
+  const flag = factory({
     defaultValue: "light",
     key: "theme",
     variants: ["light", "dark", "system"],
   })
 
-  expectTypeOf<GateValueOf<typeof gate>>().toEqualTypeOf<"light" | "dark" | "system">()
-  expectTypeOf<GateDetailsOf<typeof gate>>().toEqualTypeOf<
+  expectTypeOf<FlagValueOf<typeof flag>>().toEqualTypeOf<"light" | "dark" | "system">()
+  expectTypeOf<FlagDetailsOf<typeof flag>>().toEqualTypeOf<
     EvaluationDetails<"light" | "dark" | "system">
   >()
 }
 
-// Accepts a null identity only on anonymous factory gates.
+// Accepts a null identity only on anonymous factory flags.
 {
-  expectTypeOf(anonymousGate).parameters.toEqualTypeOf<
-    [options?: GateCallOptions<ConsumerIdentity | null>]
+  expectTypeOf(anonymousFlag).parameters.toEqualTypeOf<
+    [options?: FlagCallOptions<ConsumerIdentity | null>]
   >()
 
-  void anonymousGate({ identity: null })
+  void anonymousFlag({ identity: null })
 }
 
 // Requires an identity on every call from a caller-identity factory.
 {
-  expectTypeOf(callerGate).parameter(0).toHaveProperty("identity").toEqualTypeOf<ConsumerIdentity>()
+  expectTypeOf(callerFlag).parameter(0).toHaveProperty("identity").toEqualTypeOf<ConsumerIdentity>()
 
-  void callerGate({ identity: { distinctId: "consumer", plan: "free" } })
-  void callerFactory.batch([callerGate], { identity: { distinctId: "consumer", plan: "free" } })
+  void callerFlag({ identity: { distinctId: "consumer", plan: "free" } })
+  void callerFactory.batch([callerFlag], { identity: { distinctId: "consumer", plan: "free" } })
 }
 
-// Types evaluation details for boolean and variant gates.
+// Types evaluation details for boolean and variant flags.
 {
-  expectTypeOf(booleanGate.details).returns.resolves.toEqualTypeOf<EvaluationDetails<boolean>>()
-  expectTypeOf<GateDetailsOf<typeof variantGate>>().toEqualTypeOf<
+  expectTypeOf(booleanFlag.details).returns.resolves.toEqualTypeOf<EvaluationDetails<boolean>>()
+  expectTypeOf<FlagDetailsOf<typeof variantFlag>>().toEqualTypeOf<
     EvaluationDetails<Theme, ThemePayload>
   >()
 }
@@ -243,41 +247,41 @@ function _narrowDetails(details: EvaluationDetails<Theme>): void {
   }
 }
 
-// Extracts gate value, identity, and details types for React consumers.
+// Extracts flag value, identity, and details types for React consumers.
 {
-  expectTypeOf<GateValueOf<typeof booleanGate>>().toEqualTypeOf<boolean>()
-  expectTypeOf<GateValueOf<typeof variantGate>>().toEqualTypeOf<Theme>()
-  expectTypeOf<GateIdentityOf<typeof booleanGate>>().toEqualTypeOf<ConsumerIdentity>()
-  expectTypeOf<GateIdentityOf<typeof anonymousGate>>().toEqualTypeOf<ConsumerIdentity>()
-  expectTypeOf<GateIdentityOf<typeof callerGate>>().toEqualTypeOf<ConsumerIdentity>()
-  expectTypeOf<GateIdentityOf<typeof wideGate>>().toEqualTypeOf<Identity>()
-  expectTypeOf<GateDetailsOf<typeof variantGate>>().toEqualTypeOf<
+  expectTypeOf<FlagValueOf<typeof booleanFlag>>().toEqualTypeOf<boolean>()
+  expectTypeOf<FlagValueOf<typeof variantFlag>>().toEqualTypeOf<Theme>()
+  expectTypeOf<FlagIdentityOf<typeof booleanFlag>>().toEqualTypeOf<ConsumerIdentity>()
+  expectTypeOf<FlagIdentityOf<typeof anonymousFlag>>().toEqualTypeOf<ConsumerIdentity>()
+  expectTypeOf<FlagIdentityOf<typeof callerFlag>>().toEqualTypeOf<ConsumerIdentity>()
+  expectTypeOf<FlagIdentityOf<typeof wideFlag>>().toEqualTypeOf<Identity>()
+  expectTypeOf<FlagDetailsOf<typeof variantFlag>>().toEqualTypeOf<
     EvaluationDetails<Theme, ThemePayload>
   >()
-  expectTypeOf<GateBatchValuesOf<Flags>>().toEqualTypeOf<Readonly<[boolean, Theme]>>()
-  expectTypeOf<GateBatchIdentityOf<Flags>>().toEqualTypeOf<ConsumerIdentity>()
+  expectTypeOf<FlagBatchValuesOf<Flags>>().toEqualTypeOf<Readonly<[boolean, Theme]>>()
+  expectTypeOf<FlagBatchIdentityOf<Flags>>().toEqualTypeOf<ConsumerIdentity>()
 }
 
-// Types a React batch identity as the intersection of the gate identity types.
+// Types a React batch identity as the intersection of the flag identity types.
 {
   expectTypeOf<
-    GateBatchIdentityOf<readonly [typeof booleanGate, typeof organizationGate]>
+    FlagBatchIdentityOf<readonly [typeof booleanFlag, typeof organizationFlag]>
   >().toEqualTypeOf<ConsumerIdentity & OrganizationIdentity>()
   expectTypeOf<
-    GateBatchIdentityOf<readonly [typeof organizationGate]>
+    FlagBatchIdentityOf<readonly [typeof organizationFlag]>
   >().toEqualTypeOf<OrganizationIdentity>()
   expectTypeOf<
-    GateBatchIdentityOf<readonly [typeof booleanGate, typeof anonymousGate]>
+    FlagBatchIdentityOf<readonly [typeof booleanFlag, typeof anonymousFlag]>
   >().toEqualTypeOf<ConsumerIdentity>()
   expectTypeOf<
-    GateBatchIdentityOf<Array<typeof booleanGate | typeof organizationGate>>
+    FlagBatchIdentityOf<Array<typeof booleanFlag | typeof organizationFlag>>
   >().toEqualTypeOf<ConsumerIdentity & OrganizationIdentity>()
-  expectTypeOf<GateBatchIdentityOf<readonly []>>().toEqualTypeOf<Identity>()
+  expectTypeOf<FlagBatchIdentityOf<readonly []>>().toEqualTypeOf<Identity>()
 }
 
-// Accepts a React batch identity that satisfies every gate identity type.
+// Accepts a React batch identity that satisfies every flag identity type.
 function MixedIdentityConsumer(): null {
-  const batch = useGateBatch([booleanGate, organizationGate], {
+  const batch = useFlagBatch([booleanFlag, organizationFlag], {
     identity: { distinctId: "consumer", organizationId: "org", plan: "pro" },
   })
 
@@ -288,15 +292,15 @@ function MixedIdentityConsumer(): null {
 
 // Types batch results as a readonly tuple with typed get and details lookups.
 async function _batch(): Promise<void> {
-  const batch = await factory.batch([booleanGate, variantGate])
+  const batch = await factory.batch([booleanFlag, variantFlag])
 
-  expectTypeOf(batch).toEqualTypeOf<GateBatch<Flags>>()
+  expectTypeOf(batch).toEqualTypeOf<FlagBatch<Flags>>()
   expectTypeOf(batch[0]).toEqualTypeOf<boolean>()
   expectTypeOf(batch[1]).toEqualTypeOf<Theme>()
   expectTypeOf(batch.length).toEqualTypeOf<2>()
 
-  const value = batch.get(variantGate)
-  const details = batch.details(variantGate)
+  const value = batch.get(variantFlag)
+  const details = batch.details(variantFlag)
 
   expectTypeOf(value).toEqualTypeOf<Theme>()
   expectTypeOf(details).toEqualTypeOf<EvaluationDetails<Theme, ThemePayload>>()
@@ -322,7 +326,7 @@ async function _batch(): Promise<void> {
   expectTypeOf(variantDecision).toExtend<Decision<ThemePayload>>()
 }
 
-// Types hook contexts by gate kind.
+// Types hook contexts by flag kind.
 function _narrowHookContext(context: HookContext<ConsumerIdentity>): void {
   if (context.kind === "variant") {
     expectTypeOf(context.defaultValue).toEqualTypeOf<string>()
@@ -359,85 +363,85 @@ function _narrowHookContext(context: HookContext<ConsumerIdentity>): void {
   expectTypeOf(defineHook).toEqualTypeOf(defineHookFromHooks)
 }
 
-// Exports error classes that extend GatedError.
+// Exports error classes that extend FlagError.
 {
-  expectTypeOf<InvalidVariantError>().toExtend<GatedError>()
+  expectTypeOf<InvalidVariantError>().toExtend<FlagError>()
   expectTypeOf<InvalidVariantError["allowedVariants"]>().toEqualTypeOf<readonly string[]>()
 }
 
-// Types the React hooks from the gate type.
+// Types the React hooks from the flag type.
 function Consumer(): null {
-  const value = useGate(booleanGate)
-  const details = useGate(booleanGate, { details: true })
-  const variant = useGate(variantGate, { identity: { distinctId: "consumer", plan: "pro" } })
-  const batch = useGateBatch([booleanGate, variantGate])
-  const custom = useGate(() => Promise.resolve(1), { key: ["custom", 1] })
-  const cache = useGateCache()
+  const value = useFlag(booleanFlag)
+  const details = useFlag(booleanFlag, { details: true })
+  const variant = useFlag(variantFlag, { identity: { distinctId: "consumer", plan: "pro" } })
+  const batch = useFlagBatch([booleanFlag, variantFlag])
+  const custom = useFlag(() => Promise.resolve(1), { key: ["custom", 1] })
+  const cache = useFlagCache()
 
   expectTypeOf(value).toEqualTypeOf<boolean>()
   expectTypeOf(details).toEqualTypeOf<EvaluationDetails<boolean>>()
   expectTypeOf(variant).toEqualTypeOf<Theme>()
   expectTypeOf(batch).toEqualTypeOf<Readonly<[boolean, Theme]>>()
   expectTypeOf(custom).toEqualTypeOf<number>()
-  expectTypeOf(cache).toEqualTypeOf<ReactGateCache>()
+  expectTypeOf(cache).toEqualTypeOf<ReactFlagCache>()
 
   return null
 }
 
 // Types the React cache and components.
 {
-  const cache = createGateCache({ maxEntries: 10, ttlMs: 1000 })
+  const cache = createFlagCache({ maxEntries: 10, ttlMs: 1000 })
 
-  expectTypeOf(cache).toEqualTypeOf<ReactGateCache>()
+  expectTypeOf(cache).toEqualTypeOf<ReactFlagCache>()
 
-  void cache.prefetch(variantGate, { identity: { distinctId: "consumer", plan: "pro" } })
-  void cache.prefetchBatch([booleanGate, variantGate], { ttlMs: 1000 })
-  cache.invalidate(booleanGate, { distinctId: "consumer", plan: "free" })
+  void cache.prefetch(variantFlag, { identity: { distinctId: "consumer", plan: "pro" } })
+  void cache.prefetchBatch([booleanFlag, variantFlag], { ttlMs: 1000 })
+  cache.invalidate(booleanFlag, { distinctId: "consumer", plan: "free" })
   cache.invalidateKey(["custom", 1])
 
-  void GateProvider({ cache, children: null, identity: { distinctId: "consumer" } })
-  void FeatureGate({ children: null, gate: booleanGate })
-  void FeatureGate({ children: null, gate: variantGate, match: "dark" })
+  void FlagProvider({ cache, children: null, identity: { distinctId: "consumer" } })
+  void FeatureFlag({ children: null, flag: booleanFlag })
+  void FeatureFlag({ children: null, flag: variantFlag, match: "dark" })
 }
 
-// Types the hooks from createGateHooks to the factory identity type and call mode.
+// Types the hooks from createFlagHooks to the factory identity type and call mode.
 {
-  expectTypeOf(consumerHooks).toEqualTypeOf<GateHooks<ConsumerIdentity>>()
-  expectTypeOf(createGateHooks(anonymousFactory)).toEqualTypeOf<
-    GateHooks<ConsumerIdentity, ConsumerIdentity | null>
+  expectTypeOf(consumerHooks).toEqualTypeOf<FlagHooks<ConsumerIdentity>>()
+  expectTypeOf(createFlagHooks(anonymousFactory)).toEqualTypeOf<
+    FlagHooks<ConsumerIdentity, ConsumerIdentity | null>
   >()
-  expectTypeOf(createGateHooks(callerFactory)).toEqualTypeOf<
-    GateHooks<ConsumerIdentity, ConsumerIdentity, true>
+  expectTypeOf(createFlagHooks(callerFactory)).toEqualTypeOf<
+    FlagHooks<ConsumerIdentity, ConsumerIdentity, true>
   >()
 
-  void consumerHooks.GateProvider({
+  void consumerHooks.FlagProvider({
     children: null,
     identity: { distinctId: "consumer", plan: "pro" },
   })
 }
 
-// Infers the createGateHooks identity type from the return type of identify.
+// Infers the createFlagHooks identity type from the return type of identify.
 {
   type InferredIdentity = { distinctId: string; plan: "free" | "pro" }
   const user: InferredIdentity = { distinctId: "consumer", plan: "pro" }
-  const inferred = buildGate({ decide: () => decision.boolean(true), identify: () => user })
-  const inferredAsync = buildGate({
+  const inferred = createFlags({ decide: () => decision.boolean(true), identify: () => user })
+  const inferredAsync = createFlags({
     decide: () => decision.boolean(true),
     identify: () => Promise.resolve(user),
   })
-  const inferredAnonymous = buildGate({
+  const inferredAnonymous = createFlags({
     anonymous: "allow",
     decide: () => decision.boolean(true),
     identify: (): InferredIdentity | null => null,
   })
 
-  expectTypeOf(createGateHooks(inferred)).toEqualTypeOf<GateHooks<InferredIdentity>>()
-  expectTypeOf(createGateHooks(inferredAsync)).toEqualTypeOf<GateHooks<InferredIdentity>>()
-  expectTypeOf(createGateHooks(inferredAnonymous)).toEqualTypeOf<
-    GateHooks<InferredIdentity, InferredIdentity | null>
+  expectTypeOf(createFlagHooks(inferred)).toEqualTypeOf<FlagHooks<InferredIdentity>>()
+  expectTypeOf(createFlagHooks(inferredAsync)).toEqualTypeOf<FlagHooks<InferredIdentity>>()
+  expectTypeOf(createFlagHooks(inferredAnonymous)).toEqualTypeOf<
+    FlagHooks<InferredIdentity, InferredIdentity | null>
   >()
 
-  void createGateHooks(inferred).GateProvider({
+  void createFlagHooks(inferred).FlagProvider({
     children: null,
     // @ts-expect-error -- the inferred identity requires plan
     identity: { distinctId: "consumer" },
@@ -445,9 +449,9 @@ function Consumer(): null {
 }
 
 function BoundConsumer(): null {
-  const value = consumerHooks.useGate(booleanGate)
-  const details = consumerHooks.useGate(variantGate, { details: true })
-  const batch = consumerHooks.useGateBatch([booleanGate, variantGate])
+  const value = consumerHooks.useFlag(booleanFlag)
+  const details = consumerHooks.useFlag(variantFlag, { details: true })
+  const batch = consumerHooks.useFlagBatch([booleanFlag, variantFlag])
 
   expectTypeOf(value).toEqualTypeOf<boolean>()
   expectTypeOf(details).toEqualTypeOf<EvaluationDetails<Theme, ThemePayload>>()
@@ -467,125 +471,125 @@ function _negativeTypeTests(): void {
   // @ts-expect-error -- a string defaultValue requires variants
   factory({ defaultValue: "light", key: "theme" })
 
-  // @ts-expect-error -- a variant gate requires a string defaultValue
+  // @ts-expect-error -- a variant flag requires a string defaultValue
   factory({ defaultValue: false, key: "theme", variants: ["light", "dark"] })
 
-  buildGate<ConsumerIdentity>({
+  createFlags<ConsumerIdentity>({
     decide: () => decision.boolean(true),
     // @ts-expect-error -- identify must return the full identity shape
     identify: () => ({ distinctId: "consumer" }),
   })
 
-  buildGate<ConsumerIdentity>({
+  createFlags<ConsumerIdentity>({
     // @ts-expect-error -- decide must return a valid decision
     decide: () => ({ type: "boolean", value: "yes" }),
   })
 
-  buildGate({
+  createFlags({
     decide: () => decision.boolean(true),
     // @ts-expect-error -- distinctId must be a string or a number
     identify: () => ({ distinctId: true }),
   })
 
-  buildGate<ConsumerIdentity>({
+  createFlags<ConsumerIdentity>({
     decide: () => decision.boolean(true),
     // @ts-expect-error -- hooks must accept the factory identity
     hooks: [defineHook<{ distinctId: string; org: string }>({})],
   })
 
   // @ts-expect-error -- plan must be "free" or "pro"
-  void booleanGate({ identity: { distinctId: "consumer", plan: "enterprise" } })
+  void booleanFlag({ identity: { distinctId: "consumer", plan: "enterprise" } })
 
   // @ts-expect-error -- the identity must include plan
-  void booleanGate({ identity: { distinctId: "consumer" } })
+  void booleanFlag({ identity: { distinctId: "consumer" } })
 
   // @ts-expect-error -- only anonymous factories accept a null identity
-  void booleanGate({ identity: null })
+  void booleanFlag({ identity: null })
 
   // @ts-expect-error -- caller-identity factories require an identity
-  void callerGate()
+  void callerFlag()
 
   // @ts-expect-error -- caller-identity batches require an identity
-  void callerFactory.batch([callerGate])
+  void callerFactory.batch([callerFlag])
 
   // @ts-expect-error -- batch flags must match the factory identity type
-  void factory.batch([booleanGate, organizationGate])
+  void factory.batch([booleanFlag, organizationFlag])
 
   // @ts-expect-error -- batch flags must not have a wider identity type than the factory
-  void factory.batch([wideGate])
+  void factory.batch([wideFlag])
 
-  // @ts-expect-error -- a non-anonymous gate does not accept the null identity of an anonymous batch
-  void anonymousFactory.batch([booleanGate])
+  // @ts-expect-error -- a non-anonymous flag does not accept the null identity of an anonymous batch
+  void anonymousFactory.batch([booleanFlag])
 
-  // @ts-expect-error -- an anonymous gate does not belong to a non-anonymous factory
-  void factory.batch([anonymousGate])
+  // @ts-expect-error -- an anonymous flag does not belong to a non-anonymous factory
+  void factory.batch([anonymousFlag])
 
-  // @ts-expect-error -- a caller-identity gate does not belong to a factory with identify
-  void factory.batch([callerGate])
+  // @ts-expect-error -- a caller-identity flag does not belong to a factory with identify
+  void factory.batch([callerFlag])
 
   void callerFactory.batch(
-    // @ts-expect-error -- a gate from a factory with identify does not belong to a caller-identity factory
-    [booleanGate],
+    // @ts-expect-error -- a flag from a factory with identify does not belong to a caller-identity factory
+    [booleanFlag],
     { identity: { distinctId: "consumer", plan: "free" } }
   )
 
   void callerFactory.batch(
-    // @ts-expect-error -- an anonymous gate does not belong to a caller-identity factory
-    [anonymousGate],
+    // @ts-expect-error -- an anonymous flag does not belong to a caller-identity factory
+    [anonymousFlag],
     { identity: { distinctId: "consumer", plan: "free" } }
   )
 
-  // @ts-expect-error -- a caller-identity gate does not belong to an anonymous factory
-  void anonymousFactory.batch([callerGate])
+  // @ts-expect-error -- a caller-identity flag does not belong to an anonymous factory
+  void anonymousFactory.batch([callerFlag])
 
   // @ts-expect-error -- decision.variant requires a variant name
   decision.variant()
 
-  // @ts-expect-error -- match must be one of the gate variants
-  void FeatureGate({ children: null, gate: variantGate, match: "blue" })
+  // @ts-expect-error -- match must be one of the flag variants
+  void FeatureFlag({ children: null, flag: variantFlag, match: "blue" })
 
-  // @ts-expect-error -- a variant gate requires match
-  void FeatureGate({ children: null, gate: variantGate })
+  // @ts-expect-error -- a variant flag requires match
+  void FeatureFlag({ children: null, flag: variantFlag })
 
   // @ts-expect-error -- the hook factory requires its options
   defineHook((options: { prefix: string }) => ({ before: () => void options.prefix }))()
 }
 
 async function _negativeBatchTypeTests(): Promise<void> {
-  const batch = await factory.batch([booleanGate])
+  const batch = await factory.batch([booleanFlag])
 
-  // @ts-expect-error -- the batch does not contain this gate
-  batch.get(variantGate)
+  // @ts-expect-error -- the batch does not contain this flag
+  batch.get(variantFlag)
 
   // @ts-expect-error -- batch values are readonly
   batch[0] = true
 }
 
 function useInvalidBoundForms(): void {
-  void consumerHooks.GateProvider({
+  void consumerHooks.FlagProvider({
     children: null,
     // @ts-expect-error -- the provider identity must include plan
     identity: { distinctId: "consumer" },
   })
-  // @ts-expect-error -- the hooks accept only gates with the factory identity type
-  consumerHooks.useGate(organizationGate)
-  // @ts-expect-error -- the hooks accept only gates with the factory call mode
-  consumerHooks.useGate(anonymousGate)
-  // @ts-expect-error -- every batch gate must have the factory identity type
-  consumerHooks.useGateBatch([booleanGate, wideGate])
+  // @ts-expect-error -- the hooks accept only flags with the factory identity type
+  consumerHooks.useFlag(organizationFlag)
+  // @ts-expect-error -- the hooks accept only flags with the factory call mode
+  consumerHooks.useFlag(anonymousFlag)
+  // @ts-expect-error -- every batch flag must have the factory identity type
+  consumerHooks.useFlagBatch([booleanFlag, wideFlag])
   // @ts-expect-error -- the hook identity must include plan
-  consumerHooks.useGate(booleanGate, { identity: { distinctId: "consumer" } })
+  consumerHooks.useFlag(booleanFlag, { identity: { distinctId: "consumer" } })
 }
 
 function useInvalidForms(): void {
   // @ts-expect-error -- The function form requires a key.
-  useGate(() => Promise.resolve(1))
+  useFlag(() => Promise.resolve(1))
   // @ts-expect-error -- The function form does not support evaluation details.
-  useGate(() => Promise.resolve(1), { details: true, key: "custom" })
-  // @ts-expect-error -- the identity must match the gate identity
-  useGate(booleanGate, { identity: { distinctId: "consumer", plan: "enterprise" } })
-  useGateBatch([booleanGate, organizationGate], {
-    // @ts-expect-error -- the batch identity must satisfy every gate identity type
+  useFlag(() => Promise.resolve(1), { details: true, key: "custom" })
+  // @ts-expect-error -- the identity must match the flag identity
+  useFlag(booleanFlag, { identity: { distinctId: "consumer", plan: "enterprise" } })
+  useFlagBatch([booleanFlag, organizationFlag], {
+    // @ts-expect-error -- the batch identity must satisfy every flag identity type
     identity: { distinctId: "consumer", plan: "pro" },
   })
 }

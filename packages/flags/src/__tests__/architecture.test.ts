@@ -11,7 +11,7 @@ const SOURCE_ROOT = resolve(import.meta.dirname, "..")
 const LAYERS: ReadonlyArray<readonly string[]> = [
   ["lib/types"],
   ["lib/shared"],
-  ["lib/gate", "lib/promise-cache"],
+  ["lib/flag", "lib/promise-cache"],
   ["lib/config"],
   ["lib/evaluation/stages"],
   ["lib/evaluation"],

@@ -66,7 +66,7 @@ describe("serializeKey", () => {
     value[1] = "present"
 
     expect(() => serializeKey({ audience: value }, "cacheKey")).toThrow(
-      "Unsupported gate cache key at cacheKey.audience[0]: sparse arrays are not supported."
+      "Unsupported flag cache key at cacheKey.audience[0]: sparse arrays are not supported."
     )
   })
 
@@ -78,19 +78,19 @@ describe("serializeKey", () => {
     [new Map(), "Map"],
   ])("rejects unsupported %s values", (value, kind) => {
     expect(() => serializeKey(value, "cacheKey")).toThrow(
-      `Unsupported gate cache key at cacheKey: ${kind} is not supported.`
+      `Unsupported flag cache key at cacheKey: ${kind} is not supported.`
     )
   })
 
   test("reports the path to a nested unsupported value", () => {
     expect(() =>
       serializeKey({ audience: [{ region: "us" }, { region: 1n }] }, "cacheKey")
-    ).toThrow("Unsupported gate cache key at cacheKey.audience[1].region: bigint is not supported.")
+    ).toThrow("Unsupported flag cache key at cacheKey.audience[1].region: bigint is not supported.")
   })
 
   test("adds identity guidance for unsupported identity values", () => {
     expect(() => serializeKey({ createdAt: new Date(0) }, "identity")).toThrow(
-      "Unsupported gate cache key at identity.createdAt: Date is not supported. Change identify() to return supported cache-key values."
+      "Unsupported flag cache key at identity.createdAt: Date is not supported. Change identify() to return supported cache-key values."
     )
   })
 
@@ -99,7 +99,7 @@ describe("serializeKey", () => {
     value.self = value
 
     expect(() => serializeKey(value, "cacheKey")).toThrow(
-      "Unsupported gate cache key at cacheKey.self: circular reference is not supported."
+      "Unsupported flag cache key at cacheKey.self: circular reference is not supported."
     )
   })
 })

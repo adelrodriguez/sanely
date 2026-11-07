@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest"
 import type { Decision, Hook, Identity, IdentityValue } from "#lib/types/index.ts"
-import { buildGate } from "#factory.ts"
-import { BatchFlagNotFoundError, GateTimeoutError } from "#lib/shared/errors.ts"
+import { createFlags } from "#factory.ts"
+import { BatchFlagNotFoundError, FlagTimeoutError } from "#lib/shared/errors.ts"
 
 async function expectRejection(promise: Promise<IdentityValue>, message: string): Promise<void> {
   try {
@@ -19,18 +19,18 @@ function delay(milliseconds: number): Promise<void> {
   })
 }
 
-describe("gate batches", () => {
+describe("flag batches", () => {
   test("returns a destructurable array in flag order", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: (key) =>
         key === "theme"
           ? ({ type: "variant", variant: "dark" } as const)
           : ({ type: "boolean", value: true } as const),
       identify: () => ({ distinctId: "user" }),
     })
-    const beta = gate({ defaultValue: false, key: "beta" })
-    const theme = gate({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
-    const batch = await gate.batch([beta, theme])
+    const beta = flag({ defaultValue: false, key: "beta" })
+    const theme = flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
+    const batch = await flag.batch([beta, theme])
     const [betaValue, themeValue] = batch
 
     expect(Array.isArray(batch)).toBe(true)
@@ -40,7 +40,7 @@ describe("gate batches", () => {
   })
   test("runs error hooks for each batch entry that falls back", async () => {
     const reportedFlagKeys: string[] = []
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => Promise.reject(new Error("Provider failed")),
       decideMany: () => Promise.reject(new Error("Batch provider failed")),
       hooks: [
@@ -52,10 +52,10 @@ describe("gate batches", () => {
       ],
       identify: () => ({ distinctId: "user123" }),
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: true, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: true, key: "second" })
 
-    const batch = await gate.batch([first, second])
+    const batch = await flag.batch([first, second])
 
     expect(batch.get(first)).toBe(false)
     expect(batch.get(second)).toBe(true)
@@ -64,13 +64,13 @@ describe("gate batches", () => {
 
   test("returns an empty batch without resolving identity", async () => {
     const identify = vi.fn(() => ({ distinctId: "user123" }))
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       identify,
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
 
-    const batch = await gate.batch([])
+    const batch = await flag.batch([])
 
     expect(identify).not.toHaveBeenCalled()
     // @ts-expect-error -- An empty batch cannot contain this evaluator.
@@ -81,15 +81,15 @@ describe("gate batches", () => {
     const identityError = new Error("identity unavailable")
     const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
     const decideMany = vi.fn(() => ({ first: { type: "boolean", value: true } as const }))
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       decideMany,
       identify: () => Promise.reject(identityError),
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: true, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: true, key: "second" })
 
-    const batch = await gate.batch([first, second])
+    const batch = await flag.batch([first, second])
 
     expect(batch.get(first)).toBe(false)
     expect(batch.get(second)).toBe(true)
@@ -107,16 +107,16 @@ describe("gate batches", () => {
     const after = vi.fn(async () => {
       await afterWork
     })
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: true }),
       decideMany: () => ({ "beta-access": { type: "boolean", value: true } }),
       hooks: [{ after }],
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
 
     const batch = await Promise.race([
-      gate.batch([betaAccess]),
+      flag.batch([betaAccess]),
       delay(50).then(() => {
         throw new Error("Batch waited for an after hook")
       }),
@@ -137,15 +137,15 @@ describe("gate batches", () => {
       "beta-access": { type: "boolean", value: true } as const,
       theme: { type: "variant", variant: "dark" } as const,
     }))
-    const gate = buildGate({ decide, decideMany, identify })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const flag = createFlags({ decide, decideMany, identify })
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme] as const)
+    const batch = await flag.batch([betaAccess, theme] as const)
     const booleanValue: boolean = batch.get(betaAccess)
     const variantValue: "light" | "dark" = batch.get(theme)
 
@@ -157,7 +157,7 @@ describe("gate batches", () => {
   })
 
   test("exposes typed evaluation details and variant payloads", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: false }),
       decideMany: () => ({
         broken: { type: "variant", variant: "invalid" },
@@ -165,14 +165,14 @@ describe("gate batches", () => {
       }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const theme = gate({
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
-    const broken = gate({ defaultValue: false, key: "broken" })
+    const broken = flag({ defaultValue: false, key: "broken" })
 
-    const batch = await gate.batch([theme, broken] as const)
+    const batch = await flag.batch([theme, broken] as const)
     const themeDetails = batch.details(theme)
     const brokenDetails = batch.details(broken)
 
@@ -206,7 +206,7 @@ describe("gate batches", () => {
     const decideMany = vi.fn(() => ({
       theme: { type: "variant", variant: "dark" } as const,
     }))
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: (key) => Promise.resolve(stored.get(key)),
         set: (key, value) => {
@@ -219,14 +219,14 @@ describe("gate batches", () => {
       hooks: [hook],
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme])
+    const batch = await flag.batch([betaAccess, theme])
 
     expect(batch.get(betaAccess)).toBe(true)
     expect(batch.get(theme)).toBe("dark")
@@ -244,7 +244,7 @@ describe("gate batches", () => {
   })
 
   test("isolates an invalid decision to its flag", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: false }),
       decideMany: () => ({
         "beta-access": { type: "boolean", value: true },
@@ -252,21 +252,21 @@ describe("gate batches", () => {
       }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme])
+    const batch = await flag.batch([betaAccess, theme])
 
     expect(batch.get(betaAccess)).toBe(true)
     expect(batch.get(theme)).toBe("light")
   })
 
   test("isolates a rejected batch while preserving cached flags", async () => {
-    const gate = buildGate({
+    const flag = createFlags({
       cache: {
         get: (key) =>
           Promise.resolve(
@@ -278,10 +278,10 @@ describe("gate batches", () => {
       decideMany: () => Promise.reject(new Error("provider unavailable")),
       identify: () => ({ distinctId: "user123" }),
     })
-    const hooked = gate({ defaultValue: false, key: "hooked" })
-    const unresolved = gate({ defaultValue: false, key: "unresolved" })
+    const hooked = flag({ defaultValue: false, key: "hooked" })
+    const unresolved = flag({ defaultValue: false, key: "unresolved" })
 
-    const batch = await gate.batch([hooked, unresolved])
+    const batch = await flag.batch([hooked, unresolved])
 
     expect(batch.get(hooked)).toBe(true)
     expect(batch.get(unresolved)).toBe(false)
@@ -293,19 +293,19 @@ describe("gate batches", () => {
         ? ({ type: "variant", variant: "dark" } as const)
         : ({ type: "boolean", value: false } as const)
     )
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       decideMany: () => ({ "beta-access": { type: "boolean", value: true } }),
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme])
+    const batch = await flag.batch([betaAccess, theme])
 
     expect(batch.get(betaAccess)).toBe(true)
     expect(batch.get(theme)).toBe("dark")
@@ -315,14 +315,14 @@ describe("gate batches", () => {
 
   test("does not treat inherited record properties as batch decisions", async () => {
     const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       decideMany: () => ({}),
       identify: () => ({ distinctId: "user123" }),
     })
-    const inheritedKey = gate({ defaultValue: false, key: "toString" })
+    const inheritedKey = flag({ defaultValue: false, key: "toString" })
 
-    const batch = await gate.batch([inheritedKey])
+    const batch = await flag.batch([inheritedKey])
 
     expect(batch.get(inheritedKey)).toBe(true)
     expect(decide).toHaveBeenCalledTimes(1)
@@ -332,18 +332,18 @@ describe("gate batches", () => {
     const decide = vi.fn((key: string): Decision =>
       key === "theme" ? { type: "variant", variant: "dark" } : { type: "boolean", value: true }
     )
-    const gate = buildGate({
+    const flag = createFlags({
       decide,
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme])
+    const batch = await flag.batch([betaAccess, theme])
 
     expect(batch.get(betaAccess)).toBe(true)
     expect(batch.get(theme)).toBe("dark")
@@ -371,21 +371,21 @@ describe("gate batches", () => {
     const decideMany = vi.fn(() => ({
       theme: { type: "variant", variant: "dark" } as const,
     }))
-    const gate = buildGate({
+    const flag = createFlags({
       cache,
       coalesce: true,
       decide,
       decideMany,
       identify: () => ({ distinctId: "user123" }),
     })
-    const betaAccess = gate({ defaultValue: false, key: "beta-access" })
-    const theme = gate({
+    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const theme = flag({
       defaultValue: "light",
       key: "theme",
       variants: ["light", "dark"],
     })
 
-    const batch = await gate.batch([betaAccess, theme])
+    const batch = await flag.batch([betaAccess, theme])
 
     expect(batch.get(betaAccess)).toBe(true)
     expect(batch.get(theme)).toBe("dark")
@@ -429,7 +429,7 @@ describe("gate batches", () => {
       await delay(40)
       return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
     })
-    const gate = buildGate({
+    const flag = createFlags({
       coalesce: true,
       decide: () => ({ type: "boolean", value: true }),
       decideMany,
@@ -437,12 +437,12 @@ describe("gate batches", () => {
       identify: () => ({ distinctId: "user123" }),
       timeoutMs: 200,
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: false, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: false, key: "second" })
 
     const [firstBatch, secondBatch] = await Promise.all([
-      gate.batch([first, second]),
-      gate.batch([first, second]),
+      flag.batch([first, second]),
+      flag.batch([first, second]),
     ])
 
     expect(firstBatch.get(first)).toBe(true)
@@ -457,7 +457,7 @@ describe("gate batches", () => {
     let batchSignal: AbortSignal | undefined
     let batchAbortedDuringCall: boolean | undefined
     const controller = new AbortController()
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => ({ type: "boolean", value: false }),
       decideMany: (keys, identity, options) => {
         void keys
@@ -478,10 +478,10 @@ describe("gate batches", () => {
       ],
       identify: () => ({ distinctId: "user123" }),
     })
-    const first = gate({ defaultValue: false, key: "first" })
-    const second = gate({ defaultValue: false, key: "second" })
+    const first = flag({ defaultValue: false, key: "first" })
+    const second = flag({ defaultValue: false, key: "second" })
 
-    await gate.batch([first, second], { signal: controller.signal })
+    await flag.batch([first, second], { signal: controller.signal })
 
     expect(hookSignals).toHaveLength(2)
     expect(hookSignals[0]).toBe(controller.signal)
@@ -490,8 +490,8 @@ describe("gate batches", () => {
     expect(batchSignal?.aborted).toBe(true)
   })
 
-  test("preserves a per-gate timeout that is longer than the factory default", async () => {
-    const gate = buildGate({
+  test("preserves a per-flag timeout that is longer than the factory default", async () => {
+    const flag = createFlags({
       decide: async () => {
         await delay(40)
         return { type: "boolean", value: true }
@@ -499,10 +499,10 @@ describe("gate batches", () => {
       identify: () => ({ distinctId: "user123" }),
       timeoutMs: 10,
     })
-    const factoryTimed = gate({ defaultValue: false, key: "factory-timed" })
-    const slow = gate({ defaultValue: false, key: "slow", timeoutMs: 100 })
+    const factoryTimed = flag({ defaultValue: false, key: "factory-timed" })
+    const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 100 })
 
-    const batch = await gate.batch([factoryTimed, slow])
+    const batch = await flag.batch([factoryTimed, slow])
 
     expect(batch.get(factoryTimed)).toBe(false)
     expect(batch.details(factoryTimed).source).toBe("default")
@@ -512,7 +512,7 @@ describe("gate batches", () => {
 
   test("gives the single-decision fallback the flag's own deadline", async () => {
     const signals: Record<string, AbortSignal | undefined> = {}
-    const gate = buildGate({
+    const flag = createFlags({
       decide: async (key, _identity, options) => {
         signals[key] = options?.signal
         await delay(200)
@@ -520,10 +520,10 @@ describe("gate batches", () => {
       },
       identify: () => ({ distinctId: "user123" }),
     })
-    const capped = gate({ defaultValue: false, key: "capped", timeoutMs: 20 })
-    const unbounded = gate({ defaultValue: false, key: "unbounded" })
+    const capped = flag({ defaultValue: false, key: "capped", timeoutMs: 20 })
+    const unbounded = flag({ defaultValue: false, key: "unbounded" })
 
-    await gate.batch([capped, unbounded])
+    await flag.batch([capped, unbounded])
 
     expect(signals.capped?.aborted).toBe(true)
     expect(signals.unbounded?.aborted).toBe(false)
@@ -531,7 +531,7 @@ describe("gate batches", () => {
 
   test("stops a flag's signal from aborting once that flag has settled", async () => {
     const signals: Record<string, AbortSignal> = {}
-    const gate = buildGate({
+    const flag = createFlags({
       decide: async (key) => {
         await delay(key === "fast" ? 5 : 150)
         return { type: "boolean", value: true }
@@ -545,10 +545,10 @@ describe("gate batches", () => {
       ],
       identify: () => ({ distinctId: "user123" }),
     })
-    const fast = gate({ defaultValue: false, key: "fast", timeoutMs: 50 })
-    const slow = gate({ defaultValue: false, key: "slow", timeoutMs: 5000 })
+    const fast = flag({ defaultValue: false, key: "fast", timeoutMs: 50 })
+    const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 5000 })
 
-    const batch = await gate.batch([fast, slow])
+    const batch = await flag.batch([fast, slow])
 
     expect(batch.get(fast)).toBe(true)
     expect(signals.fast?.aborted).toBe(false)
@@ -559,16 +559,16 @@ describe("gate batches", () => {
       expect(identity).toBeNull()
       return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
     })
-    const gate = buildGate({
+    const flag = createFlags({
       anonymous: "allow",
       coalesce: true,
       decide: () => ({ type: "boolean", value: false }),
       decideMany,
       identify: () => null,
     })
-    const anonymous = gate({ defaultValue: false, key: "anonymous" })
+    const anonymous = flag({ defaultValue: false, key: "anonymous" })
 
-    const [first, second] = await Promise.all([gate.batch([anonymous]), gate.batch([anonymous])])
+    const [first, second] = await Promise.all([flag.batch([anonymous]), flag.batch([anonymous])])
 
     expect(first.get(anonymous)).toBe(true)
     expect(second.get(anonymous)).toBe(true)
@@ -581,15 +581,15 @@ describe("gate batches", () => {
       expect(identity).toBeNull()
       return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
     })
-    const gate = buildGate({
+    const flag = createFlags({
       anonymous: "allow",
       decide: () => ({ type: "boolean", value: false }),
       decideMany,
       identify,
     })
-    const anonymous = gate({ defaultValue: false, key: "anonymous" })
+    const anonymous = flag({ defaultValue: false, key: "anonymous" })
 
-    const batch = await gate.batch([anonymous], { identity: null })
+    const batch = await flag.batch([anonymous], { identity: null })
 
     expect(batch.get(anonymous)).toBe(true)
     expect(identify).not.toHaveBeenCalled()
@@ -599,12 +599,12 @@ describe("gate batches", () => {
   test("rejects duplicate keys before identity or provider work", async () => {
     const identify = vi.fn(() => ({ distinctId: "user123" }))
     const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
-    const gate = buildGate({ decide, identify })
-    const first = gate({ defaultValue: false, key: "duplicate" })
-    const second = gate({ defaultValue: true, key: "duplicate" })
+    const flag = createFlags({ decide, identify })
+    const first = flag({ defaultValue: false, key: "duplicate" })
+    const second = flag({ defaultValue: true, key: "duplicate" })
 
     await expectRejection(
-      gate.batch([first, second]),
+      flag.batch([first, second]),
       "Batch requires unique flag keys; duplicate: duplicate"
     )
     expect(identify).not.toHaveBeenCalled()
@@ -616,14 +616,14 @@ describe("gate batches", () => {
       decide: () => ({ type: "boolean", value: true }) as const,
       identify: () => ({ distinctId: "user123" }),
     }
-    const firstGate = buildGate(config)
-    const secondGate = buildGate(config)
-    const own = firstGate({ defaultValue: false, key: "own" })
-    const foreign = secondGate({ defaultValue: false, key: "foreign" })
+    const firstFlag = createFlags(config)
+    const secondFlag = createFlags(config)
+    const own = firstFlag({ defaultValue: false, key: "own" })
+    const foreign = secondFlag({ defaultValue: false, key: "foreign" })
 
     await expectRejection(
-      firstGate.batch([own, foreign]),
-      "Batch flags must be created by this gate factory"
+      firstFlag.batch([own, foreign]),
+      "Batch flags must be created by this flag factory"
     )
   })
 
@@ -644,7 +644,7 @@ describe("gate batches", () => {
         setTimeout(resolve, 1)
       })
       const lateReady = Promise.withResolvers<null>()
-      const gate = buildGate({
+      const flag = createFlags({
         decide: () => ({ type: "boolean", value: false }),
         decideMany,
         // The `slow` key read comes just before `slow` needs provider work, so this timer comes
@@ -676,16 +676,16 @@ describe("gate batches", () => {
           return { distinctId: "user123" }
         },
       })
-      const fast = gate({ defaultValue: false, key: "fast", timeoutMs: 1 })
-      const slow = gate({ defaultValue: false, key: "slow", timeoutMs: 1000 })
-      const late = gate({ defaultValue: false, key: "late", timeoutMs: 1000 })
+      const fast = flag({ defaultValue: false, key: "fast", timeoutMs: 1 })
+      const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 1000 })
+      const late = flag({ defaultValue: false, key: "late", timeoutMs: 1000 })
 
-      const pending = gate.batch([fast, slow, late])
+      const pending = flag.batch([fast, slow, late])
       await vi.advanceTimersByTimeAsync(10)
       const batch = await pending
 
       expect(batch.details(fast)).toMatchObject({ source: "default", value: false })
-      expect(batch.details(fast).error).toBeInstanceOf(GateTimeoutError)
+      expect(batch.details(fast).error).toBeInstanceOf(FlagTimeoutError)
       expect(batch.details(slow)).toEqual({ flagKey: "slow", source: "provider", value: true })
       expect(batch.details(late)).toEqual({ flagKey: "late", source: "provider", value: true })
       expect(decideMany).toHaveBeenCalledTimes(1)

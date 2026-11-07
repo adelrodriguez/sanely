@@ -2,8 +2,8 @@ import type { ResolvedConfig } from "#lib/config/resolved-config.ts"
 import type {
   Decision,
   EvaluationDetails,
-  GateCallOptions,
-  GateOptions,
+  FlagCallOptions,
+  FlagOptions,
   Identity,
 } from "#lib/types/index.ts"
 import { DuplicateBatchKeyError } from "#lib/shared/errors.ts"
@@ -14,11 +14,11 @@ import {
   type SharedSignal,
 } from "#lib/shared/signals.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
-import { executeGateDetails, type GateSource } from "./engine"
+import { executeFlagDetails, type FlagSource } from "./engine"
 
 export type BatchEntry = {
   flag: object
-  options: GateOptions<string[]>
+  options: FlagOptions<string[]>
 }
 
 /**
@@ -36,10 +36,10 @@ type FlushRound = {
   shared: SharedSignal
 }
 
-export async function executeGateBatch<TIdentity extends Identity>(
+export async function executeFlagBatch<TIdentity extends Identity>(
   config: ResolvedConfig<TIdentity>,
   entries: readonly BatchEntry[],
-  callOptions?: GateCallOptions<TIdentity | null>
+  callOptions?: FlagCallOptions<TIdentity | null>
 ): Promise<Map<object, EvaluationDetails<boolean | string>>> {
   if (entries.length === 0) {
     return new Map()
@@ -71,7 +71,7 @@ export async function executeGateBatch<TIdentity extends Identity>(
   // Resolve the identity once. Every evaluation in the batch gets this identity, or this error.
   // A flush round opens only after an evaluation resolved this identity, so the round reads it.
   let identity: TIdentity | null = null
-  let resolveIdentity: GateSource<TIdentity>["resolveIdentity"]
+  let resolveIdentity: FlagSource<TIdentity>["resolveIdentity"]
   try {
     const resolved = await raceWithSignal(
       () => config.resolveIdentity(callOptions?.identity),
@@ -137,7 +137,7 @@ export async function executeGateBatch<TIdentity extends Identity>(
 
   // An evaluation calls `decide` only when it needs provider work: after a cache miss, and never as
   // a coalesced follower. Those evaluations share one `decideMany` call for each flush round.
-  const source: GateSource<TIdentity> = {
+  const source: FlagSource<TIdentity> = {
     async decide(key, identity, options) {
       const decisions = await joinFlushRound(key, options.signal)
       const batched = Object.hasOwn(decisions, key) ? decisions[key] : undefined
@@ -152,7 +152,7 @@ export async function executeGateBatch<TIdentity extends Identity>(
   const evaluations = entries.map((entry) => {
     const entrySignal = entrySignals.get(entry.flag)
     return {
-      evaluation: executeGateDetails(config, entry.options, callOptions, source, {
+      evaluation: executeFlagDetails(config, entry.options, callOptions, source, {
         signal: entrySignal?.signal ?? signal,
       }).finally(() => {
         entrySignal?.cleanup()

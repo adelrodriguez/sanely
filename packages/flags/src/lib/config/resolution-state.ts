@@ -23,8 +23,8 @@ export type StoreMutations = {
 }
 
 /**
- * Decision memory for one gate factory: in-flight coalesced provider calls plus cache invalidation
- * bookkeeping. Created once per factory so gates from different factories never share state, even
+ * Decision memory for one flag factory: in-flight coalesced provider calls plus cache invalidation
+ * bookkeeping. Created once per factory so flags from different factories never share state, even
  * when built from the same config object.
  */
 export type ResolutionState = {

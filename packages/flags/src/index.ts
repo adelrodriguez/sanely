@@ -1,31 +1,31 @@
-export { buildGate } from "./factory"
-export type { GateFactory, GateBatch } from "./factory"
+export { createFlags } from "./factory"
+export type { FlagFactory, FlagBatch } from "./factory"
 export { decision } from "./decision"
 export { defineHook } from "./hooks"
 export {
   DecisionTypeMismatchError,
   DuplicateBatchKeyError,
-  ForeignGateEvaluatorError,
-  GatedError,
-  GateTimeoutError,
+  ForeignFlagEvaluatorError,
+  FlagError,
+  FlagTimeoutError,
   IdentityNotFoundError,
   InvalidVariantError,
   MalformedDecisionError,
   BatchFlagNotFoundError,
 } from "#lib/shared/errors.ts"
 export type {
-  AnonymousGatedConfig,
-  CallerIdentityGatedConfig,
+  AnonymousFlagFactoryConfig,
+  CallerIdentityFlagFactoryConfig,
   Decision,
   DecisionCache,
   DecisionCacheErrorReport,
   DecisionSource,
   EvaluationDetails,
-  GateChange,
-  GateCallOptions,
-  GateChanges,
-  GateEvaluator,
-  GatedConfig,
+  FlagChange,
+  FlagCallOptions,
+  FlagChanges,
+  FlagEvaluator,
+  FlagFactoryConfig,
   Hook,
   HookContext,
   HookErrorReport,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import type { Hook, HookContext, Identity } from "#lib/types/index.ts"
 import { decision } from "#decision.ts"
-import { buildGate } from "#factory.ts"
+import { createFlags } from "#factory.ts"
 import { defineHook } from "#hooks/index.ts"
 
 const context: HookContext = {
@@ -21,14 +21,14 @@ describe("defineHook", () => {
       },
     }
     const hook = defineHook(definition)
-    const gate = buildGate({
+    const flag = createFlags({
       decide: () => decision.boolean(true),
       hooks: [hook],
       identify: () => ({ distinctId: "user-1" }),
     })
 
     expect(hook).toBe(definition)
-    expect(await gate({ defaultValue: false, key: "beta" })()).toBe(true)
+    expect(await flag({ defaultValue: false, key: "beta" })()).toBe(true)
     expect(source).toBe("provider")
   })
 

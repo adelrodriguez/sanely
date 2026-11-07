@@ -1,6 +1,6 @@
-import type { GateConfiguration } from "#lib/types/index.ts"
+import type { FlagConfiguration } from "#lib/types/index.ts"
 
-export function getGateConfiguration(variants?: readonly string[]): GateConfiguration {
+export function getFlagConfiguration(variants?: readonly string[]): FlagConfiguration {
   return variants ? { kind: "variant", variants } : { kind: "boolean" }
 }
 
@@ -17,7 +17,7 @@ export function assertTimeoutMs(timeoutMs: number | undefined): void {
   }
 }
 
-export function assertGateOptions(options: {
+export function assertFlagOptions(options: {
   key: string
   defaultValue: boolean | string
   variants?: string[]

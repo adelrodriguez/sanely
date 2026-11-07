@@ -1,6 +1,6 @@
 export * from "./key"
 
-export type GateCacheOptions = {
+export type FlagCacheOptions = {
   /**
    * Maximum number of identities retained by the cache. Defaults to 100.
    */

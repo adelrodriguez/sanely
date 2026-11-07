@@ -1,7 +1,7 @@
 import type { Hook, Identity } from "#lib/types/index.ts"
 
 /**
- * Defines a hook object. The same object is shared by every gate it is registered on, so any
+ * Defines a hook object. The same object is shared by every flag it is registered on, so any
  * mutable state in its closure is shared too. Prefer the factory overload when the hook keeps
  * state.
  */

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest"
 import type { HookContext } from "#lib/types/index.ts"
-import { getEvaluationKey } from "#lib/gate/evaluation-key.ts"
+import { getEvaluationKey } from "#lib/flag/evaluation-key.ts"
 
 const signal = new AbortController().signal
 
@@ -22,7 +22,7 @@ const variantContext: HookContext = {
 }
 
 describe("getEvaluationKey", () => {
-  test("encodes the flag key, gate shape, and typed distinctId by default", () => {
+  test("encodes the flag key, flag shape, and typed distinctId by default", () => {
     expect(getEvaluationKey(booleanContext)).toBe(
       JSON.stringify(["beta-access", "boolean", undefined, "string", "user-1"])
     )

@@ -1,16 +1,16 @@
-export type GateCacheKey =
+export type FlagCacheKey =
   | boolean
   | number
   | string
   | null
   | undefined
-  | readonly GateCacheKey[]
-  | { readonly [key: string]: GateCacheKey }
+  | readonly FlagCacheKey[]
+  | { readonly [key: string]: FlagCacheKey }
 
 /**
  * Encodes a cache-key value into a stable, collision-free string. Object keys are sorted so
  * insertion order does not affect the encoding, and every value is type-prefixed so distinct
- * primitives (for example 0 and "0") never collide. Values outside GateCacheKey throw instead of
+ * primitives (for example 0 and "0") never collide. Values outside FlagCacheKey throw instead of
  * silently coercing into an unstable or colliding key.
  */
 export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"): string {
@@ -42,13 +42,13 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
               ? constructor.name
               : "non-plain object"
           throw new TypeError(
-            `Unsupported gate cache key at ${path}: ${kind} is not supported.${identityRemedy}`
+            `Unsupported flag cache key at ${path}: ${kind} is not supported.${identityRemedy}`
           )
         }
 
         if (ancestors.has(current)) {
           throw new TypeError(
-            `Unsupported gate cache key at ${path}: circular reference is not supported.${identityRemedy}`
+            `Unsupported flag cache key at ${path}: circular reference is not supported.${identityRemedy}`
           )
         }
 
@@ -58,7 +58,7 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
             for (let index = 0; index < current.length; index += 1) {
               if (!Object.hasOwn(current, index)) {
                 throw new TypeError(
-                  `Unsupported gate cache key at ${path}[${index}]: sparse arrays are not supported.${identityRemedy}`
+                  `Unsupported flag cache key at ${path}[${index}]: sparse arrays are not supported.${identityRemedy}`
                 )
               }
             }
@@ -84,7 +84,7 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
       }
       default:
         throw new TypeError(
-          `Unsupported gate cache key at ${path}: ${typeof current} is not supported.${identityRemedy}`
+          `Unsupported flag cache key at ${path}: ${typeof current} is not supported.${identityRemedy}`
         )
     }
   }

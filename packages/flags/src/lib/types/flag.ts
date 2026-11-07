@@ -1,73 +1,73 @@
 import type { EvaluationDetails } from "./decision"
 import type { Identity } from "./identity"
 
-export type GateCallOptions<TIdentity extends Identity | null> = {
+export type FlagCallOptions<TIdentity extends Identity | null> = {
   identity?: TIdentity
   signal?: AbortSignal
 }
 
-type RequiredGateCallOptions<TIdentity extends Identity> = Omit<
-  GateCallOptions<TIdentity>,
+type RequiredFlagCallOptions<TIdentity extends Identity> = Omit<
+  FlagCallOptions<TIdentity>,
   "identity"
 > & {
   identity: TIdentity
 }
 
-type GateCallArguments<
+type FlagCallArguments<
   TCallIdentity extends Identity | null,
   TCallRequired extends boolean,
 > = TCallRequired extends true
-  ? [options: RequiredGateCallOptions<Extract<TCallIdentity, Identity>>]
-  : [options?: GateCallOptions<TCallIdentity>]
+  ? [options: RequiredFlagCallOptions<Extract<TCallIdentity, Identity>>]
+  : [options?: FlagCallOptions<TCallIdentity>]
 
-declare const gateIdentity: unique symbol
+declare const flagIdentity: unique symbol
 
-// Invariant in every factory type argument, so a gate is assignable only where its factory's
+// Invariant in every factory type argument, so a flag is assignable only where its factory's
 // identity type and call mode match exactly.
-type GateIdentityMarker<
+type FlagIdentityMarker<
   TIdentity extends Identity,
   TCallIdentity extends TIdentity | null,
   TCallRequired extends boolean,
 > = (marker: [TIdentity, TCallIdentity, TCallRequired]) => [TIdentity, TCallIdentity, TCallRequired]
 
-type GateEvaluatorShape<
+type FlagEvaluatorShape<
   TValue extends boolean | string,
   TCallIdentity extends Identity | null,
   TPayload,
   TCallRequired extends boolean,
-> = ((...args: GateCallArguments<TCallIdentity, TCallRequired>) => Promise<TValue>) & {
+> = ((...args: FlagCallArguments<TCallIdentity, TCallRequired>) => Promise<TValue>) & {
   details: (
-    ...args: GateCallArguments<TCallIdentity, TCallRequired>
+    ...args: FlagCallArguments<TCallIdentity, TCallRequired>
   ) => Promise<EvaluationDetails<TValue, TPayload>>
 }
 
-export type GateEvaluator<
+export type FlagEvaluator<
   TIdentity extends Identity,
   TValue extends boolean | string,
   TCallIdentity extends TIdentity | null = TIdentity,
   TPayload = unknown,
   TCallRequired extends boolean = false,
-> = GateEvaluatorShape<TValue, TCallIdentity, TPayload, TCallRequired> & {
+> = FlagEvaluatorShape<TValue, TCallIdentity, TPayload, TCallRequired> & {
   /**
    * Type-only. Evaluators do not have this property at runtime.
    */
-  readonly [gateIdentity]: GateIdentityMarker<TIdentity, TCallIdentity, TCallRequired>
+  readonly [flagIdentity]: FlagIdentityMarker<TIdentity, TCallIdentity, TCallRequired>
 }
 
 /**
  * Any evaluator, whatever its identity type and call mode.
  */
-export type AnyGateEvaluator =
-  | GateEvaluatorShape<boolean | string, never, unknown, false>
-  | GateEvaluatorShape<boolean | string, never, unknown, true>
+export type AnyFlagEvaluator =
+  | FlagEvaluatorShape<boolean | string, never, unknown, false>
+  | FlagEvaluatorShape<boolean | string, never, unknown, true>
 
-export type GateOptions<T extends string[]> = {
+export type FlagOptions<T extends string[]> = {
   key: string
   defaultValue: boolean | T[number]
   variants?: T
   timeoutMs?: number
 }
 
-export type GateConfiguration =
+export type FlagConfiguration =
   | { kind: "boolean" }
   | { kind: "variant"; variants: readonly string[] }

@@ -1,7 +1,7 @@
 import type {
   Decision,
   DecisionSource,
-  GatedConfig,
+  FlagFactoryConfig,
   Hook,
   HookContext,
   HookErrorReport,
@@ -11,7 +11,7 @@ import type {
 import { reportInBackground } from "#lib/shared/report.ts"
 import { normalizeError } from "#lib/shared/utils.ts"
 
-type HookErrorReporter<TIdentity extends Identity> = GatedConfig<TIdentity>["onHookError"]
+type HookErrorReporter<TIdentity extends Identity> = FlagFactoryConfig<TIdentity>["onHookError"]
 type HookPhase = HookErrorReport["phase"]
 
 /**

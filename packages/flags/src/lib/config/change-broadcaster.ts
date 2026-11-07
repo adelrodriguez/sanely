@@ -1,9 +1,9 @@
-import type { GatedConfig } from "#lib/types/index.ts"
+import type { FlagFactoryConfig } from "#lib/types/index.ts"
 
 type ChangeListener = (keys?: readonly string[]) => void
 
 /**
- * Sends one gate factory's provider change notifications to every listener. It attaches the
+ * Sends one flag factory's provider change notifications to every listener. It attaches the
  * consumer's `subscribe` at most once at a time: on the first listener, and it detaches when the
  * last listener leaves. Listeners run synchronously, in subscription order.
  */
@@ -17,7 +17,7 @@ export type ChangeBroadcaster = {
 }
 
 export function createChangeBroadcaster(
-  subscribe: NonNullable<GatedConfig["subscribe"]>
+  subscribe: NonNullable<FlagFactoryConfig["subscribe"]>
 ): ChangeBroadcaster {
   // One entry per subscription, so one function subscribed twice needs two unsubscribes.
   const listeners = new Set<{ listener: ChangeListener }>()
