@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import type { Hook, HookContext, Identity } from "#lib/types/index.ts"
-import { decision } from "#decision.ts"
-import { createFlags } from "#factory.ts"
 import { defineHook } from "#hooks/index.ts"
+import { createFlags } from "#lib/factory/index.ts"
+import { decision } from "#lib/flag/decision.ts"
 
 const context: HookContext = {
   defaultValue: false,

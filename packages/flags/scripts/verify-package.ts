@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
@@ -20,6 +20,11 @@ try {
     if (!existsSync(join(packageRoot, relativePath))) {
       throw new Error(`The package export does not exist: ${relativePath}`)
     }
+  }
+
+  const reactEntry = join(packageRoot, packageJson.exports["./react"].import)
+  if (!readFileSync(reactEntry, "utf8").startsWith('"use client";')) {
+    throw new Error("The React entry must retain its client directive")
   }
 
   run("pnpm", ["pack", "--pack-destination", temporaryDirectory], packageRoot)
@@ -73,6 +78,7 @@ assert.deepEqual(defineHook({}), {})
   writeFileSync(
     join(temporaryDirectory, "react.mjs"),
     `import assert from "node:assert/strict"
+import { createFlags, decision } from "@sanely/flags"
 import * as react from "@sanely/flags/react"
 
 assert.deepEqual(Object.keys(react).toSorted(), [
@@ -84,6 +90,20 @@ assert.deepEqual(Object.keys(react).toSorted(), [
   "useFlagBatch",
   "useFlagCache",
 ].toSorted())
+
+let providerCalls = 0
+const factory = createFlags({
+  decide: () => {
+    providerCalls += 1
+    return decision.boolean(true)
+  },
+  identify: () => ({ distinctId: "consumer" }),
+})
+const beta = factory({ defaultValue: false, key: "beta" })
+const cache = react.createFlagCache()
+await cache.prefetchBatch([beta])
+await cache.prefetchBatch([beta])
+assert.equal(providerCalls, 1, "Core evaluators must share their registry with React's cache")
 `
   )
   run(process.execPath, ["react.mjs"], temporaryDirectory)

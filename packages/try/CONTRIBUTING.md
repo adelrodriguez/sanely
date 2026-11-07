@@ -18,24 +18,8 @@ Keep both documents. Older pnpm versions can reject this format.
 
 ## Know the layout
 
-```text
-src/
-├── index.ts              # The @sanely/try entry point
-├── errors.ts             # The @sanely/try/errors entry point
-├── types.ts              # The @sanely/try/types entry point
-├── __tests__/            # Public API tests and benchmarks (*.bench.ts)
-├── shims/                # Runtime shims, such as the disposer
-└── lib/
-    ├── builder.ts        # The builder chain
-    ├── dispose.ts        # disposer()
-    ├── errors.ts         # The error classes and type guards
-    ├── gen.ts            # gen()
-    ├── utils.ts          # Internal utilities
-    ├── execution/        # Terminal execution: run, runSync, and the shared engine
-    ├── orchestration/    # Task graphs: all, allSettled, flow
-    ├── policies/         # retry, timeout, signal
-    └── __tests__/        # Internal tests
-```
+Read the [architecture](docs/architecture.md) for source ownership and dependencies.
+Read the [testing guide](docs/testing.md) for test placement and package checks.
 
 ## Run the checks
 
@@ -101,16 +85,7 @@ Read the results like this:
 
 ## Write tests
 
-- Add tests for new behavior
-- Update tests when modifying existing behavior
-- Ensure all tests pass before submitting
-- Public API type changes must be covered in `src/__tests__/types.test-d.ts`
-- Type assertions are checked by `pnpm --workspace-root run check`, not Vitest
-- Write type assertions with `expectTypeOf` from `vitest`
-- Test files live in `src/__tests__/` and `src/lib/__tests__/`. Tests for repository scripts live in `scripts/__tests__/`.
-- Use `fast-check` for invariants that must hold across many inputs. Keep fixed examples for named cases and exact contracts.
-- To replay a property failure, pass the reported `seed` and `path` to `fc.assert`.
-- After you fix a property failure, add the minimized counterexample as a fixed regression test beside the property.
+Follow the [testing guide](docs/testing.md).
 
 ## Add a changeset
 

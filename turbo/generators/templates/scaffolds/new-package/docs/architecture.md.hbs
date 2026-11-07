@@ -1,0 +1,9 @@
+# Architecture
+
+`src/index.ts` selects the public exports.
+The greeting domain in `src/lib/greeting/index.ts` owns `greet`.
+The shared domain owns `InvalidNameError` and imports no other domain.
+Greeting imports shared. Implementation modules do not import the public entry point.
+
+Replace the greeting example with the library and record its domain dependencies in the root `oxlint.config.ts`.
+See the [package structure rules](../../../docs/agents/package-structure.md).

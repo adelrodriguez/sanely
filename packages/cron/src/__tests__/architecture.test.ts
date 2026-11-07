@@ -1,34 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
-
-const LIB = join(import.meta.dirname, "..", "lib")
-
-// The import direction between the lib folders is a lint rule: see the cron overrides in
-// oxlint.config.ts. This test checks only that each module sits in a lib folder.
-describe("lib folders", () => {
-  it("has no files directly in lib", () => {
-    const files = readdirSync(LIB, { withFileTypes: true }).filter((entry) => entry.isFile())
-
-    expect(files.map((entry) => entry.name)).toEqual([])
-  })
-})
-
-describe("public entry", () => {
-  it("only re-exports from lib", () => {
-    const source = readFileSync(join(import.meta.dirname, "..", "index.ts"), "utf8")
-    const statements = source
-      .split(/\n(?=export )/)
-      .map((statement) => statement.replaceAll(/\s+/g, " ").trim())
-      .filter((statement) => statement !== "")
-
-    for (const statement of statements) {
-      expect(statement).toMatch(
-        /^export (?:type )?(?:\*|\{[^}]*\}) from "\.\/lib\/[a-z]+\/[a-z]+"$/
-      )
-    }
-  })
-})
 
 const SRC = join(import.meta.dirname, "..")
 

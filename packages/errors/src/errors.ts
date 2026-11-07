@@ -6,4 +6,4 @@ export {
   RegistryMergeConflictError,
   RegistryTagMismatchError,
   ReservedFieldError,
-} from "./lib/errors"
+} from "#lib/errors.ts"

@@ -3,7 +3,7 @@
  *
  * Extend directly or use {@link Tagged} to define tagged subclasses.
  */
-export { Fault } from "./lib/fault"
+export { Fault } from "#lib/fault.ts"
 
 /**
  * Type guard for Fault instances.
@@ -11,7 +11,7 @@ export { Fault } from "./lib/fault"
  * Uses `instanceof Fault` and therefore is not cross-realm safe. Use serialization/deserialization
  * when crossing process/realm boundaries.
  */
-export { isFault } from "./lib/fault"
+export { isFault } from "#lib/fault.ts"
 
 /**
  * Finds the first node in a fault's cause chain, head included, that is an instance of the given
@@ -19,7 +19,7 @@ export { isFault } from "./lib/fault"
  *
  * Use `registry.findCause` to find a registered fault by tag.
  */
-export { findCause } from "./lib/fault"
+export { findCause } from "#lib/fault.ts"
 
 /**
  * Factory for creating tagged Fault subclasses.
@@ -34,7 +34,7 @@ export { findCause } from "./lib/fault"
  *   const error = new NotFoundError({ resource: "user" })
  *   ```
  */
-export { Tagged } from "./lib/tagged"
+export { Tagged } from "#lib/tagged.ts"
 
 /**
  * Creates a fault registry from tagged constructors.
@@ -52,7 +52,7 @@ export { Tagged } from "./lib/tagged"
  *   const wrapped = AppFault.wrap(new Error("root")).as("TimeoutError")
  *   ```
  */
-export { registry } from "./lib/registry"
+export { registry } from "#lib/registry.ts"
 
 /**
  * Merges multiple fault registries into one.
@@ -60,17 +60,17 @@ export { registry } from "./lib/registry"
  * Throws `RegistryMergeConflictError` from `@sanely/errors/errors` when duplicate tags map to
  * different constructors.
  */
-export { merge } from "./lib/registry"
+export { merge } from "#lib/registry.ts"
 
 /**
  * Standalone union-driven tag matcher for a single tag.
  */
-export { matchTag } from "./lib/match"
+export { matchTag } from "#lib/match.ts"
 
 /**
  * Standalone union-driven tag matcher using a handler map.
  */
-export { matchTags } from "./lib/match"
+export { matchTags } from "#lib/match.ts"
 
 /**
  * Serializes any caught value to the wire format.
@@ -78,14 +78,14 @@ export { matchTags } from "./lib/match"
  * Faults encode themselves; native `Error`s become `UnknownError` and any other thrown value
  * becomes `UnknownThrown`.
  */
-export { toSerializable } from "./lib/fault"
+export { toSerializable } from "#lib/fault.ts"
 
 /**
  * Deserializes a generic fault from the wire format.
  *
  * Use `registry.fromSerializable` when you want subclass reconstruction for registered tags.
  */
-export { fromSerializable } from "./lib/reviver"
+export { fromSerializable } from "#lib/reviver.ts"
 
 /**
  * Type guard for wire payloads.
@@ -94,4 +94,4 @@ export { fromSerializable } from "./lib/reviver"
  * so `fromSerializable` will accept it. Payload and `meta` values are not deep-validated. Use it to
  * check data received over RPC or HTTP.
  */
-export { isSerializableFault } from "./lib/reviver"
+export { isSerializableFault } from "#lib/reviver.ts"

@@ -1,8 +1,8 @@
-import type { Schedule } from "#lib/schedule/schedule.ts"
-import { parsePhrase } from "#lib/grammar/grammar.ts"
-import { normalize } from "#lib/normalize/normalize.ts"
+import type { Schedule } from "#lib/schedule/index.ts"
+import { parsePhrase } from "#lib/grammar/index.ts"
+import { normalize } from "#lib/normalize/index.ts"
 import { ParseError, fail, show } from "#lib/schedule/rules.ts"
-import { validate } from "#lib/validate/validate.ts"
+import { validate } from "#lib/validate/index.ts"
 import { withInput } from "./errors"
 
 // A string is a cron phrase, and any other object is a schedule object.

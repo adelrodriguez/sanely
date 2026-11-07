@@ -13,7 +13,7 @@ import {
   type PortIpcRendererLike,
   type NodePortLike,
 } from "#lib/adapters/message-port.ts"
-import { createClient } from "#lib/client/client.ts"
+import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
 import { createRouter } from "#lib/server/router.ts"
 import { connect } from "#lib/wire/connect.ts"

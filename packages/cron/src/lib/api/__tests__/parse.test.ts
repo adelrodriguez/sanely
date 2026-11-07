@@ -1,13 +1,13 @@
 import { Cron } from "croner"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
-import type { GrammarRow } from "#lib/grammar/__tests__/grammar.table.ts"
-import type { Schedule } from "#lib/schedule/schedule.ts"
+import type { GrammarRow } from "#lib/grammar/__tests__/index.table.ts"
+import type { Schedule } from "#lib/schedule/index.ts"
 import { InvalidScheduleError } from "#lib/api/errors.ts"
 import { isSchedule, parse, safeParse } from "#lib/api/parse.ts"
-import { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
-import { scheduleArb } from "#lib/schedule/__tests__/schedule.arbitrary.ts"
-import { INVALID_OBJECTS, VALID_OBJECTS } from "#lib/validate/__tests__/validate.table.ts"
+import { GRAMMAR } from "#lib/grammar/__tests__/index.table.ts"
+import { scheduleArb } from "#lib/schedule/__tests__/index.arbitrary.ts"
+import { INVALID_OBJECTS, VALID_OBJECTS } from "#lib/validate/__tests__/index.table.ts"
 
 // The table phrases are literal types. The tests use them as `string`, the same as input from a
 // config file.

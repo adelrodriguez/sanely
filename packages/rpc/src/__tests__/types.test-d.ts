@@ -1,7 +1,7 @@
 // Compile-time checks only: `pnpm run check` and `pnpm run typecheck` enforce this file, and Vitest never runs it.
 import { expectTypeOf } from "vitest"
 import * as z from "zod"
-import type { Wire } from "#lib/wire/types.ts"
+import type { Wire } from "#wire.ts"
 import {
   channel,
   createRouter,

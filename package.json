@@ -23,8 +23,9 @@
     "fix": "adamantite fix",
     "generate": "turbo generate",
     "release": "changeset publish",
-    "test": "turbo run test",
+    "test": "pnpm run test:rules && turbo run test",
     "test:compat": "turbo run test:compat",
+    "test:rules": "node --test .adamantite/rules/__tests__/*.test.ts",
     "version": "changeset version && pnpm run fix"
   },
   "devDependencies": {

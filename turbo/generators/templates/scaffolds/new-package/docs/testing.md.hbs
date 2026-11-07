@@ -1,0 +1,10 @@
+# Testing
+
+`src/lib/greeting/__tests__/index.test.ts` tests the greeting module.
+Direct module tests match their source names in adjacent `__tests__/` folders.
+Public contract suites and type assertions belong in `src/__tests__/`.
+The workspace check command checks type assertions. Vitest does not run them.
+
+The package's test script runs unit tests. Build verification checks the installed package and declarations.
+Compatibility checks run built exports. CI uses the package's Node.js floor.
+See the [package structure rules](../../../docs/agents/package-structure.md).

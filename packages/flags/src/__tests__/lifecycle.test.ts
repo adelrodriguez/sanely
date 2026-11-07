@@ -6,9 +6,8 @@ import type {
   Decision,
   HookContext,
   HookErrorReport,
-} from "#lib/types/index.ts"
-import { createFlags } from "#factory.ts"
-import { FlagTimeoutError, InvalidVariantError } from "#lib/shared/errors.ts"
+} from "#index.ts"
+import { createFlags, FlagTimeoutError, InvalidVariantError } from "#index.ts"
 
 function createDeferred<T>() {
   let rejectDeferred!: (reason?: Error) => void

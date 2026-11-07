@@ -47,9 +47,9 @@
       "default": "./dist/hooks/index.js"
     },
     "./react": {
-      "types": "./dist/integrations/react.d.ts",
-      "import": "./dist/integrations/react.js",
-      "default": "./dist/integrations/react.js"
+      "types": "./dist/integrations/react/index.d.ts",
+      "import": "./dist/integrations/react/index.js",
+      "default": "./dist/integrations/react/index.js"
     }
   },
   "scripts": {

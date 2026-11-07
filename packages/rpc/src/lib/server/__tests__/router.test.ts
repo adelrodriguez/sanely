@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
 import { describe, expect, expectTypeOf, test } from "vitest"
 import * as z from "zod"
-import { createClient } from "#lib/client/client.ts"
+import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { SetupError } from "#lib/core/setup-error.ts"

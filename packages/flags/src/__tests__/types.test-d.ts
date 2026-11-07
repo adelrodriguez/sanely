@@ -25,7 +25,7 @@ import type {
   FlagIdentityOf,
   FlagValueOf,
   ReactFlagCache,
-} from "#integrations/react.tsx"
+} from "#integrations/react/index.tsx"
 import { defineHook as defineHookFromHooks } from "#hooks/index.ts"
 import { createFlags, decision, defineHook } from "#index.ts"
 import {
@@ -36,7 +36,7 @@ import {
   useFlag,
   useFlagBatch,
   useFlagCache,
-} from "#integrations/react.tsx"
+} from "#integrations/react/index.tsx"
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 interface ConsumerIdentity extends Identity {

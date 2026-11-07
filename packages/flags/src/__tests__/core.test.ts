@@ -1,27 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
-import type { Decision, EvaluationDetails, Hook, Identity } from "#lib/types/index.ts"
-import { decision } from "#decision.ts"
-import { createFlags } from "#factory.ts"
-import { getEvaluatorRecord } from "#lib/flag/registry.ts"
-import { IdentityNotFoundError, MalformedDecisionError } from "#lib/shared/errors.ts"
+import type { Decision, EvaluationDetails, Hook, Identity } from "#index.ts"
+import { createFlags, decision, IdentityNotFoundError, MalformedDecisionError } from "#index.ts"
 
 describe("createFlags", () => {
-  test("registers one record for its evaluators", async () => {
-    const flag = createFlags({
-      decide: () => decision.boolean(true),
-      identify: () => ({ distinctId: "user" }),
-    })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: false, key: "second" })
-    const ref = getEvaluatorRecord(first)?.factoryRef
-
-    expect(ref).toBe(getEvaluatorRecord(second)?.factoryRef)
-    expect(getEvaluatorRecord(first)?.options.key).toBe("first")
-    expect(getEvaluatorRecord({})).toBeUndefined()
-    const batch = (await ref?.batch([first])) as readonly [boolean]
-    expect(batch[0]).toBe(true)
-  })
   test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
     "rejects an invalid factory timeout of %p",
     (timeoutMs) => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import * as hooks from "#hooks/index.ts"
 import * as core from "#index.ts"
-import * as react from "#integrations/react.tsx"
+import * as react from "#integrations/react/index.tsx"
 
 describe("public entry points", () => {
   it("exposes the core flag factory", async () => {

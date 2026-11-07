@@ -7,6 +7,7 @@ ubiquitous language in these files.
 
 ## Workspace
 
+- Before you add or move source or tests, read `docs/agents/package-structure.md`.
 - Each package lives in `packages/<name>` and publishes as `@sanely/<name>`.
 - Run `pnpm run generate new-package` to add a package. The Turborepo generator renders the
   starter in `turbo/generators/templates/scaffolds/new-package/`, which has the same example as

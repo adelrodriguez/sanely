@@ -1,7 +1,7 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
 // It tests the public types through the package entry, the same as a package consumer uses them.
 import { expectTypeOf } from "vitest"
-import type { GRAMMAR } from "#lib/grammar/__tests__/grammar.table.ts"
+import type { GRAMMAR } from "#lib/grammar/__tests__/index.table.ts"
 import {
   cron,
   type CronExpression,

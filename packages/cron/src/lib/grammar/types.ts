@@ -1,4 +1,4 @@
-import type { CronPhrase } from "#lib/schedule/schedule.ts"
+import type { CronPhrase } from "#lib/schedule/index.ts"
 import type { HourChoices, MinuteChoices, Ordinal, PhraseDaySet } from "#lib/vocabulary/types.ts"
 import type {
   HourInterval,
