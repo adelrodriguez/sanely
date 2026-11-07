@@ -112,9 +112,11 @@ Defines one limiter. It takes these options, and also `timeout`, `cache`, and `m
 const perIp = limiter({
   name: "api:ip",
   algorithm: slidingWindow({ limit: 30, window: 3_600_000 }),
-  identify: (request: Request) => request.headers.get("x-forwarded-for") ?? null,
+  identify: (request: Request) => getClientIp(request),
 })
 ```
+
+`getClientIp` stands for the client IP that your platform or trusted proxy gives you. Do not use the raw `X-Forwarded-For` header as the identity: a caller can change its leading value on every request, and each new value gets a fresh count.
 
 ### `Identity`
 
