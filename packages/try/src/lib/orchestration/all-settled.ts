@@ -1,4 +1,4 @@
-import type { BuilderConfig } from "#lib/builder.ts"
+import type { BuilderConfig } from "#lib/policies/options.ts"
 import type {
   AllSettledResult,
   InferredTaskContext,

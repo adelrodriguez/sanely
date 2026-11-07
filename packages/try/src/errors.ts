@@ -9,5 +9,5 @@ export {
   RetryExhaustedError,
   TimeoutError,
   UnhandledException,
-} from "./lib/errors"
-export type { PanicCode } from "./lib/errors"
+} from "#lib/shared/errors.ts"
+export type { PanicCode } from "#lib/shared/errors.ts"

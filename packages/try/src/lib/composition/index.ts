@@ -1,4 +1,4 @@
-import { checkIsPromiseLike } from "./utils"
+import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 
 type GenUnwrap<T> = Exclude<Awaited<T>, Error>
 export type GenUse = <T>(value: T) => Generator<T, GenUnwrap<T>, GenUnwrap<T>>

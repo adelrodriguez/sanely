@@ -1,9 +1,8 @@
-import type { BuilderConfig } from "#lib/builder.ts"
-import type { NonPromise } from "#lib/utils.ts"
-import { Panic, type PanicCode, type UnhandledException } from "#lib/errors.ts"
-import { checkIsPromiseLike, invariant } from "#lib/utils.ts"
+import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
+import type { NonPromise } from "#lib/shared/utils.ts"
+import { Panic, type PanicCode, type UnhandledException } from "#lib/shared/errors.ts"
+import { checkIsPromiseLike, invariant } from "#lib/shared/utils.ts"
 import type { RunnerError } from "./base"
-import type { BaseTryCtx } from "./context"
 import { BaseExecution, RetryDirective } from "./base"
 
 export type SyncRunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (ctx: Ctx) => NonPromise<T>
@@ -83,8 +82,7 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
   #runAttemptLoop(): T | E | RunnerError {
     let currentAttempt = 1
 
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
-    while (true) {
+    for (;;) {
       const controlBeforeAttempt = this.checkDidControlFail()
 
       if (controlBeforeAttempt) {

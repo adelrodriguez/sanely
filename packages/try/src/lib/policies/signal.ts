@@ -1,5 +1,5 @@
-import { CancellationError } from "#lib/errors.ts"
-import { discardOutcome, resolveWithAbort } from "#lib/utils.ts"
+import { CancellationError } from "#lib/shared/errors.ts"
+import { discardOutcome, resolveWithAbort } from "#lib/shared/utils.ts"
 
 export class SignalController {
   readonly signal?: AbortSignal

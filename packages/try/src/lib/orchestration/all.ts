@@ -1,6 +1,6 @@
-import type { BuilderConfig } from "#lib/builder.ts"
-import { Panic } from "#lib/errors.ts"
-import { checkIsPromiseLike } from "#lib/utils.ts"
+import type { BuilderConfig } from "#lib/policies/options.ts"
+import { Panic } from "#lib/shared/errors.ts"
+import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 import {
   FailFastTaskExecution,
   OrchestrationExecution,

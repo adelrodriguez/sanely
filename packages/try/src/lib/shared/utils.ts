@@ -1,5 +1,5 @@
-import { InternalDisposableStack } from "#shims/disposer.ts"
-import { Panic, type PanicCode } from "./errors"
+import { InternalDisposableStack } from "#lib/disposal/index.ts"
+import { Panic, type PanicCode } from "./errors.ts"
 
 export function assertUnreachable(value: never, code: PanicCode): never {
   throw new Panic(code, { message: `Unreachable case: ${String(value)}` })

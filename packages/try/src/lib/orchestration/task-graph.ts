@@ -1,9 +1,9 @@
-import type { BuilderConfig } from "#lib/builder.ts"
-import type { AsyncDisposer } from "#shims/disposer.ts"
-import { Panic, UnhandledException, isPanic } from "#lib/errors.ts"
+import type { AsyncDisposer } from "#lib/disposal/index.ts"
+import type { BuilderConfig } from "#lib/policies/options.ts"
+import { disposer, defineAsyncDisposeAlias } from "#lib/disposal/index.ts"
 import { BaseExecution } from "#lib/execution/base.ts"
-import { invariant, resolveWithAbort } from "#lib/utils.ts"
-import { createAsyncDisposer, defineAsyncDisposeAlias } from "#shims/disposer.ts"
+import { Panic, UnhandledException, isPanic } from "#lib/shared/errors.ts"
+import { invariant, resolveWithAbort } from "#lib/shared/utils.ts"
 
 const TASK_RACE_ABORTED = Symbol("taskRaceAborted")
 
@@ -195,7 +195,7 @@ export abstract class TaskGraphExecutionBase<
   readonly #settlements = new Map<keyof T, PromiseWithResolvers<unknown>>()
   protected readonly internalController: AbortController = new AbortController()
   protected readonly taskSignal: AbortSignal
-  protected readonly disposer: AsyncDisposer = createAsyncDisposer()
+  protected readonly disposer: AsyncDisposer = disposer()
   protected firstRejection: Error | undefined
   #panic: Panic | undefined
   declare [Symbol.asyncDispose]: () => Promise<void>

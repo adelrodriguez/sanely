@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest"
 import {
   ASYNC_DISPOSE,
   type AsyncDisposableLike,
-  createAsyncDisposer,
+  disposer,
   defineAsyncDisposeAlias,
   defineDisposeAlias,
   DISPOSE,
   type DisposableLike,
   InternalDisposableStack,
-} from "#shims/disposer.ts"
+} from "#lib/disposal/index.ts"
 
 type SuppressedErrorLike = Error & { error: unknown; suppressed: unknown }
 
@@ -230,37 +230,37 @@ describe("disposer shim", () => {
     })
   })
 
-  describe("createAsyncDisposer", () => {
+  describe("disposer", () => {
     it("runs deferred cleanups through the async symbol alias", async () => {
       const calls: string[] = []
-      const disposer = createAsyncDisposer()
+      const stack = disposer()
 
-      disposer.defer(() => {
+      stack.defer(() => {
         calls.push("cleanup")
       })
 
-      await disposer[Symbol.asyncDispose]()
+      await stack[Symbol.asyncDispose]()
 
       expect(calls).toEqual(["cleanup"])
     })
 
     it("runs cleanups once when disposed more than once", async () => {
       let cleanupCalls = 0
-      const disposer = createAsyncDisposer()
+      const stack = disposer()
 
-      disposer.defer(() => {
+      stack.defer(() => {
         cleanupCalls += 1
       })
 
-      await disposer.dispose()
-      await disposer.dispose()
+      await stack.dispose()
+      await stack.dispose()
 
       expect(cleanupCalls).toBe(1)
     })
 
     it("prefers the async dispose method over the sync one on the same resource", async () => {
       const calls: string[] = []
-      const disposer = createAsyncDisposer()
+      const stack = disposer()
 
       const resource: AsyncDisposableLike & DisposableLike = {
         async [ASYNC_DISPOSE]() {
@@ -272,15 +272,15 @@ describe("disposer shim", () => {
         },
       }
 
-      disposer.use(resource as unknown as AsyncDisposable)
+      stack.use(resource as unknown as AsyncDisposable)
 
-      await disposer.dispose()
+      await stack.dispose()
 
       expect(calls).toEqual(["async"])
     })
 
     it("fails fast before reading an async disposer from an already disposed async stack", async () => {
-      const disposer = createAsyncDisposer()
+      const stack = disposer()
       let getterCalls = 0
       const resource = {}
 
@@ -293,13 +293,13 @@ describe("disposer shim", () => {
         },
       })
 
-      await disposer.dispose()
+      await stack.dispose()
 
       expect(() => {
-        disposer.use(resource as unknown as AsyncDisposable)
+        stack.use(resource as unknown as AsyncDisposable)
       }).toThrow(new ReferenceError("AsyncDisposableStack already disposed"))
       expect(() => {
-        disposer.defer(async () => {
+        stack.defer(async () => {
           await Promise.resolve()
         })
       }).toThrow(new ReferenceError("AsyncDisposableStack already disposed"))

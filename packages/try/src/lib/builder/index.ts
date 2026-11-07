@@ -1,60 +1,37 @@
 import type {
-  CancellationError,
-  RetryExhaustedError,
-  TimeoutError,
-  UnhandledException,
-} from "./errors"
-import type { TryCtx, TryCtxFor } from "./execution/context"
-import type {
   InferredTaskContext,
   TaskRecord,
   TaskResult,
   TaskValidation,
   AllOptions,
   AllSettledResult,
-} from "./orchestration/task-graph"
+} from "#lib/orchestration/task-graph.ts"
 import type {
+  BuilderConfig,
   RetryOptions,
   RetryPolicy,
+  TryCtxFor,
   ValidateRetryLimit,
   ValidateRetryOptions,
-} from "./policies/retry"
-import { executeRun, type AsyncRunInput, type RunTryFn } from "./execution/run"
-import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "./execution/run-sync"
-import { executeAll } from "./orchestration/all"
-import { executeAllSettled } from "./orchestration/all-settled"
-import { executeFlow, type FlowResult, type InferredFlowTaskContext } from "./orchestration/flow"
-import { retryOptions } from "./policies/retry"
-import { assertValidTimeout } from "./policies/timeout"
-
-/**
- * Wraps are observational hooks: they can inspect execution context and surround execution, but
- * they must not mutate context or replace it.
- */
-export type WrapCtx = Readonly<Omit<TryCtx, "retry">> & {
-  readonly retry: Readonly<TryCtx["retry"]>
-}
-
-type WrapFn = (ctx: WrapCtx, next: () => unknown) => unknown
-
-export interface BuilderConfig {
-  /**
-   * Retry configuration applied to the run.
-   */
-  retry?: RetryPolicy
-  /**
-   * Timeout configuration applied to the run.
-   */
-  timeout?: number
-  /**
-   * Abort signals used to cancel execution.
-   */
-  signals?: AbortSignal[]
-  /**
-   * Wrapper middleware chain around execution.
-   */
-  wraps?: WrapFn[]
-}
+  WrapFn,
+} from "#lib/policies/options.ts"
+import type {
+  CancellationError,
+  RetryExhaustedError,
+  TimeoutError,
+  UnhandledException,
+} from "#lib/shared/errors.ts"
+import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "#lib/execution/run-sync.ts"
+import { executeRun, type AsyncRunInput, type RunTryFn } from "#lib/execution/run.ts"
+import { executeAllSettled } from "#lib/orchestration/all-settled.ts"
+import { executeAll } from "#lib/orchestration/all.ts"
+import {
+  executeFlow,
+  type FlowResult,
+  type InferredFlowTaskContext,
+} from "#lib/orchestration/flow.ts"
+import { retryOptions } from "#lib/policies/retry.ts"
+import { assertValidTimeout } from "#lib/policies/timeout.ts"
 
 type ConfigRunErrors = TimeoutError | CancellationError
 /**

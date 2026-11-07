@@ -1,6 +1,6 @@
-import { Panic, TimeoutError } from "#lib/errors.ts"
-import { discardOutcome, invariant, resolveWithAbort } from "#lib/utils.ts"
-import { defineDisposeAlias } from "#shims/disposer.ts"
+import { defineDisposeAlias } from "#lib/disposal/index.ts"
+import { Panic, TimeoutError } from "#lib/shared/errors.ts"
+import { discardOutcome, invariant, resolveWithAbort } from "#lib/shared/utils.ts"
 
 /**
  * Single source of truth for timeout validation: used eagerly by the builder at `.timeout()` call

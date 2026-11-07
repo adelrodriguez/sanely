@@ -1,4 +1,8 @@
-import type { BuilderConfig, WrapCtx } from "#lib/builder.ts"
+import type { BuilderConfig, WrapCtx, TryCtx } from "#lib/policies/options.ts"
+import { defineDisposeAlias } from "#lib/disposal/index.ts"
+import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
+import { SignalController } from "#lib/policies/signal.ts"
+import { TimeoutController } from "#lib/policies/timeout.ts"
 import {
   CancellationError,
   ControlError,
@@ -6,12 +10,7 @@ import {
   RetryExhaustedError,
   TimeoutError,
   UnhandledException,
-} from "#lib/errors.ts"
-import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
-import { SignalController } from "#lib/policies/signal.ts"
-import { TimeoutController } from "#lib/policies/timeout.ts"
-import { defineDisposeAlias } from "#shims/disposer.ts"
-import type { TryCtx } from "./context"
+} from "#lib/shared/errors.ts"
 
 export type RunnerError =
   | CancellationError

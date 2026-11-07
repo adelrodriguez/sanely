@@ -240,6 +240,6 @@ class AsyncDisposerStack implements AsyncDisposer {
 }
 defineAsyncDisposeAlias(AsyncDisposerStack.prototype)
 
-export function createAsyncDisposer(): AsyncDisposer {
+export function disposer(): AsyncDisposer {
   return new AsyncDisposerStack()
 }
