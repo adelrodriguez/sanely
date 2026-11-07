@@ -1,0 +1,19 @@
+# Testing
+
+Module suites live in adjacent `__tests__/` folders and match the source file names.
+A domain's `index.ts` module has an `index.test.ts` suite.
+Grammar and validation tables use `index.table.ts`. Schedule generators for property tests use `index.arbitrary.ts`.
+
+Public export checks and type assertions live in `src/__tests__/`.
+The workspace `check` command checks type assertions. Vitest does not run them.
+The architecture suite checks test ownership and coverage. Import direction is checked by lint.
+Root configuration tests reject dependencies between grammar and description and imports from lower domains into public calls.
+
+Property tests check exact run times, canonical phrase round trips, and JSON schedule round trips.
+Keep the grammar table shared between runtime tests and public type assertions.
+
+The package's `test:types-perf` script checks both phrase literals and typed schedule objects.
+Run this check separately from builds and tests, because concurrent work can exceed its time budget.
+`build:verify` checks the packed runtime and declarations. `test:compat` loads built exports, and CI runs it on the package's Node.js floor.
+
+See the root [contributor guide](../../../CONTRIBUTING.md#run-the-checks) for commands and the [shared test placement rules](../../../docs/agents/package-structure.md#tests-and-benchmarks).

@@ -45,7 +45,7 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
 
 // ── Grammar table ────────────────────────────────────────────────────────────
 // Each type below names the rows where the types and the grammar table disagree. It must be
-// `never`. The runtime tests read the same table (see grammar.table.ts).
+// `never`. The runtime tests read the same table (see lib/grammar/__tests__/index.table.ts).
 
 // Accepts each strict row with ValidateCronPhrase and with CronPhrase.
 {

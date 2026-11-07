@@ -317,9 +317,12 @@ if (name === "verify-docs") {
   const source = readFileSync(path, "utf8")
   const start = source.indexOf("const SRC")
   if (start === -1) throw new Error("Cannot find cron's source checks")
-  const content = `import { existsSync, readdirSync } from "node:fs"\nimport { basename, dirname, join } from "node:path"\nimport { describe, expect, it } from "vitest"\n\n${source.slice(
-    start
-  )}`
+  const content =
+    `import { existsSync, readdirSync } from "node:fs"\nimport { basename, dirname, join } from "node:path"\nimport { describe, expect, it } from "vitest"\n\n${source.slice(
+      start
+    )}`
+      .replaceAll("grammar/__tests__/grammar.test.ts", "grammar/__tests__/index.test.ts")
+      .replaceAll("grammar/grammar.ts", "grammar/index.ts")
   const updates = source === content ? new Map<string, string>() : new Map([[path, content]])
   const removed = [
     "flags/src/__tests__/architecture.test.ts",

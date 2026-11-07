@@ -290,6 +290,10 @@ schedule("every weekday at 9:00", sendReport) // OK
 schedule("every weekday at 9", sendReport) // Type error: "9" is not a valid time
 ```
 
+## Contributing
+
+Read the [architecture](docs/architecture.md), [testing guide](docs/testing.md), and root [contributor guide](../../CONTRIBUTING.md) before changing the package.
+
 ## License
 
 MIT
