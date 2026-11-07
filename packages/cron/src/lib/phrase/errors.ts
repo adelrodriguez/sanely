@@ -1,25 +1,5 @@
 import type { Path } from "#lib/schedule/rules.ts"
-import { ParseError } from "#lib/schedule/rules.ts"
-
-// `JSON.stringify` returns `undefined` for `undefined`, a function, and a symbol, but its type
-// is `string`.
-function toJson(value: unknown): string | undefined {
-  return JSON.stringify(value)
-}
-
-// The input as text for the message. A value that cannot become JSON or a string, such as an
-// object with a broken `toString`, must not stop the error from being created.
-function show(value: unknown): string {
-  try {
-    return toJson(value) ?? String(value)
-  } catch {
-    try {
-      return String(value)
-    } catch {
-      return Object.prototype.toString.call(value)
-    }
-  }
-}
+import { ParseError, show } from "#lib/schedule/rules.ts"
 
 // A path such as `["on", 2]` as `on[2]`, and `["at", "hour"]` as `at.hour`.
 function formatPath(path: Path): string {

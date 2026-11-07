@@ -12,6 +12,7 @@ import {
   type HourInterval,
   InvalidScheduleError,
   isCronPhrase,
+  isSchedule,
   isValidCronPhrase,
   MINUTE_INTERVALS,
   type MinuteInterval,
@@ -304,20 +305,28 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   if (isCronPhrase(userInput)) cron(userInput)
 }
 
-// parse and safeParse
+// parse, safeParse, and isSchedule
 
-// Accepts any string in parse and safeParse.
+// Takes any value in parse and safeParse, and returns a Schedule.
 {
-  expectTypeOf(parse(userInput)).toEqualTypeOf<string>()
-  expectTypeOf(safeParse(userInput)).toEqualTypeOf<string | null>()
-  expectTypeOf(parse).parameters.toEqualTypeOf<[value: string]>()
-  expectTypeOf(safeParse).parameters.toEqualTypeOf<[value: string]>()
+  expectTypeOf(parse(userInput)).toEqualTypeOf<Schedule>()
+  expectTypeOf(safeParse(userInput)).toEqualTypeOf<Schedule | null>()
+  expectTypeOf(parse).parameters.toEqualTypeOf<[value: unknown]>()
+  expectTypeOf(safeParse).parameters.toEqualTypeOf<[value: unknown]>()
+  expectTypeOf(parse(JSON.parse("{}"))).toEqualTypeOf<Schedule>()
 }
 
-// Accepts the lenient form in a string literal.
+// Gives a Schedule from parse that cron accepts.
 {
-  expectTypeOf(parse("Every 15 Mins")).toEqualTypeOf<string>()
-  expectTypeOf(safeParse("every 7 minutes")).toEqualTypeOf<string | null>()
+  expectTypeOf(cron(parse(userInput))).toEqualTypeOf<CronExpression>()
+}
+
+// Narrows any value to Schedule with isSchedule.
+{
+  const value: unknown = JSON.parse("{}")
+
+  if (isSchedule(value)) expectTypeOf(value).toEqualTypeOf<Schedule>()
+  expectTypeOf(isSchedule).parameters.toEqualTypeOf<[value: unknown]>()
 }
 
 // Guards
@@ -529,12 +538,6 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- a day list has one or more days
   cron({ at: { hour: 9, minute: 0 }, every: "day", on: [] })
-
-  // @ts-expect-error -- parse takes a string
-  parse(15)
-
-  // @ts-expect-error -- safeParse takes a string
-  safeParse(null)
 
   // @ts-expect-error -- isCronPhrase takes a string
   isCronPhrase(15)

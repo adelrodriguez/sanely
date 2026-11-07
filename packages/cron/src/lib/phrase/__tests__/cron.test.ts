@@ -49,6 +49,14 @@ describe("cron with a schedule", () => {
   ])("should convert %j to %j", (schedule, expected) => {
     expect(cron(schedule)).toBe(expected)
   })
+
+  it("should throw InvalidScheduleError for an invalid schedule at runtime", () => {
+    // Untyped JavaScript, or a cast, can pass any object.
+    const schedule = JSON.parse('{"every":"minute","interval":7}') as Schedule
+
+    expect(() => cron(schedule)).toThrow(InvalidScheduleError)
+    expect(() => cron(schedule)).toThrow('Invalid schedule at "interval": 7 does not divide 60')
+  })
 })
 
 // These tests prove the "exact or throw" rule. A generated schedule gives a cron expression.
