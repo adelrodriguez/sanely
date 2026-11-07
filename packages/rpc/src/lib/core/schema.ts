@@ -1,0 +1,22 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec"
+import { ChannelError } from "./error"
+
+/**
+ * Parses a value against any Standard Schema, throwing `ChannelError` (code `validation`, issues
+ * attached) on failure. This is the single parse primitive the client and router use; edge adapters
+ * can reuse it to validate before their own publish paths.
+ */
+export async function parseWith<Schema extends StandardSchemaV1>(
+  schema: Schema,
+  value: unknown
+): Promise<StandardSchemaV1.InferOutput<Schema>> {
+  // Awaited unconditionally: an `instanceof Promise` check misses thenables from another realm or
+  // a non-native promise implementation.
+  const result = await schema["~standard"].validate(value)
+
+  if (result.issues) {
+    throw new ChannelError({ code: "validation", issues: result.issues })
+  }
+
+  return result.value
+}

@@ -1,0 +1,286 @@
+import type { Wire } from "#lib/wire/types.ts"
+import { isRecord } from "#lib/core/guards.ts"
+import { SetupError } from "#lib/core/setup-error.ts"
+
+/**
+ * `Wire` constructors for postMessage-shaped pipes, plus the Electron hand-off that gets a port
+ * from the main process into a page. The port flavors share an idea but not a surface — a DOM
+ * `MessagePort` speaks `addEventListener` and wraps data in an event, Electron's `MessagePortMain`
+ * is an emitter that also wraps, Node's `worker_threads` port is an emitter that doesn't — which is
+ * exactly the kind of difference that rots in hand-copied snippets. Every parameter is structural,
+ * so nothing here depends on Electron or the DOM, even for types.
+ */
+
+/**
+ * The shape of an Electron `MessagePortMain` — satisfied in the main process and in utility
+ * processes alike (both ends of a `MessageChannelMain` are this flavor, wherever they land).
+ */
+export type MainPortLike = {
+  postMessage(message: unknown): void
+  on(event: "message", listener: (event: { data: unknown }) => void): unknown
+  removeListener(event: "message", listener: (event: { data: unknown }) => void): unknown
+  start(): void
+}
+
+/**
+ * Wraps an Electron `MessagePortMain` (main or utility process) as a `Wire`.
+ */
+export function mainPort(port: MainPortLike): Wire {
+  return {
+    onMessage: (listener) => {
+      const handle = (event: { data: unknown }): void => {
+        listener(event.data)
+      }
+
+      port.on("message", handle)
+      // Ports buffer until start(); the listener is attached, so nothing is lost.
+      port.start()
+
+      return () => {
+        port.removeListener("message", handle)
+      }
+    },
+    send: (data) => {
+      port.postMessage(data)
+    },
+  }
+}
+
+/**
+ * The shape of a DOM `MessagePort` — renderers, iframes, web workers.
+ */
+export type DomPortLike = {
+  postMessage(message: unknown): void
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void
+  removeEventListener(type: "message", listener: (event: { data: unknown }) => void): void
+  start(): void
+}
+
+/**
+ * Wraps a DOM `MessagePort` as a `Wire`.
+ */
+export function domPort(port: DomPortLike): Wire {
+  return {
+    onMessage: (listener) => {
+      const handle = (event: { data: unknown }): void => {
+        listener(event.data)
+      }
+
+      port.addEventListener("message", handle)
+      port.start()
+
+      return () => {
+        port.removeEventListener("message", handle)
+      }
+    },
+    send: (data) => {
+      port.postMessage(data)
+    },
+  }
+}
+
+/**
+ * The shape of a `node:worker_threads` message end — a `MessagePort`, a `Worker`, or `parentPort`.
+ * Unlike the other flavors, listeners receive the value directly (no wrapping event), and
+ * subscribing implicitly starts the port.
+ */
+export type NodePortLike = {
+  postMessage(value: unknown): void
+  on(event: "message", listener: (value: unknown) => void): unknown
+  removeListener(event: "message", listener: (value: unknown) => void): unknown
+}
+
+/**
+ * Wraps a `node:worker_threads` port, `Worker`, or `parentPort` as a `Wire`.
+ */
+export function nodePort(port: NodePortLike): Wire {
+  return {
+    onMessage: (listener) => {
+      port.on("message", listener)
+
+      return () => {
+        port.removeListener("message", listener)
+      }
+    },
+    send: (data) => {
+      port.postMessage(data)
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Electron hand-off: three functions, two ends, one channel string. A MessagePort cannot
+// cross contextBridge, but window.postMessage can transfer it — so main ships the port to the
+// page's IPC channel (sendPort), the preload relays it into the window (relayPort), and the
+// renderer awaits it (receivePort). Keep the channel string in shared code so all three agree.
+// ---------------------------------------------------------------------------------------------
+
+type PortMessageEvent = { data: unknown; ports: readonly DomPortLike[]; source: unknown }
+
+/**
+ * The slice of a DOM `window` the hand-off touches.
+ */
+export type MessageWindowLike = {
+  addEventListener(type: "message", listener: (event: PortMessageEvent) => void): void
+  removeEventListener(type: "message", listener: (event: PortMessageEvent) => void): void
+  postMessage(message: unknown, targetOrigin: string, transfer?: readonly unknown[]): void
+  location?: { origin: string }
+}
+
+function defaultWindow(caller: string): MessageWindowLike {
+  const candidate: unknown = Reflect.get(globalThis, "window")
+
+  if (!isMessageWindow(candidate)) {
+    throw new SetupError({ caller, code: "no-window" })
+  }
+
+  return candidate
+}
+
+function isMessageWindow(value: unknown): value is MessageWindowLike {
+  return (
+    isRecord(value)
+    && typeof value.addEventListener === "function"
+    && typeof value.removeEventListener === "function"
+    && typeof value.postMessage === "function"
+  )
+}
+
+/**
+ * Renderer end of the hand-off: resolves with the port the preload relays on `type`. The guard
+ * accepts only same-window messages carrying the agreed type and an actual port, which shuts out
+ * senders in _other_ windows — an iframe, a compromised `opener`. It cannot shut out a script
+ * already running in this window (`event.source` names the sending window, not the sending script),
+ * and no postMessage protocol can; same-window injection defeats the page wholesale. Feed the
+ * result to {@link domPort}; `connect` accepts the pending promise directly:
+ * `connect(receivePort("app:port").then(domPort), { router })`.
+ *
+ * A port that never arrives leaves the promise pending; bound the wait with `signal`
+ * (`AbortSignal.timeout(5000)`), which rejects with `signal.reason`. `target` replaces the global
+ * `window`.
+ */
+export function receivePort(
+  type: string,
+  options: { signal?: AbortSignal; target?: MessageWindowLike } = {}
+): Promise<DomPortLike> {
+  const { signal } = options
+  const win = options.target ?? defaultWindow("receivePort")
+
+  return new Promise((resolve, reject) => {
+    // Throwing in the executor rejects with the raw reason, as fetch does.
+    signal?.throwIfAborted()
+
+    const detach = (): void => {
+      win.removeEventListener("message", handle)
+      signal?.removeEventListener("abort", onAbort)
+    }
+    const onAbort = (): void => {
+      detach()
+      // oxlint-disable-next-line prefer-promise-reject-errors -- an abort rejects with the caller's own reason, as fetch does
+      reject(signal?.reason)
+    }
+    const handle = (event: PortMessageEvent): void => {
+      const { data } = event
+      const port = event.ports[0]
+
+      if (event.source !== win || !isRecord(data) || data.type !== type || !port) {
+        return
+      }
+
+      // Removal is the guard's job, not {once}'s: an unrelated message must not consume the
+      // listener before the port arrives.
+      detach()
+      resolve(port)
+    }
+
+    win.addEventListener("message", handle)
+    signal?.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
+/**
+ * The slice of Electron's `ipcRenderer` the preload relay touches.
+ */
+export type PortIpcRendererLike = {
+  on(channel: string, listener: (event: { ports: readonly unknown[] }) => void): unknown
+  removeListener(channel: string, listener: (event: { ports: readonly unknown[] }) => void): unknown
+}
+
+/**
+ * Preload end of the hand-off: relays every port arriving on the IPC channel `type` into the page,
+ * where {@link receivePort} is waiting. `ipcRenderer` is a parameter (not a global) so the preload
+ * stays the only module that imports Electron. Aborting `signal` stops the relay.
+ *
+ * The port is posted to the window's own origin, so a page that has navigated elsewhere never
+ * receives it. Pages with an opaque origin (`file://`, whose origin is `"null"`) can't be addressed
+ * by origin and fall back to `"*"`; `targetOrigin` overrides both. `target` replaces the global
+ * `window`.
+ */
+export function relayPort(
+  ipcRenderer: PortIpcRendererLike,
+  type: string,
+  options: { signal?: AbortSignal; target?: MessageWindowLike; targetOrigin?: string } = {}
+): void {
+  const { signal } = options
+  const win = options.target ?? defaultWindow("relayPort")
+
+  if (signal?.aborted) {
+    return
+  }
+
+  const relay = (event: { ports: readonly unknown[] }): void => {
+    win.postMessage({ type }, options.targetOrigin ?? originOf(win), event.ports)
+  }
+
+  ipcRenderer.on(type, relay)
+  signal?.addEventListener(
+    "abort",
+    () => {
+      ipcRenderer.removeListener(type, relay)
+    },
+    { once: true }
+  )
+}
+
+function originOf(win: MessageWindowLike): string {
+  const origin = win.location?.origin
+  return origin && origin !== "null" ? origin : "*"
+}
+
+/**
+ * The slice of a `BrowserWindow` that {@link sendPort} touches.
+ */
+export type PortWindowLike = {
+  webContents: {
+    getURL(): string
+    isLoading(): boolean
+    once(event: "did-finish-load", listener: () => void): unknown
+    postMessage(channel: string, message: unknown, transfer?: unknown[]): void
+  }
+}
+
+/**
+ * Main-process end of the hand-off: ships one end of a `MessageChannelMain` to a window once the
+ * page can receive it. If a page has already finished loading, the port posts immediately —
+ * `loadURL()` resolves on `did-finish-load`, so a caller that awaited it would otherwise register
+ * for an event that already fired and the hand-off would silently never happen.
+ *
+ * A transferred port is spent, so a reload needs a fresh `MessageChannelMain` and another
+ * `sendPort` call (from your own `did-finish-load` handler). A _failed_ navigation
+ * (`did-fail-load`) also leaves `isLoading()` false, so the port may post to a page that never
+ * arrived and is then spent — treat navigation failure as a reason to rebuild the channel too.
+ * Window lifecycle stays the caller's business — pair this with `win.on("closed", () =>
+ * close(...))` on the `connect` session serving the other end.
+ */
+export function sendPort(win: PortWindowLike, port: MainPortLike, type: string): void {
+  const { webContents } = win
+
+  if (!webContents.isLoading() && webContents.getURL() !== "") {
+    webContents.postMessage(type, null, [port])
+    return
+  }
+
+  webContents.once("did-finish-load", () => {
+    webContents.postMessage(type, null, [port])
+  })
+}

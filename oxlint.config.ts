@@ -11,6 +11,12 @@ export default defineConfig({
     typeCheck: true,
   },
   overrides: [
+    // Each type-level case sits in its own block, including ones that declare nothing, as the
+    // typedport lint config allowed.
+    {
+      files: ["packages/rpc/src/__tests__/types.test-d.ts"],
+      rules: { "no-lone-blocks": "off" },
+    },
     // The source builder and its execution modules share recursive type contracts.
     // Keep runtime cycle checks while preserving those public types during the move.
     {
