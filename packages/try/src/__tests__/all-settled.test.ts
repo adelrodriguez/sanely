@@ -146,7 +146,7 @@ describe("allSettled", () => {
     expect(events).toEqual(["sibling:settled", "rejected"])
   })
 
-  it("throws a Panic from another copy of tryharder instead of recording it as a result", async () => {
+  it("throws a Panic from another copy of the package instead of recording it as a result", async () => {
     const foreignPanic = Object.assign(new Error("foreign panic"), {
       code: "TASK_SELF_REFERENCE",
       name: "Panic",

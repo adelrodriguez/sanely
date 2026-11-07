@@ -91,12 +91,12 @@ export class Panic extends Error {
 }
 
 // Type guards below match by `error.name` in addition to instanceof, so they
-// keep working when two copies of tryharder end up in one dependency graph
+// keep working when two copies of the package end up in one dependency graph
 // (or across realms), where instanceof silently fails. They are the
-// recommended way to identify tryharder errors.
+// recommended way to identify the errors of the package.
 //
 // Caveat: name matching means a foreign Error that happens to use the same
-// `name` also passes. Within the unions returned by tryharder APIs this cannot
+// `name` also passes. Within the unions returned by the package APIs this cannot
 // occur.
 
 /**

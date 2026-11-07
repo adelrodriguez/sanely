@@ -400,7 +400,7 @@ describe("all", () => {
     expect(catchErrors).toEqual([])
   })
 
-  it("throws a Panic from another copy of tryharder without passing it through catch", async () => {
+  it("throws a Panic from another copy of the package without passing it through catch", async () => {
     const foreignPanic = Object.assign(new Error("foreign panic"), {
       code: "TASK_SELF_REFERENCE",
       name: "Panic",

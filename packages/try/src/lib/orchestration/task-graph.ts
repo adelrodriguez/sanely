@@ -5,7 +5,7 @@ import { BaseExecution } from "#lib/execution/base.ts"
 import { invariant, resolveWithAbort } from "#lib/utils.ts"
 import { createAsyncDisposer, defineAsyncDisposeAlias } from "#shims/disposer.ts"
 
-const TASK_RACE_ABORTED = Symbol("tryharder.taskRaceAborted")
+const TASK_RACE_ABORTED = Symbol("taskRaceAborted")
 
 /**
  * Records a task result as an own property. Plain assignment would call the `__proto__` setter for
