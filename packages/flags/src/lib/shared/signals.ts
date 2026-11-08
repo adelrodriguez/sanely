@@ -1,4 +1,4 @@
-import { FlagTimeoutError } from "./errors"
+import { EvaluationTimeoutError } from "#lib/errors/index.ts"
 import { normalizeError } from "./utils"
 
 const noop: () => void = () => null
@@ -35,7 +35,7 @@ export function createEvaluationSignal(
   }
 
   const timer = setTimeout(() => {
-    controller.abort(new FlagTimeoutError(timeoutMs))
+    controller.abort(new EvaluationTimeoutError(timeoutMs))
   }, timeoutMs)
 
   return {

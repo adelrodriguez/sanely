@@ -10,7 +10,7 @@ export default {
       project: ["scripts/**/*.{mjs,ts}", "turbo/generators/**/*.ts", ".adamantite/rules/**/*.ts"],
     },
     "packages/*": {
-      entry: ["src/**/*.test-d.ts", "scripts/*.{mjs,ts}"],
+      entry: ["src/**/*.test-d.{ts,tsx}", "scripts/*.{mjs,ts}"],
       project: ["src/**/*.{ts,tsx}", "scripts/**/*.{mjs,ts}"],
     },
   },

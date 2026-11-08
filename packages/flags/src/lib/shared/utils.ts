@@ -27,3 +27,5 @@ export function normalizeError(error: unknown): Error {
     return new Error("Uninspectable value thrown")
   }
 }
+
+export type MaybePromise<T> = T | Promise<T>

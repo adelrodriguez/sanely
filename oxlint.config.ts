@@ -41,14 +41,25 @@ const dependencies: Record<string, Record<string, string[]>> = {
     format: [],
   },
   flags: {
-    config: ["shared", "types"],
-    evaluation: ["config", "flag", "shared", "types"],
-    "evaluation/stages": ["config", "flag", "shared", "types"],
-    factory: ["config", "evaluation", "flag", "shared", "types"],
-    flag: ["shared", "types"],
+    changes: [],
+    definition: ["errors"],
+    errors: [],
+    evaluation: ["changes", "definition", "errors", "identity", "provider", "shared", "sharing"],
+    flags: [
+      "changes",
+      "definition",
+      "errors",
+      "evaluation",
+      "identity",
+      "provider",
+      "shared",
+      "sharing",
+    ],
+    identity: ["definition", "errors", "shared"],
     "promise-cache": [],
-    shared: ["types"],
-    types: [],
+    provider: ["changes", "definition", "errors", "identity", "shared"],
+    shared: ["errors"],
+    sharing: ["changes", "definition", "identity", "shared"],
   },
   rpc: {
     adapters: ["core", "wire"],
@@ -75,8 +86,8 @@ const publicEntries = [
   "#time.ts",
   "#wire.ts",
   "#wire/**",
-  "#hooks/**",
   "#integrations/**",
+  "#testing/**",
   "#stores/**",
   "#adapters/**",
 ]
@@ -188,7 +199,7 @@ export default defineConfig({
     },
     // gated's type tests scope each case in a block, and its lint config allowed that.
     {
-      files: ["packages/flags/src/__tests__/types.test-d.ts"],
+      files: ["packages/flags/src/__tests__/types.test-d.tsx"],
       rules: { "no-lone-blocks": "off" },
     },
     // Each type-level case sits in its own block, including ones that declare nothing, as the
@@ -271,7 +282,7 @@ export default defineConfig({
     ...packageOverrides,
     ...domainDefaults,
     ...domainOverrides,
-    ...["hooks", "integrations"].map<Override>((unit) => ({
+    ...["integrations", "testing"].map<Override>((unit) => ({
       files: [`packages/flags/src/${unit}/**/*.{ts,tsx}`],
       rules: {
         "no-restricted-imports": [

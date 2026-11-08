@@ -1,4 +1,4 @@
-import type { MaybePromise } from "#lib/types/index.ts"
+import type { MaybePromise } from "./utils"
 
 export function reportInBackground<TReport>(
   reporter: ((report: TReport) => MaybePromise<void>) | undefined,

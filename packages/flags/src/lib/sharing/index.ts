@@ -1,34 +1,118 @@
-import type { PendingResolution } from "#lib/config/resolution-state.ts"
-import type { ResolvedConfig } from "#lib/config/resolved-config.ts"
-import type {
-  Decision,
-  DecisionCache,
-  DecisionCacheErrorReport,
-  DecisionSource,
-  HookContext,
-  Identity,
-  FlagOptions,
-  MaybePromise,
-} from "#lib/types/index.ts"
-import { validateDecision } from "#lib/flag/decision.ts"
-import { getEvaluationKey } from "#lib/flag/evaluation-key.ts"
+import type { ChangeBroadcaster } from "#lib/changes/index.ts"
+import type { Flag } from "#lib/definition/index.ts"
+import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
+import { type Decision, type DecisionSource, validateDecision } from "#lib/definition/decision.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
 import { createSharedSignal, raceWithSignal } from "#lib/shared/signals.ts"
-import { normalizeError } from "#lib/shared/utils.ts"
+import { normalizeError, type MaybePromise } from "#lib/shared/utils.ts"
+import type { PendingResolution, ResolutionState } from "./resolution-state"
+import { getEvaluationKey } from "./evaluation-key"
+import { createResolutionState } from "./resolution-state"
+
+/**
+ * A store for decisions. The store owns serialization and expiry.
+ *
+ * Variant payloads can contain values that are not JSON-safe. A persistent store must preserve them
+ * or normalize them for the provider.
+ */
+export type DecisionStore = {
+  delete?(key: string): Promise<unknown>
+  get(key: string): Promise<Decision | null | undefined>
+  set(key: string, decision: Decision): Promise<void>
+}
+
+/**
+ * A store operation failed. The evaluation continued without the store.
+ */
+export type StoreFailedReport<TIdentity extends Subject = Subject> = {
+  readonly _tag: "StoreFailed"
+  readonly error: Error
+  readonly flagKey: string
+  readonly identity: TIdentity | null
+  /**
+   * The evaluation key, or the flag key when the `key` function failed.
+   */
+  readonly key: string
+  readonly operation: "delete" | "get" | "key" | "set" | "validate"
+}
+
+/**
+ * The provider's `subscribe` threw. Evaluations continue without live invalidation, and the next
+ * evaluation or listener tries again.
+ */
+export type SubscribeFailedReport = {
+  readonly _tag: "SubscribeFailed"
+  readonly error: Error
+}
+
+export type CacheOptions<TIdentity extends Subject> = {
+  /**
+   * Concurrent evaluations with one evaluation key share one provider call. Defaults to `true`. Set
+   * `false` when the provider has side effects for each call, such as exposure logging.
+   */
+  coalesce?: boolean
+  /**
+   * Replaces the evaluation key, which the store and coalescing use to identify interchangeable
+   * evaluations.
+   */
+  key?: (context: EvaluationContext<TIdentity>) => string
+  store?: DecisionStore
+}
+
+/**
+ * One reader's decision memory and the options that control it.
+ */
+export type Sharing<TIdentity extends Subject> = {
+  changes: ChangeBroadcaster | undefined
+  coalesce: boolean
+  key: ((context: EvaluationContext<TIdentity>) => string) | undefined
+  onError:
+    | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
+    | undefined
+  state: ResolutionState<TIdentity>
+  store: DecisionStore | undefined
+}
+
+export function createSharing<TIdentity extends Subject>(
+  options: CacheOptions<TIdentity> | undefined,
+  changes: ChangeBroadcaster | undefined,
+  onError: Sharing<TIdentity>["onError"]
+): Sharing<TIdentity> {
+  return {
+    changes,
+    coalesce: options?.coalesce !== false,
+    key: options?.key,
+    onError,
+    state: createResolutionState(),
+    store: options?.store,
+  }
+}
+
+type StoreContext<TIdentity extends Subject> = {
+  flagKey: string
+  identity: TIdentity | null
+}
+
+function storeContext<TIdentity extends Subject>(
+  context: EvaluationContext<TIdentity>
+): StoreContext<TIdentity> {
+  return { flagKey: context.flag.key, identity: context.identity }
+}
 
 export type DecisionResolution = {
   decision: Decision
   source: DecisionSource
 }
 
-function reportCacheError<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: Pick<HookContext<TIdentity>, "flagKey" | "identity">,
-  operation: DecisionCacheErrorReport["operation"],
+function reportStoreError<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: StoreContext<TIdentity>,
+  operation: StoreFailedReport["operation"],
   key: string,
   error: unknown
 ): void {
-  reportInBackground(config.onCacheError, {
+  reportInBackground(config.onError, {
+    _tag: "StoreFailed",
     error: normalizeError(error),
     flagKey: context.flagKey,
     identity: context.identity,
@@ -41,9 +125,9 @@ function reportCacheError<TIdentity extends Identity>(
  * Queues one store operation behind the earlier operations for the same key. A failed operation is
  * reported and does not stop the operations after it.
  */
-function mutateStore<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: Pick<HookContext<TIdentity>, "flagKey" | "identity">,
+function mutateStore<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: StoreContext<TIdentity>,
   key: string,
   operation: "delete" | "set",
   mutation: () => Promise<unknown> | undefined
@@ -56,7 +140,7 @@ function mutateStore<TIdentity extends Identity>(
   const tail = queue.tail
     .then(mutation)
     .catch((error: unknown) => {
-      reportCacheError(config, context, operation, key, error)
+      reportStoreError(config, context, operation, key, error)
     })
     .then(() => {
       if (operation === "delete") {
@@ -71,10 +155,10 @@ function mutateStore<TIdentity extends Identity>(
   mutations.set(key, queue)
 }
 
-function deleteCacheEntry<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: Pick<HookContext<TIdentity>, "flagKey" | "identity">,
-  store: DecisionCache,
+function deleteCacheEntry<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: StoreContext<TIdentity>,
+  store: DecisionStore,
   key: string
 ): void {
   if (!store.delete) {
@@ -83,10 +167,10 @@ function deleteCacheEntry<TIdentity extends Identity>(
   mutateStore(config, context, key, "delete", () => store.delete?.(key))
 }
 
-function indexCacheKey<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
-  store: DecisionCache,
+function indexCacheKey<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: EvaluationContext<TIdentity>,
+  store: DecisionStore,
   key: string
 ): void {
   if (!store.delete || !config.changes) {
@@ -94,24 +178,21 @@ function indexCacheKey<TIdentity extends Identity>(
   }
 
   const { state } = config
-  const keys = state.keysByFlag.get(context.flagKey) ?? new Map<string, Identity | null>()
+  const keys = state.keysByFlag.get(context.flag.key) ?? new Map<string, TIdentity | null>()
   keys.set(key, context.identity)
-  state.keysByFlag.set(context.flagKey, keys)
+  state.keysByFlag.set(context.flag.key, keys)
 }
 
 /**
- * Adds the listener that invalidates this factory's decision memory to the change broadcaster: it
+ * Adds the listener that invalidates this reader's decision memory to the change broadcaster: it
  * drops in-flight coalesced calls and deletes indexed store entries for the changed flags, and
  * invalidates every pending cache write regardless of which flags changed. Added on the first
  * evaluation that touches cache or coalescing and never removed, so the provider stays attached for
- * the factory's lifetime. A throwing `subscribe` never fails the evaluation: it is reported through
- * `onCacheError` and the evaluation continues without invalidation. The next evaluation tries
- * again.
+ * the reader's lifetime. A throwing `subscribe` never fails the evaluation: it is reported through
+ * `onError` and the evaluation continues without invalidation. The next evaluation tries again.
  */
-function attachInvalidationSubscription<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
-  key: string
+function attachInvalidationSubscription<TIdentity extends Subject>(
+  config: Sharing<TIdentity>
 ): void {
   const { changes, state } = config
   const { subscription } = state
@@ -135,7 +216,7 @@ function attachInvalidationSubscription<TIdentity extends Identity>(
       // store can delete: a decision fetched before the change must never be written after it.
       const { writes } = state
       writes.generation += 1
-      const store = config.cache
+      const store = config.store
       const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
       for (const flagKey of flagKeys) {
         const cacheKeys = state.keysByFlag.get(flagKey)
@@ -147,18 +228,13 @@ function attachInvalidationSubscription<TIdentity extends Identity>(
           continue
         }
         for (const [cacheKey, identity] of cacheKeys) {
-          deleteCacheEntry(
-            config,
-            { flagKey, identity: identity as TIdentity | null },
-            store,
-            cacheKey
-          )
+          deleteCacheEntry(config, { flagKey, identity }, store, cacheKey)
         }
       }
     })
   } catch (error) {
     subscription.attached = false
-    reportCacheError(config, context, "subscribe", key, error)
+    reportInBackground(config.onError, { _tag: "SubscribeFailed", error: normalizeError(error) })
   }
 }
 
@@ -167,11 +243,11 @@ type StoreConsultation = {
   generation: number
 }
 
-async function consultStore<TIdentity extends Identity, T extends string[]>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
-  options: FlagOptions<T>,
-  store: DecisionCache,
+async function consultStore<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: EvaluationContext<TIdentity>,
+  flag: Flag,
+  store: DecisionStore,
   key: string
 ): Promise<StoreConsultation> {
   const { state } = config
@@ -185,7 +261,7 @@ async function consultStore<TIdentity extends Identity, T extends string[]>(
   try {
     cached = await store.get(key)
   } catch (error) {
-    reportCacheError(config, context, "get", key, error)
+    reportStoreError(config, storeContext(context), "get", key, error)
     return { generation: state.writes.generation }
   }
   const generation = state.writes.generation
@@ -194,26 +270,26 @@ async function consultStore<TIdentity extends Identity, T extends string[]>(
   }
 
   try {
-    validateDecision(cached, options)
+    validateDecision(cached, flag)
   } catch (error) {
-    reportCacheError(config, context, "validate", key, error)
-    deleteCacheEntry(config, context, store, key)
+    reportStoreError(config, storeContext(context), "validate", key, error)
+    deleteCacheEntry(config, storeContext(context), store, key)
     return { generation }
   }
   return { decision: cached, generation }
 }
 
-function writeThrough<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
-  store: DecisionCache,
+function writeThrough<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: EvaluationContext<TIdentity>,
+  store: DecisionStore,
   generation: number,
   key: string,
   decision: Decision
 ): void {
   // The generation check runs when the write starts, after the earlier operations for this key. A
   // change during the write queues its delete after the write.
-  mutateStore(config, context, key, "set", () => {
+  mutateStore(config, storeContext(context), key, "set", () => {
     if (config.state.writes.generation !== generation) {
       return
     }
@@ -229,22 +305,22 @@ function writeThrough<TIdentity extends Identity>(
  * it as pending until it settles. The call runs on a shared signal, not on the signal of the
  * evaluation that started it, so it stops only when every evaluation that joined it has left.
  */
-function startSharedCall<TIdentity extends Identity>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
+function startSharedCall<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: EvaluationContext<TIdentity>,
   key: string,
-  provider: (signal: AbortSignal) => MaybePromise<Decision>
+  provider: (signal: AbortSignal) => MaybePromise<unknown>
 ): PendingResolution {
   const { state } = config
   // Attach before the registration, so a change notification can drop this call.
-  attachInvalidationSubscription(config, context, key)
+  attachInvalidationSubscription(config)
   const shared = createSharedSignal()
   const promise = raceWithSignal(() => provider(shared.signal), shared.signal).catch(
     (error: unknown) => {
       throw normalizeError(error)
     }
   )
-  const call: PendingResolution = { flagKey: context.flagKey, promise, shared }
+  const call: PendingResolution = { flagKey: context.flag.key, promise, shared }
   state.pending.set(key, call)
   const settle = () => {
     shared.release()
@@ -257,44 +333,44 @@ function startSharedCall<TIdentity extends Identity>(
 }
 
 /**
- * Resolves one decision through the factory's memory: join an in-flight coalesced call, fall back
- * to the cache store, and otherwise lead the provider call — sharing the decision with followers
- * and writing it through to the store. Owns decision validation on every path; a decision that
- * leaves this function satisfies the evaluation's flag shape.
+ * Resolves one decision through the reader's memory. It joins an in-flight coalesced call, falls
+ * back to the store, and otherwise leads the provider call, which shares the decision with
+ * followers and writes it through to the store. It validates the decision on every path, so a
+ * decision that leaves this function fits the flag.
  *
  * `provider` receives the signal for the provider work. It is the evaluation's own signal, except
  * for a coalesced call, where it is the call's shared signal.
  */
-export async function resolveDecision<TIdentity extends Identity, T extends string[]>(
-  config: ResolvedConfig<TIdentity>,
-  context: HookContext<TIdentity>,
-  options: FlagOptions<T>,
-  provider: (signal: AbortSignal) => MaybePromise<Decision>,
+export async function resolveDecision<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  context: EvaluationContext<TIdentity>,
+  flag: Flag,
+  provider: (signal: AbortSignal) => MaybePromise<unknown>,
   signal: AbortSignal
 ): Promise<DecisionResolution> {
   const { coalesce, state } = config
-  const store = config.cache
+  const store = config.store
 
   let key: string | undefined
   try {
-    key = getEvaluationKey(context, config.evaluationKey)
+    key = getEvaluationKey(context, config.key)
   } catch (error) {
-    reportCacheError(config, context, "key", context.flagKey, error)
+    reportStoreError(config, storeContext(context), "key", context.flag.key, error)
     key = undefined
   }
 
   if (key === undefined || (!store && !coalesce)) {
     const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, options)
+    validateDecision(decision, flag)
     return { decision, source: "provider" }
   }
 
-  let write: { generation: number; store: DecisionCache } | undefined
+  let write: { generation: number; store: DecisionStore } | undefined
   if (store) {
     indexCacheKey(config, context, store, key)
-    attachInvalidationSubscription(config, context, key)
+    attachInvalidationSubscription(config)
     const consultation = await raceWithSignal(
-      () => consultStore(config, context, options, store, key),
+      () => consultStore(config, context, flag, store, key),
       signal
     )
     if (consultation.decision) {
@@ -305,7 +381,7 @@ export async function resolveDecision<TIdentity extends Identity, T extends stri
 
   if (!coalesce) {
     const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, options)
+    validateDecision(decision, flag)
     if (write) {
       writeThrough(config, context, write.store, write.generation, key, decision)
     }
@@ -324,7 +400,7 @@ export async function resolveDecision<TIdentity extends Identity, T extends stri
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
   const decision = await raceWithSignal(() => call.promise, signal)
-  validateDecision(decision, options)
+  validateDecision(decision, flag)
   // The leader writes the decision it fetched. Followers reuse it.
   if (write && call !== existing) {
     writeThrough(config, context, write.store, write.generation, key, decision)

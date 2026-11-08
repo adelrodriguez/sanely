@@ -1,5 +1,5 @@
+import type { Subject } from "#lib/identity/index.ts"
 import type { SharedSignal } from "#lib/shared/signals.ts"
-import type { Decision, Identity } from "#lib/types/index.ts"
 
 /**
  * One in-flight provider call that concurrent evaluations with one evaluation key share. Every
@@ -7,7 +7,7 @@ import type { Decision, Identity } from "#lib/types/index.ts"
  */
 export type PendingResolution = {
   flagKey: string
-  promise: Promise<Decision>
+  promise: Promise<unknown>
   shared: SharedSignal
 }
 
@@ -23,24 +23,24 @@ export type StoreMutations = {
 }
 
 /**
- * Decision memory for one flag factory: in-flight coalesced provider calls plus cache invalidation
- * bookkeeping. Created once per factory so flags from different factories never share state, even
- * when built from the same config object.
+ * Decision memory for one reader: in-flight coalesced provider calls plus cache invalidation
+ * bookkeeping. Created once per `createFlags` call, so two readers never share state, even when
+ * built from the same options.
  */
-export type ResolutionState = {
-  keysByFlag: Map<string, Map<string, Identity | null>>
+export type ResolutionState<TIdentity extends Subject> = {
+  keysByFlag: Map<string, Map<string, TIdentity | null>>
   mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
   // The invalidation listener never leaves the change broadcaster, so its unsubscribe function is
   // intentionally not retained.
   subscription: { attached: boolean }
-  // One factory-wide counter: any flag-change notification invalidates every open write ticket.
+  // One counter for the reader: any flag-change notification invalidates every open write ticket.
   // A pending write lives for milliseconds and the next evaluation re-establishes it, so dropping
-  // one is always safe — cheaper than tracking which flags a notification covers.
+  // one is always safe. It is cheaper than tracking which flags a notification covers.
   writes: { generation: number }
 }
 
-export function createResolutionState(): ResolutionState {
+export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
   return {
     keysByFlag: new Map(),
     mutations: new Map(),

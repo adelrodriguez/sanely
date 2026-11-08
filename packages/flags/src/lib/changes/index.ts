@@ -1,30 +1,31 @@
-import type { FlagFactoryConfig } from "#lib/types/index.ts"
-
-type ChangeListener = (keys?: readonly string[]) => void
+/**
+ * Receives the changed flag keys. No keys means that any flag may have changed.
+ */
+export type ChangeListener = (keys?: readonly string[]) => void
 
 /**
- * Sends one flag factory's provider change notifications to every listener. It attaches the
- * consumer's `subscribe` at most once at a time: on the first listener, and it detaches when the
- * last listener leaves. Listeners run synchronously, in subscription order.
+ * Sends one reader's provider change notifications to every listener. It attaches the provider's
+ * `subscribe` at most once at a time: on the first listener, and it detaches when the last listener
+ * leaves. Listeners run synchronously, in subscription order.
  */
 export type ChangeBroadcaster = {
   /**
    * Adds a listener and returns an idempotent unsubscribe function. When this listener causes the
-   * attach and the consumer's `subscribe` throws, the broadcaster stays detached and rethrows. The
+   * attach and the provider's `subscribe` throws, the broadcaster stays detached and rethrows. The
    * next listener tries again.
    */
   subscribe(listener: ChangeListener): () => void
 }
 
 export function createChangeBroadcaster(
-  subscribe: NonNullable<FlagFactoryConfig["subscribe"]>
+  subscribe: (notify: ChangeListener) => () => void
 ): ChangeBroadcaster {
   // One entry per subscription, so one function subscribed twice needs two unsubscribes.
   const listeners = new Set<{ listener: ChangeListener }>()
   let attached = false
   let detach: (() => void) | undefined
 
-  const notify = ({ keys }: { keys?: readonly string[] }) => {
+  const notify: ChangeListener = (keys) => {
     // Snapshot: a listener added during this notification does not receive it.
     for (const entry of Array.from(listeners)) {
       entry.listener(keys)
