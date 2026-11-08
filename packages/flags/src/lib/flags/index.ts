@@ -140,14 +140,11 @@ function createReader<TIdentity extends Subject>(
     },
     async snapshot(flags, options) {
       let distinctId: string | number | null = null
-      let identifyOnce: IdentitySource<TIdentity>
-      try {
+      // The batch resolves the identity once, under its deadline and the caller's signal.
+      const identifyOnce: IdentitySource<TIdentity> = async () => {
         const identity = await identify()
         distinctId = distinctIdOf(identity)
-        identifyOnce = () => Promise.resolve(identity)
-      } catch (error) {
-        const identityError = normalizeError(error)
-        identifyOnce = () => Promise.reject(identityError)
+        return identity
       }
       const results = await evaluateMany(evaluator, flags, identifyOnce, options?.signal)
       const entries: Record<string, FlagSnapshotEntry> = {}

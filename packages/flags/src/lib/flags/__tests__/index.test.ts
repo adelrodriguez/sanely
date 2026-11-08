@@ -82,6 +82,28 @@ describe("createFlags", () => {
     })
   })
 
+  test("ends a snapshot at the deadline when identify never settles", async () => {
+    const { promise: pending } = Promise.withResolvers<Identity>()
+    const flags = createFlags({ identify: () => pending, provider, timeoutMs: 20 })
+    const aborted = new AbortController()
+    aborted.abort(new Error("stop"))
+
+    expect(await flags.snapshot([betaAccess])).toEqual({
+      distinctId: null,
+      flags: {
+        "beta-access": {
+          error: "EvaluationTimeoutError",
+          kind: "boolean",
+          source: "default",
+          value: false,
+        },
+      },
+    })
+    expect(await flags.snapshot([betaAccess], { signal: aborted.signal })).toMatchObject({
+      flags: { "beta-access": { error: "EvaluationAbortedError" } },
+    })
+  })
+
   test("makes a snapshot with a null distinctId for anonymous and a missing identity", async () => {
     const anonymousProvider = defineProvider({
       decideOne: (_item, _identity: Identity | typeof anonymous) => decision.boolean(true),
