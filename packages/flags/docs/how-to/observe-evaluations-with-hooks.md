@@ -2,50 +2,50 @@
 
 This guide shows you how to send telemetry, track exposures, or log failures for each evaluation, without a change to its result.
 
-1. Define a hook with the phases that you need:
+1. Write a hook with the phases that you need:
 
    ```typescript
-   import { defineHook } from "@sanely/flags"
+   import type { Hook } from "@sanely/flags"
 
-   const telemetryHook = defineHook({
+   const telemetry: Hook<UserIdentity> = {
      before: (context) => {
-       telemetry.start(context.flagKey)
+       metrics.start(context.flag.key)
      },
-     after: (context, providerDecision, metadata) => {
-       telemetry.success(context.flagKey, metadata.source)
+     after: (context, decision, { source }) => {
+       metrics.success(context.flag.key, source)
      },
      error: (context, error) => {
-       telemetry.failure(context.flagKey, error)
+       metrics.failure(context.flag.key, error._tag)
      },
      finally: (context) => {
-       telemetry.finish(context.flagKey)
+       metrics.finish(context.flag.key)
      },
-   })
+   }
    ```
 
-   - `before` runs before the cache and the provider work.
-   - `after` runs after a valid cache or provider decision commits.
-   - `error` runs when evaluation fails and returns the default.
+   - `before` runs after the identity resolves, and before the store and the provider work.
+   - `after` runs after a valid decision from the store or the provider.
+   - `error` runs when the evaluation falls back to the default.
    - `finally` runs after the success path or the error path.
 
-2. Register the hook on the factory, and report hook failures with `onHookError`:
+2. Register the hook on the reader, and report hook failures with `onError`:
 
    ```typescript
-   const flag = createFlags({
+   const flags = createFlags({
+     provider,
      identify,
-     decide,
-     hooks: [telemetryHook],
-     onHookError: ({ phase, hookIndex, error }) => {
-       reportHookError({ phase, hookIndex, error })
+     hooks: [telemetry],
+     onError: (report) => {
+       if (report._tag === "HookFailed") logger.warn(report.phase, report.hookIndex, report.error)
      },
    })
    ```
 
-A hook that throws does not stop the evaluation or change its result. `onHookError` reports hook failures, and the `error` phase reports evaluation failures.
+A hook that throws does not stop the evaluation or change its result. `onError` receives a `HookFailed` report, and the other hooks in the phase still run.
 
 ## Do not depend on `after` and `finally` finishing
 
-The evaluator does not wait for the `after` and `finally` phases. Do not use them for work that must finish before a serverless runtime exits.
+The read does not wait for the `after` and `finally` phases. Do not use them for work that must finish before a serverless runtime exits.
 
 ## Track exposures
 
@@ -53,20 +53,20 @@ Use an `after` hook for exposure tracking. It runs once for each evaluation, als
 
 ## Keep state in a hook
 
-A hook object is shared by every factory that registers it. If the hook keeps state, pass a function to `defineHook`. Each call of that function makes a new hook:
+The reader shares one hook object between every evaluation. If a hook keeps state, create a new hook object for each reader:
 
 ```typescript
-const countingHook = defineHook((options: { label: string }) => {
+function countingHook(label: string): Hook {
   let count = 0
   return {
     after: () => {
       count += 1
-      metrics.gauge(options.label, count)
+      metrics.gauge(label, count)
     },
   }
-})
+}
 
-const flag = createFlags({ identify, decide, hooks: [countingHook({ label: "flags" })] })
+const flags = createFlags({ provider, identify, hooks: [countingHook("flags")] })
 ```
 
 Refer to the [`Hook` reference](../reference.md#hooks) for the context fields.

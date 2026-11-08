@@ -1,85 +1,77 @@
 # How to cache provider decisions
 
-This guide shows you how to store provider decisions in a cache, drop them when the provider reports a change, and control which evaluations share a decision.
+This guide shows you how to store provider decisions, drop them when the provider reports a change, and control which evaluations share a decision.
 
-## Add a cache store
+## Add a store
 
 1. Write a store with `get`, `set`, and an optional `delete`. The store controls serialization and expiry:
 
    ```typescript
-   import type { Decision } from "@sanely/flags"
+   import type { DecisionStore, Decision } from "@sanely/flags"
 
-   const cache = {
-     get: (key: string) => redis.get<Decision>(key),
-     set: (key: string, value: Decision) => redis.set(key, value),
-     delete: (key: string) => redis.del(key),
+   const store: DecisionStore = {
+     get: (key) => redis.get<Decision>(key),
+     set: async (key, decision) => {
+       await redis.set(key, decision, { ex: 60 })
+     },
+     delete: (key) => redis.del(key),
    }
    ```
 
-   A variant payload can hold values that are not JSON-safe. A persistent store must keep them, or the provider must return JSON-safe payloads.
+   A variant payload can hold values that are not JSON-safe. A persistent store must keep them, or the provider must return JSON-safe payloads. The store keeps the raw payload, and the flag's parser runs after each read.
 
-2. Pass the store to the factory, and report cache errors with `onCacheError`:
+2. Pass the store in the `cache` option, and report store failures with `onError`:
 
    ```typescript
-   const flag = createFlags({
-     cache,
+   const flags = createFlags({
+     provider,
      identify,
-     decide,
-     onCacheError: (report) => reportCacheError(report),
+     cache: { store },
+     onError: (report) => {
+       if (report._tag === "StoreFailed") logger.warn(report.operation, report.key, report.error)
+     },
    })
    ```
 
-A cache error does not fail the evaluation. The package discards an invalid cached decision and asks the provider.
+A store failure does not fail the evaluation. The package discards an invalid stored decision and asks the provider.
 
 ## Drop decisions when the provider changes a flag
 
-If the provider can push flag changes, add `subscribe`. The package calls it with a `notify` function, and expects a function that detaches:
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). With a store that has `delete`, a change notification deletes the stored decisions of the changed flags, and drops the running provider calls for them.
+
+If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
+
+To run your own code on a change, listen on the reader:
 
 ```typescript
-const flag = createFlags({
-  cache,
-  identify,
-  decide,
-  subscribe: (notify) => provider.on("change", (keys) => notify({ keys })),
-})
-```
-
-Call `notify({ keys })` to invalidate the named flags, or `notify({})` to invalidate every flag. The package drops the cached decisions and the running provider calls for those flags. If `subscribe` throws, `onCacheError` reports the error, and the evaluation does not fail. React flag reads and prefetches also continue, and they try to attach again on the next new cache entry.
-
-To run your own code on a change, listen on `flag.changes`:
-
-```typescript
-const stop = flag.changes.subscribe((keys) => console.log("changed", keys ?? "all"))
+const stop = flags.subscribe((keys) => console.log("changed", keys ?? "all"))
 ```
 
 ## Turn off request coalescing
 
-By default, concurrent evaluations with the same evaluation key share one provider call. If `decide` has a side effect that must run for each evaluation, such as exposure logging in the provider, turn coalescing off:
+By default, concurrent evaluations with the same evaluation key share one provider call. If the provider has a side effect for each call, such as exposure logging, turn coalescing off:
 
 ```typescript
-const flag = createFlags({
-  coalesce: false,
-  identify,
-  decide,
-})
+const flags = createFlags({ provider, identify, cache: { coalesce: false } })
 ```
 
 To keep coalescing and still track each exposure, use an `after` hook. See [How to observe evaluations with hooks](./observe-evaluations-with-hooks.md#track-exposures).
 
 ## Include more identity fields in the key
 
-The default evaluation key holds the flag key, the flag shape, and the type and value of `distinctId`. If other identity fields change the decision, give an `evaluationKey` function:
+The default evaluation key holds the flag key, the flag kind, the variants, and the type and value of `distinctId`. If other identity fields change the decision, give a `key` function:
 
 ```typescript
-const flag = createFlags({
-  cache,
+const flags = createFlags({
+  provider,
   identify,
-  decide,
-  evaluationKey: (context) =>
-    JSON.stringify([context.flagKey, context.identity?.distinctId, context.identity?.plan]),
+  cache: {
+    store,
+    key: ({ flag, identity }) => JSON.stringify([flag.key, identity?.distinctId, identity?.plan]),
+  },
 })
 ```
 
-The function replaces the whole default key. Return the same key only for evaluations that can share one provider decision.
+The function replaces the whole default key. Return the same key only for evaluations that can share one provider decision. The package never calls it for an anonymous evaluation.
 
-[Why evaluations share decisions](../explanation/about-flag-evaluation.md#concurrent-evaluations-share-provider-work) explains the cache and coalescing model.
+[About flag evaluation](../explanation/about-flag-evaluation.md#concurrent-evaluations-share-provider-work) explains the store and coalescing model.

@@ -2,124 +2,71 @@
 
 The package has three entry points:
 
-| Entry point           | Exports                                                                                                                          |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `@sanely/flags`       | `createFlags`, `decision`, `defineHook`, the error classes, and the types.                                                       |
-| `@sanely/flags/hooks` | `defineHook`.                                                                                                                    |
-| `@sanely/flags/react` | `useFlag`, `useFlagBatch`, `FeatureFlag`, `FlagProvider`, `useFlagCache`, `createFlagCache`, `createFlagHooks`, and their types. |
+| Entry point             | Exports                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@sanely/flags`         | `createFlags`, `flag`, `defineProvider`, `decision`, `anonymous`, the error classes, and the types.                  |
+| `@sanely/flags/react`   | `FlagsProvider`, `useFlag`, `useFlags`, `FeatureFlag`, `useFlagCache`, `FlagsProviderMissingError`, and their types. |
+| `@sanely/flags/testing` | `fakeProvider`, `memoryStore`, and the `FakeProvider` type.                                                          |
 
-## `createFlags(config)`
+## `flag`
 
-```ts
-function createFlags<TIdentity extends Identity>(
-  config: FlagFactoryConfig<TIdentity>
-): FlagFactory<TIdentity>
-function createFlags<TIdentity extends Identity>(
-  config: AnonymousFlagFactoryConfig<TIdentity>
-): FlagFactory<TIdentity, TIdentity | null>
-function createFlags<TIdentity extends Identity>(
-  config: CallerIdentityFlagFactoryConfig<TIdentity>
-): FlagFactory<TIdentity, TIdentity, true>
-```
-
-Returns a flag factory. The configuration selects one of three call modes:
-
-| Mode            | Configuration                       | Identity                                                      |
-| --------------- | ----------------------------------- | ------------------------------------------------------------- |
-| `identify`      | `identify`, no `anonymous`          | `identify` resolves it. A call can override it. `null` fails. |
-| Anonymous       | `identify` and `anonymous: "allow"` | `identify` resolves it, and it can be `null`.                 |
-| Caller identity | No `identify`                       | Each call must pass it.                                       |
-
-| Option          | Type                                                                      | Default    | Description                                                                  |
-| --------------- | ------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------- |
-| `identify`      | `() => MaybePromise<TIdentity \| null>`                                   | None       | Resolves the identity.                                                       |
-| `anonymous`     | `"reject" \| "allow"`                                                     | `"reject"` | `"allow"` lets the identity be `null`.                                       |
-| `decide`        | `(key, identity, { signal }?) => MaybePromise<Decision>`                  | Required   | Returns the provider decision for one flag.                                  |
-| `decideMany`    | `(keys, identity, { signal }?) => MaybePromise<Record<string, Decision>>` | None       | Returns the decisions for several flags in a batch.                          |
-| `cache`         | `DecisionCache`                                                           | None       | Stores decisions.                                                            |
-| `coalesce`      | `boolean`                                                                 | `true`     | Lets concurrent evaluations with one evaluation key share one provider call. |
-| `evaluationKey` | `(context: HookContext) => string`                                        | See below  | Returns the key for the cache and for coalescing.                            |
-| `hooks`         | `Hook[]`                                                                  | `[]`       | Lifecycle observers.                                                         |
-| `onHookError`   | `(report: HookErrorReport) => MaybePromise<void>`                         | None       | Receives the error of a hook that threw.                                     |
-| `onCacheError`  | `(report: DecisionCacheErrorReport) => MaybePromise<void>`                | None       | Receives a cache, key, validation, or `subscribe` error.                     |
-| `subscribe`     | `(notify: (change: FlagChange) => void) => () => void`                    | None       | Attaches to provider changes, and returns a function that detaches.          |
-| `timeoutMs`     | `number`                                                                  | None       | The timeout of every flag of the factory.                                    |
-
-The default evaluation key holds the flag key, the flag shape, and the type and value of `identity.distinctId`. The package does not cache or coalesce an evaluation with a `null` identity.
-
-## Flag factory
+### `flag.boolean(key, defaultValue, options?)`
 
 ```ts
-const beta = flag({ key, defaultValue, timeoutMs? })
-const theme = flag<TPayload>({ key, defaultValue, variants, timeoutMs? })
+function boolean(key: string, defaultValue: boolean, options?: { timeoutMs?: number }): BooleanFlag
 ```
 
-Creates a flag. TypeScript infers the value type from `variants`. When you give `TPayload` as a type argument, the value type is `string`.
+Returns a frozen boolean flag definition.
 
-| Option         | Type                                 | Description                                                                          |
-| -------------- | ------------------------------------ | ------------------------------------------------------------------------------------ |
-| `key`          | `string`                             | The flag key that `decide` receives.                                                 |
-| `defaultValue` | `boolean`, or a member of `variants` | The value on any failure. A default that is not in `variants` throws a `RangeError`. |
-| `variants`     | `string[]`                           | The allowed variants. With `variants`, the flag is a variant flag.                   |
-| `timeoutMs`    | `number`                             | The timeout of this flag. It overrides the factory `timeoutMs`.                      |
-
-The factory also has these members:
-
-| Member                        | Description                                                                                                                            |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `batch(flags, options?)`      | Evaluates several flags of this factory. Resolves with a `FlagBatch`.                                                                  |
-| `changes.subscribe(listener)` | Calls `listener(keys?)` on each provider change. Returns a function that removes it. `keys` is `undefined` for a change to every flag. |
-
-### `batch(flags, options?)`
-
-Resolves the identity once, reads the cache, calls `decideMany` for the misses when it exists, and calls `decide` for each key that `decideMany` leaves out. Without `decideMany`, it calls `decide` for each miss in parallel. Each flag keeps its own hooks, validation, timeout, and fallback.
-
-It rejects with `DuplicateBatchKeyError` for a repeated key, and with `ForeignFlagEvaluatorError` for a flag from another factory.
-
-`FlagBatch` is a read-only tuple of the values, in the order of `flags`, with two methods:
-
-| Method          | Description                                                                      |
-| --------------- | -------------------------------------------------------------------------------- |
-| `get(flag)`     | Returns the value of `flag`. Throws `BatchFlagNotFoundError` for another flag.   |
-| `details(flag)` | Returns the details of `flag`. Throws `BatchFlagNotFoundError` for another flag. |
+### `flag.variant(key, variants, defaultValue, options?)`
 
 ```ts
-const result = await flag.batch([betaAccess, theme])
-const [hasBetaAccess, selectedTheme] = result
+function variant<const TVariants extends readonly [string, ...string[]], TPayload = unknown>(
+  key: string,
+  variants: TVariants,
+  defaultValue: TVariants[number],
+  options?: { payload?: (payload: unknown) => TPayload; timeoutMs?: number }
+): VariantFlag<TVariants[number], TPayload>
 ```
 
-## Evaluator
+Returns a frozen variant flag definition. The value type is the union of `variants`, and the payload type is the return type of `payload`. No call needs a type argument.
+
+| Argument or option | Description                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `key`              | The provider key of the flag. A non-empty string.                                                            |
+| `variants`         | The allowed variants. A non-empty array of unique strings.                                                   |
+| `defaultValue`     | The value on any failure. A boolean for a boolean flag, or one of `variants`.                                |
+| `payload`          | Parses the variant payload of a decision. A throw makes the evaluation return the default.                   |
+| `timeoutMs`        | The deadline of this flag. It replaces the reader's `timeoutMs`. A positive number no greater than 2^31 - 1. |
+
+An invalid argument throws `FlagDefinitionError` when you define the flag.
+
+Two flags with the same key ask the provider about the same provider flag.
+
+## `defineProvider(definition)`
 
 ```ts
-flag(options?): Promise<TValue>
-flag.details(options?): Promise<EvaluationDetails<TValue, TPayload>>
+function defineProvider<TIdentity extends Subject = Identity>(
+  definition: ProviderDefinition<TIdentity>
+): Provider<TIdentity>
 ```
 
-Evaluates the flag. Neither call rejects: a failure returns the default value.
+Validates and freezes a provider. `TIdentity` comes from the annotation on the `identity` parameter of `decide` or `decideOne`. Without an annotation, it is `Identity`.
 
-`FlagCallOptions`:
+| Field       | Type                                                                                                              | Description                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `name`      | `string`                                                                                                          | Names the provider in `ProviderFailedError`. A non-empty string.               |
+| `decideOne` | `(flag: Flag, identity: TIdentity, options: DecideOptions) => MaybePromise<Decision>`                             | Decides one flag. A batch calls it once for each flag key.                     |
+| `decide`    | `(flags: readonly Flag[], identity: TIdentity, options: DecideOptions) => MaybePromise<Record<string, Decision>>` | Decides several flags in one call. Returns a record from flag key to decision. |
+| `subscribe` | `(notify: (keys?: readonly string[]) => void) => () => void`                                                      | Attaches to the provider's flag changes and returns a function that detaches.  |
 
-| Option     | Type                                     | Description                                                                  |
-| ---------- | ---------------------------------------- | ---------------------------------------------------------------------------- |
-| `identity` | `TIdentity`, or `null` in anonymous mode | Overrides the resolved identity. Required in caller identity mode.           |
-| `signal`   | `AbortSignal`                            | Cancels the evaluation. Before a commit, a cancellation returns the default. |
+A provider has exactly one of `decide` and `decideOne`. TypeScript rejects both or neither, and so does the runtime check, which throws `FlagDefinitionError`.
 
-The timeout covers identity resolution, the `before` hooks, cache reads, provider work, and decision validation.
+`DecideOptions` is `{ signal: AbortSignal }`. The signal aborts when every evaluation that waits for the call has timed out or been cancelled.
 
-### `EvaluationDetails`
+A key that `decide` leaves out makes that flag return its default with an `InvalidDecisionError`. A throw or rejection from `decide` or `decideOne` makes the flags of that call return their defaults with a `ProviderFailedError`.
 
-| Field     | Type                                 | Description                                                           |
-| --------- | ------------------------------------ | --------------------------------------------------------------------- |
-| `value`   | `TValue`                             | The returned value.                                                   |
-| `flagKey` | `string`                             | The flag key.                                                         |
-| `source`  | `"cache" \| "provider" \| "default"` | Where the value came from.                                            |
-| `payload` | `TPayload \| undefined`              | Only on a variant flag. The payload of a successful variant decision. |
-| `error`   | `Error`                              | Only when `source` is `"default"`. The failure.                       |
-
-```ts
-const details = await betaAccess.details()
-// { flagKey: "beta-access", value: true, source: "provider" }
-```
+`notify(keys)` reports the changed flag keys. `notify()` reports that any flag may have changed.
 
 ## `decision`
 
@@ -128,187 +75,269 @@ const details = await betaAccess.details()
 | `decision.boolean(value)`             | `{ type: "boolean", value }`             |
 | `decision.variant(variant, payload?)` | `{ type: "variant", variant, payload? }` |
 
-`Decision<TPayload>` is the union of the two shapes. A boolean flag needs a boolean decision, and a variant flag needs a variant decision with an allowed variant.
+A boolean flag needs a boolean decision. A variant flag needs a variant decision with one of its variants. `payload` is the raw payload, before the flag's parser runs.
 
-## Hooks
-
-### `defineHook(hook)` and `defineHook(factory)`
+## `createFlags(options)`
 
 ```ts
-function defineHook<TIdentity>(hook: Hook<TIdentity>): Hook<TIdentity>
-function defineHook<TOptions, TIdentity>(
-  factory: (options: TOptions) => Hook<TIdentity>
-): (options: TOptions) => Hook<TIdentity>
+function createFlags<TIdentity extends Subject>(
+  options: FlagsOptions<TIdentity> & { identify: () => MaybePromise<TIdentity | null | undefined> }
+): Flags<TIdentity>
+function createFlags<TIdentity extends Subject>(
+  options: FlagsOptions<TIdentity> & { identify?: undefined }
+): CallerFlags<TIdentity>
 ```
 
-Returns its argument with its type. The first form shares one hook object, and its state, between every registration. The second form returns a function that makes a new hook on each call.
+Returns a reader. `TIdentity` comes from `provider`.
 
-### `Hook`
+| Option      | Type                                                     | Default   | Description                                                                       |
+| ----------- | -------------------------------------------------------- | --------- | --------------------------------------------------------------------------------- |
+| `provider`  | `Provider<TIdentity>`                                    | Required  | The provider that decides each flag.                                              |
+| `identify`  | `() => MaybePromise<TIdentity \| null \| undefined>`     | None      | Resolves the identity of each read. Without it, every read goes through `for`.    |
+| `timeoutMs` | `number`                                                 | None      | The deadline of each evaluation. A flag's `timeoutMs` replaces it.                |
+| `cache`     | `CacheOptions<TIdentity>`                                | See below | The decision store, request coalescing, and the evaluation key.                   |
+| `hooks`     | `ReadonlyArray<Hook<TIdentity>>`                         | `[]`      | Lifecycle observers.                                                              |
+| `onError`   | `(report: ErrorReport<TIdentity>) => MaybePromise<void>` | None      | Receives the failures of hooks, store operations, and the provider's `subscribe`. |
 
-| Phase                                  | Runs                                                                                                        |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `before(context)`                      | Before the cache and the provider work. The evaluation waits for it.                                        |
-| `after(context, decision, { source })` | After a valid decision commits. `source` is `"cache"` or `"provider"`. The evaluation does not wait for it. |
-| `error(context, error)`                | When the evaluation fails and returns the default.                                                          |
-| `finally(context)`                     | After the success path or the error path. The evaluation does not wait for it.                              |
+An invalid `provider`, `timeoutMs`, or `identify` throws `FlagDefinitionError`.
 
-Each hook receives one read-only `HookContext` for the whole evaluation:
+`identify` that returns `null` or `undefined`, or that throws, makes the evaluation return its default with an `IdentityNotFoundError`. The package reads `hooks` once, so a later change to the array has no effect.
 
-| Field          | Type                             | Description                     |
-| -------------- | -------------------------------- | ------------------------------- |
-| `flagKey`      | `string`                         | The flag key.                   |
-| `identity`     | `TIdentity \| null`              | The identity.                   |
-| `signal`       | `AbortSignal`                    | The signal of the evaluation.   |
-| `kind`         | `"boolean" \| "variant"`         | The flag shape.                 |
-| `defaultValue` | `boolean \| string`              | The default value.              |
-| `variants`     | `readonly string[] \| undefined` | The variants of a variant flag. |
+### `CacheOptions`
 
-A hook that throws does not change the result. `onHookError` receives a `HookErrorReport`: `{ phase, hookIndex, error, context }`.
+| Option     | Type                                                | Default   | Description                                                                  |
+| ---------- | --------------------------------------------------- | --------- | ---------------------------------------------------------------------------- |
+| `store`    | `DecisionStore`                                     | None      | Stores decisions between evaluations.                                        |
+| `coalesce` | `boolean`                                           | `true`    | Lets concurrent evaluations with one evaluation key share one provider call. |
+| `key`      | `(context: EvaluationContext<TIdentity>) => string` | See below | Replaces the evaluation key, which the store and coalescing use.             |
 
-## Cache
+The default evaluation key holds the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
 
-### `DecisionCache`
+### `DecisionStore`
 
 ```ts
-type DecisionCache = {
+type DecisionStore = {
   get(key: string): Promise<Decision | null | undefined>
-  set(key: string, value: Decision): Promise<void>
-  delete?(key: string): Promise<boolean | undefined>
+  set(key: string, decision: Decision): Promise<void>
+  delete?(key: string): Promise<unknown>
 }
 ```
 
-The package reads the cache before the provider work, and writes the provider decision after the commit. The store owns serialization and expiry. A cache error never fails the evaluation, and an invalid cached decision goes to the provider.
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags.
 
-`onCacheError` receives a `DecisionCacheErrorReport`: `{ operation, key, flagKey, identity, error }`. `operation` is `"key"`, `"get"`, `"set"`, `"delete"`, `"validate"`, or `"subscribe"`.
+## Readers
 
-### `subscribe`
+### `Flags<TIdentity>`
 
-`notify({ keys })` invalidates the cached decisions and the running provider calls of the named flags. `notify({})` invalidates every flag. A factory attaches `subscribe` at most once at a time, and shares the attachment between invalidation and `changes` listeners. After its first evaluation that uses the cache or coalescing, the factory stays attached. It also stays attached after a React flag cache first stores one of its evaluations. A factory that only `changes` listeners use detaches when the last listener leaves.
+The value that `createFlags` returns with `identify`. It has every `FlagReader` method, `for`, and `subscribe`.
+
+### `CallerFlags<TIdentity>`
+
+The value that `createFlags` returns without `identify`. It has only `for` and `subscribe`.
+
+| Member                | Description                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `for(identity)`       | Returns a `FlagReader` for `identity`. A missing identity makes its reads return defaults with an `IdentityNotFoundError`. |
+| `subscribe(listener)` | Calls `listener(keys?)` after each provider change. Returns a function that removes the listener.                          |
+
+`subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report.
+
+### `FlagReader`
+
+| Method                         | Returns                             | Description                                                        |
+| ------------------------------ | ----------------------------------- | ------------------------------------------------------------------ |
+| `get(flag, options?)`          | `Promise<FlagValue<TFlag>>`         | The value of one flag.                                             |
+| `details(flag, options?)`      | `Promise<EvaluationDetails<TFlag>>` | The details of one flag.                                           |
+| `getMany(flags, options?)`     | `Promise<FlagValues<TFlags>>`       | The values of several flags, as a tuple in the order of `flags`.   |
+| `detailsMany(flags, options?)` | A tuple of `EvaluationDetails`      | The details of several flags, in the order of `flags`.             |
+| `snapshot(flags, options?)`    | `Promise<FlagSnapshot>`             | Serializable values of several flags, for a client's first render. |
+
+`options` is `{ signal?: AbortSignal }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. No read rejects.
+
+`getMany`, `detailsMany`, and `snapshot` resolve the identity once. Within one tick, the flags that need provider work share one provider request. A provider with `decide` gets one call with each flag key once. A provider with `decideOne` gets one call for each flag key. Each flag keeps its own hooks, validation, timeout, and fallback. The batch deadline is the longest flag timeout, or none when any flag has none.
+
+The timeout of an evaluation covers identity resolution, the `before` hooks, store reads, provider work, and decision validation.
+
+### `EvaluationDetails<TFlag>`
+
+| Field     | Type                                 | Description                                                                          |
+| --------- | ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `flagKey` | `string`                             | The flag key.                                                                        |
+| `value`   | `FlagValue<TFlag>`                   | The returned value.                                                                  |
+| `source`  | `"cache" \| "provider" \| "default"` | Where the value came from.                                                           |
+| `payload` | `FlagPayload<TFlag> \| undefined`    | Only on a variant flag. The parsed payload, present when the decision has a payload. |
+| `error`   | `EvaluationError`                    | Only when `source` is `"default"`. Why the evaluation fell back.                     |
+
+### `FlagSnapshot`
+
+```ts
+type FlagSnapshot = {
+  distinctId: string | number | null
+  flags: Record<string, FlagSnapshotEntry>
+}
+
+type FlagSnapshotEntry = {
+  kind: "boolean" | "variant"
+  value: boolean | string
+  source: "cache" | "provider" | "default"
+  error?: EvaluationError["_tag"]
+}
+```
+
+`distinctId` is the `distinctId` of the identity that the snapshot was made for. It is `null` for `anonymous` and for an identity that failed to resolve. `flags` holds one entry for each flag key. A snapshot holds no payloads.
+
+## Identity
+
+| Export      | Description                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| `Identity`  | `{ distinctId: string \| number } & Record<string, IdentityValue>`.                               |
+| `anonymous` | A unique symbol. Return it from `identify`, or pass it to `for`, to evaluate without an identity. |
+| `Anonymous` | `typeof anonymous`.                                                                               |
+| `Subject`   | `Identity \| Anonymous`.                                                                          |
+
+A provider accepts `anonymous` only when its `identity` parameter includes `Anonymous`.
+
+## Hooks
+
+### `Hook<TIdentity>`
+
+| Phase                                  | Runs                                                                                                |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `before(context)`                      | After identity resolution, and before the store and the provider work. The evaluation waits for it. |
+| `after(context, decision, { source })` | After a valid decision. `source` is `"cache"` or `"provider"`. The evaluation does not wait for it. |
+| `error(context, error)`                | When the evaluation falls back to the default. `error` is an `EvaluationError`.                     |
+| `finally(context)`                     | After the success path or the error path. The evaluation does not wait for it.                      |
+
+### `EvaluationContext<TIdentity>`
+
+| Field      | Type                | Description                                                           |
+| ---------- | ------------------- | --------------------------------------------------------------------- |
+| `flag`     | `Flag`              | The flag definition.                                                  |
+| `identity` | `TIdentity \| null` | The identity. `null` until it resolves, and when it fails to resolve. |
+| `signal`   | `AbortSignal`       | The signal of the evaluation.                                         |
+
+Hooks and the cache `key` function receive this context.
 
 ## Errors
 
-Every error class extends `FlagError`. A failed evaluation returns the error in `details().error`, except where the table says that a call throws.
+Evaluations return these errors in `details().error` and never throw them. Each class has a literal `_tag` equal to its name.
 
-| Error                       | Fields                             | When                                                                    |
-| --------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
-| `IdentityNotFoundError`     |                                    | The identity is `null`, and anonymous evaluation is off.                |
-| `DecisionTypeMismatchError` | `decision`, `expected`, `received` | The decision type does not match the flag shape.                        |
-| `InvalidVariantError`       |                                    | The variant is not in `variants`.                                       |
-| `MalformedDecisionError`    |                                    | The decision is not a valid decision object.                            |
-| `FlagTimeoutError`          |                                    | The timeout expired.                                                    |
-| `DuplicateBatchKeyError`    |                                    | A batch has a repeated key. `batch` rejects.                            |
-| `ForeignFlagEvaluatorError` |                                    | A batch has a flag from another factory. `batch` rejects.               |
-| `BatchFlagNotFoundError`    |                                    | `get` or `details` of a batch received another flag. The method throws. |
+| Error                    | Fields               | When                                                                                                                                                                      |
+| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, or `for` received no identity. `cause` holds what `identify` threw.                                                                 |
+| `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result. |
+| `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                           |
+| `EvaluationTimeoutError` | `timeoutMs`          | The deadline passed.                                                                                                                                                      |
+| `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                           |
 
-A cancellation returns the reason of the signal as the error, such as an `AbortError`. A failure of `decide` returns the error that `decide` threw.
+`EvaluationError` is the union of these classes.
+
+`FlagDefinitionError`, with a `reason` field, is thrown by `flag.boolean`, `flag.variant`, `defineProvider`, and `createFlags` for an invalid definition. `@sanely/flags/react` exports `FlagsProviderMissingError`, which the hooks throw outside a `FlagsProvider`.
+
+## Error reports
+
+`onError` receives an `ErrorReport`, a union of three reports with a literal `_tag`:
+
+| Report            | Fields                                             | When                                                                                                                   |
+| ----------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `HookFailed`      | `phase`, `hookIndex`, `error`, `context`           | A hook threw or rejected. The other hooks still run, and the result does not change.                                   |
+| `StoreFailed`     | `operation`, `key`, `flagKey`, `identity`, `error` | A store operation or the `key` function failed. `operation` is `"get"`, `"set"`, `"delete"`, `"validate"`, or `"key"`. |
+| `SubscribeFailed` | `error`                                            | The provider's `subscribe` threw. Evaluations continue without live invalidation.                                      |
 
 ## Types
 
-The types come from `@sanely/flags`:
-
-| Type                                                                                 | Describes                                                           |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `Identity`                                                                           | `{ distinctId: string \| number } & Record<string, IdentityValue>`. |
-| `IdentityValue`                                                                      | A value of an identity attribute.                                   |
-| `FlagFactoryConfig`, `AnonymousFlagFactoryConfig`, `CallerIdentityFlagFactoryConfig` | The configurations of the three call modes.                         |
-| `FlagFactory`                                                                        | The value that `createFlags` returns.                               |
-| `FlagEvaluator`                                                                      | An evaluator.                                                       |
-| `FlagBatch`                                                                          | The value that `batch` resolves with.                               |
-| `FlagCallOptions`                                                                    | The options of an evaluator call.                                   |
-| `Decision`, `DecisionSource`                                                         | A decision, and `"cache" \| "provider"`.                            |
-| `EvaluationDetails`                                                                  | The value that `details()` resolves with.                           |
-| `DecisionCache`, `DecisionCacheErrorReport`                                          | The cache store and its error report.                               |
-| `FlagChange`, `FlagChanges`                                                          | The argument of `notify`, and the type of `changes`.                |
-| `Hook`, `HookContext`, `HookErrorReport`                                             | A hook, its context, and its error report.                          |
-| `MaybePromise<T>`                                                                    | `T \| Promise<T>`.                                                  |
+| Type                                                                                    | Describes                                                               |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `Flag`, `BooleanFlag`, `VariantFlag<TVariant, TPayload>`                                | Flag definitions.                                                       |
+| `FlagValue<TFlag>`, `FlagPayload<TFlag>`, `FlagValues<TFlags>`                          | The value, payload, and value tuple of flags.                           |
+| `Provider<TIdentity>`, `ProviderDefinition<TIdentity>`, `DecideOptions`                 | A provider, what `defineProvider` takes, and the provider call options. |
+| `Decision`, `DecisionSource`                                                            | A decision, and `"cache" \| "provider"`.                                |
+| `Flags`, `CallerFlags`, `FlagReader`, `FlagsOptions`, `ReadOptions`                     | Readers and their options.                                              |
+| `EvaluationDetails`, `EvaluationError`                                                  | Evaluation results.                                                     |
+| `FlagSnapshot`, `FlagSnapshotEntry`                                                     | Snapshots.                                                              |
+| `Identity`, `IdentityValue`, `Anonymous`, `Subject`, `EvaluationContext`                | Identities and the evaluation context.                                  |
+| `Hook`, `HookFailedReport`, `StoreFailedReport`, `SubscribeFailedReport`, `ErrorReport` | Hooks and error reports.                                                |
+| `CacheOptions`, `DecisionStore`                                                         | The `cache` option and its store.                                       |
+| `ChangeListener`                                                                        | `(keys?: readonly string[]) => void`.                                   |
+| `MaybePromise<T>`                                                                       | `T \| Promise<T>`.                                                      |
 
 ## `@sanely/flags/react`
 
-Every export is client-only. The module has a `"use client"` directive. A component that calls a flag hook needs a Suspense boundary.
+Every export is client-only. The module has a `"use client"` directive. A component that reads a flag without a snapshot needs a Suspense boundary.
 
-### `useFlag(flag, options?)`
+### `FlagsProvider`
 
-```ts
-function useFlag(flag, options?: { identity?; ttlMs?; details?: false }): TValue
-function useFlag(flag, options: { identity?; ttlMs?; details: true }): EvaluationDetails
-function useFlag<TValue>(
-  fn: () => Promise<TValue>,
-  options: { key: ReactFlagCacheKey; ttlMs? }
-): TValue
-```
+| Prop       | Type                       | Description                                                                                                             |
+| ---------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `flags`    | `Flags` or `CallerFlags`   | The reader from `createFlags`.                                                                                          |
+| `identity` | The reader's identity type | Evaluates for this identity. Optional for `Flags`, which can use `identify`. Required for `CallerFlags`.                |
+| `snapshot` | `FlagSnapshot`             | Values for the first render. Ignored when its `distinctId` differs from `identity`. Read only when the provider mounts. |
+| `cache`    | `FlagCacheOptions`         | The limits of the flag cache.                                                                                           |
+| `children` | `ReactNode`                | The subtree.                                                                                                            |
 
-Suspends until the flag settles, and returns its value, or its details with `details: true`. Without `identity`, it uses the identity of the nearest `FlagProvider`, and then the factory `identify`. The third form caches any async function under `key`. It throws a `TypeError` without `key`.
-
-### `useFlagBatch(flags, options?)`
-
-```ts
-function useFlagBatch(flags, options?: { identity?; ttlMs? }): FlagBatchValues
-```
-
-Evaluates several flags with one suspension, and returns their values in order.
-
-### `FeatureFlag`
-
-| Prop       | Type                   | Description                                                                                        |
-| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
-| `flag`     | Evaluator              | The flag.                                                                                          |
-| `match`    | `boolean` or a variant | The value that renders `children`. Default `true` for a boolean flag. Required for a variant flag. |
-| `children` | `ReactNode`            | Renders when the value matches.                                                                    |
-| `fallback` | `ReactNode`            | Renders when the value does not match.                                                             |
-| `loading`  | `ReactNode`            | When present, `FeatureFlag` adds a Suspense boundary with this fallback.                           |
-| `identity` | `Identity`             | Overrides the identity.                                                                            |
-
-### `FlagProvider`
-
-| Prop       | Type             | Description                                                            |
-| ---------- | ---------------- | ---------------------------------------------------------------------- |
-| `cache`    | `ReactFlagCache` | The cache for the subtree. Without it, each mount creates a new cache. |
-| `identity` | `Identity`       | The default identity for flag consumers below it.                      |
-| `children` | `ReactNode`      | The subtree.                                                           |
-
-TypeScript does not check `identity` against the identity type of the flags. Use `createFlagHooks` for that check.
-
-### `useFlagCache()`
-
-Returns the active `ReactFlagCache`. Its `invalidate`, `invalidateBatch`, `prefetch`, and `prefetchBatch` methods use the provider identity when you leave the identity out.
-
-### `createFlagCache(options?)`
-
-| Option         | Type     | Default  | Description                                                                                                 |
-| -------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `maxEntries`   | `number` | `100`    | The most settled entries in each bucket. A positive integer.                                                |
-| `ttlMs`        | `number` | `300000` | How long an evaluation stays cached, in milliseconds.                                                       |
-| `pendingTtlMs` | `number` | None     | How long a pending evaluation stays before the cache can remove it. Removal does not cancel the evaluation. |
-
-Each evaluator and each batch tuple has its own bucket. The custom async functions of `useFlag` share one bucket. A provider change from `subscribe` invalidates the matching entries. An entry that no mounted component reads evaluates again on its next read.
-
-`ReactFlagCache` has these methods:
-
-| Method                                        | Description                                  |
-| --------------------------------------------- | -------------------------------------------- |
-| `prefetch(flag, { identity?, ttlMs? })`       | Starts an evaluation and caches it.          |
-| `prefetchBatch(flags, { identity?, ttlMs? })` | Starts a batch and caches it.                |
-| `invalidate(flag, identity?)`                 | Removes the entry of one flag and identity.  |
-| `invalidateBatch(flags, identity?)`           | Removes the entry of one batch and identity. |
-| `invalidateKey(key)`                          | Removes the entry of a custom function key.  |
-| `clear()`                                     | Removes every entry.                         |
+Each mount creates its own flag cache, so a server never shares one between requests. A provider without `identity` accepts any snapshot, because its reader resolves the identity itself.
 
 An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. Other values throw a `TypeError`.
 
-### `createFlagHooks(factory)`
+### `FlagCacheOptions`
 
-Returns `{ FlagProvider, useFlag, useFlagBatch }`, typed to the identity type and call mode of `factory`. The provider requires a complete identity, and the hooks accept only flags of that identity type and call mode. The hooks read the identity only from their own provider. Without it, the factory resolves the identity.
+| Option         | Type     | Default  | Description                                                                                                 |
+| -------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `maxEntries`   | `number` | `100`    | The most settled entries for each list of flags. A positive integer.                                        |
+| `ttlMs`        | `number` | `300000` | How long an evaluation stays cached, in milliseconds.                                                       |
+| `pendingTtlMs` | `number` | None     | How long a pending evaluation stays before the cache can remove it. Removal does not cancel the evaluation. |
+
+### `useFlag(flag)`
+
+Returns the value of one flag. It returns the snapshot value when the snapshot has a valid entry for the flag, and otherwise suspends until the flag settles. It throws `FlagsProviderMissingError` outside a `FlagsProvider`.
+
+### `useFlags(flags)`
+
+Returns the values of several flags as a tuple, in order, with one suspension. It reads the snapshot only when the snapshot has every flag.
+
+A provider change for one of the flags drops its cached value and its snapshot entry, and re-renders the components that read it.
+
+### `FeatureFlag`
+
+| Prop       | Type        | Description                                                                                                   |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `flag`     | `Flag`      | The flag.                                                                                                     |
+| `match`    | A variant   | Required for a variant flag, and typed to its variants. Not allowed for a boolean flag, which matches `true`. |
+| `children` | `ReactNode` | Renders when the value matches.                                                                               |
+| `fallback` | `ReactNode` | Renders when the value does not match, and when the evaluation falls back to the default.                     |
+| `loading`  | `ReactNode` | When present, `FeatureFlag` adds a Suspense boundary with this fallback.                                      |
+
+### `useFlagCache()`
+
+Returns `FlagCacheControls` for the nearest `FlagsProvider` and its identity:
+
+| Method              | Description                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. |
+| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers.                        |
+| `clear()`           | Drops every cached value and the snapshot.                                                                                     |
 
 ### React types
 
-| Type                          | Describes                                        |
-| ----------------------------- | ------------------------------------------------ |
-| `ReactFlagCache`              | The value that `createFlagCache` returns.        |
-| `ReactFlagCacheOptions`       | The options of `createFlagCache`.                |
-| `ReactFlagCacheKey`           | The `key` of a custom function in `useFlag`.     |
-| `FlagHooks`                   | The value that `createFlagHooks` returns.        |
-| `FlagValueOf<TFlag>`          | The value type of a flag.                        |
-| `FlagDetailsOf<TFlag>`        | The details type of a flag.                      |
-| `FlagIdentityOf<TFlag>`       | The identity type of a flag.                     |
-| `FlagBatchValuesOf<TFlags>`   | The value tuple of a batch.                      |
-| `FlagBatchIdentityOf<TFlags>` | The identity that every flag of a batch accepts. |
+| Type                         | Describes                              |
+| ---------------------------- | -------------------------------------- |
+| `FlagsProviderProps<TFlags>` | The props of `FlagsProvider`.          |
+| `FeatureFlagProps<TFlag>`    | The props of `FeatureFlag`.            |
+| `FlagCacheControls`          | The value that `useFlagCache` returns. |
+| `FlagCacheOptions`           | The `cache` prop of `FlagsProvider`.   |
+
+## `@sanely/flags/testing`
+
+### `fakeProvider(entries?)`
+
+```ts
+function fakeProvider(entries?: [flag, value, payload?][]): FakeProvider
+```
+
+Returns a provider named `"fake"` that answers with the values you give. TypeScript checks each value against its flag. A flag without a value returns its default with an `InvalidDecisionError`. The provider accepts any identity and `anonymous`.
+
+`FakeProvider` adds `set(flag, value, payload?)`, which changes a flag's value and notifies the reader's change listeners.
+
+### `memoryStore()`
+
+Returns a `DecisionStore` that keeps decisions in a `Map`.

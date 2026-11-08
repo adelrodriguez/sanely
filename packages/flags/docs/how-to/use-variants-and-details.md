@@ -1,70 +1,73 @@
 # How to use variant flags and evaluation details
 
-This guide shows you how to evaluate a flag that returns one of several string values, and how to read why a flag returned its value.
+This guide shows you how to evaluate a flag that returns one of several strings, read its payload, and find out why a flag returned its value.
 
-## Create a variant flag
+## Define a variant flag
 
-Give the flag a list of `variants`, and a `defaultValue` from that list:
+Give `flag.variant` the key, the variants, and a default from the variants:
 
 ```typescript
-const theme = flag({
-  key: "theme",
-  defaultValue: "light",
-  variants: ["light", "dark", "system"],
-})
+import { flag } from "@sanely/flags"
 
-const selectedTheme = await theme() // "light" | "dark" | "system"
+export const theme = flag.variant("theme", ["light", "dark", "system"], "light")
+
+const selected = await flags.get(theme) // "light" | "dark" | "system"
 ```
 
-TypeScript checks that the default is in `variants`. At run time, a default that is not in `variants` throws a `RangeError` when you create the flag.
+TypeScript checks that the default is one of the variants. A default outside the variants also throws `FlagDefinitionError` when the module loads.
 
-In `decide`, return a variant decision for this flag:
+## Read a typed payload
+
+1. Add a `payload` parser. Its return type becomes the payload type:
+
+   ```typescript
+   type ThemePayload = { accent: string }
+
+   function parseTheme(payload: unknown): ThemePayload {
+     if (typeof payload !== "object" || payload === null || !("accent" in payload)) {
+       throw new TypeError("Expected a theme payload")
+     }
+     return { accent: String(payload.accent) }
+   }
+
+   export const theme = flag.variant("theme", ["light", "dark"], "light", { payload: parseTheme })
+   ```
+
+2. Read the payload from the details:
+
+   ```typescript
+   const details = await flags.details(theme)
+   if (details.source !== "default") {
+     details.payload // ThemePayload | undefined
+   }
+   ```
+
+`payload` is present only when the provider's decision has one. A parser that throws makes the evaluation return the default with an `InvalidDecisionError`.
+
+## Find out why a flag returned its value
+
+`details` reports where the value came from:
 
 ```typescript
-import { decision } from "@sanely/flags"
+const details = await flags.details(betaAccess)
 
-decision.variant("dark", { experiment: "checkout-theme" })
-```
-
-## Read the evaluation details
-
-Call `details()` when you need more than the value:
-
-```typescript
-const result = await betaAccess.details()
-
-result.value
-result.flagKey
-result.source // "cache" | "provider" | "default"
-
-if (result.source === "default") {
-  reportEvaluationError(result.error)
+switch (details.source) {
+  case "provider":
+  case "cache":
+    break
+  case "default":
+    report(details.error)
 }
 ```
 
-`details()` does not reject. When evaluation fails, it returns the default value and the original error.
+When `source` is `"default"`, `error` is an `EvaluationError`. Narrow it by its `_tag`:
 
-## Type the variant payload
+| `_tag`                     | Meaning                                                               |
+| -------------------------- | --------------------------------------------------------------------- |
+| `"IdentityNotFoundError"`  | No identity was found.                                                |
+| `"InvalidDecisionError"`   | The decision does not fit the flag. `reason` says why.                |
+| `"ProviderFailedError"`    | The provider threw. `provider` names it, and `cause` holds the error. |
+| `"EvaluationTimeoutError"` | The deadline passed.                                                  |
+| `"EvaluationAbortedError"` | The caller's signal aborted.                                          |
 
-A variant decision can carry a payload. To type it, give the payload type when you create the flag:
-
-```typescript
-type ThemePayload = {
-  experiment: string
-}
-
-const theme = flag<ThemePayload>({
-  key: "theme",
-  defaultValue: "light",
-  variants: ["light", "dark"],
-})
-
-const result = await theme.details()
-result.payload?.experiment // string | undefined
-```
-
-The package does not validate the payload at run time. Without a payload type, the payload type is `unknown`.
-
-When you give the payload type, TypeScript does not infer the variants, so the value type of the flag is `string`, not `"light" | "dark"`.
-
-Refer to the [`EvaluationDetails` reference](../reference.md#evaluationdetails) for every field.
+`details` never rejects, so no call site needs a `try` block.

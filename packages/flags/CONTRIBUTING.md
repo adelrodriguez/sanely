@@ -56,12 +56,12 @@ script.
 
 - Follow the [architecture](docs/architecture.md) when you change source ownership.
 - Follow the [testing guide](docs/testing.md) when you change tests.
-- Public API type changes require coverage in `src/__tests__/types.test-d.ts`.
+- Public API type changes require coverage in `src/__tests__/types.test-d.tsx`.
 - Write type assertions with `expectTypeOf` from `vitest`.
 - Type assertions are checked by `pnpm --workspace-root run check`, not Vitest.
 - Update user documentation when public behavior, types, or entry points change.
-- Consider package consumers before you change `@sanely/flags`, `@sanely/flags/hooks`, or
-  `@sanely/flags/react`.
+- Consider package consumers before you change `@sanely/flags`, `@sanely/flags/react`, or
+  `@sanely/flags/testing`.
 
 ## Validate a change
 
