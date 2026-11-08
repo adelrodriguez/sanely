@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { setTimeout as sleep } from "node:timers/promises"
-import { act, cleanup, render, screen } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import { Component, type ReactNode, Suspense } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -856,12 +856,13 @@ describe("server rendering", () => {
     expect(client.decide).not.toHaveBeenCalled()
 
     client.state.value = false
-    await act(async () => {
+    await act(() => {
       client.emit(["beta"])
-      await sleep(5)
     })
-    expect(container.textContent).toContain("false:dark")
-    expect(container.textContent).toContain("off")
+    // The batch evaluates in a timer-driven flush round, so wait for it instead of a fixed delay.
+    await waitFor(() => {
+      expect(container.textContent).toBe("false:darkoff")
+    })
     expect(client.decide).toHaveBeenCalled()
   })
 
