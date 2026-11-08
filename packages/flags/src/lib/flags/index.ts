@@ -192,8 +192,12 @@ export function createFlags<TIdentity extends Subject>(
   }
 
   const provider = providerCalls(options.provider)
-  const changes = provider.subscribe && createChangeBroadcaster(provider.subscribe)
   const { onError } = options
+  const changes =
+    provider.subscribe
+    && createChangeBroadcaster(provider.subscribe, (error) => {
+      reportInBackground(onError, { _tag: "SubscribeFailed", error: normalizeError(error) })
+    })
   const evaluator: Evaluator<TIdentity> = {
     hooks: [...(options.hooks ?? [])],
     onError,
@@ -208,14 +212,9 @@ export function createFlags<TIdentity extends Subject>(
       if (!changes) {
         return () => null
       }
-      try {
-        return changes.subscribe((keys) => {
-          reportInBackground(listener, keys)
-        })
-      } catch (error) {
-        reportInBackground(onError, { _tag: "SubscribeFailed", error: normalizeError(error) })
-        return () => null
-      }
+      return changes.subscribe((keys) => {
+        reportInBackground(listener, keys)
+      })
     },
   }
 

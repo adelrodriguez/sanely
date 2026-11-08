@@ -7,18 +7,26 @@ export type ChangeListener = (keys?: readonly string[]) => void
  * Sends one reader's provider change notifications to every listener. It attaches the provider's
  * `subscribe` at most once at a time: on the first listener, and it detaches when the last listener
  * leaves. Listeners run synchronously, in subscription order.
+ *
+ * A listener stays registered when the provider's `subscribe` throws. The broadcaster reports the
+ * error and stays detached, and the next `subscribe` or `attach` tries again, so listeners that
+ * joined during a failed attach receive the changes after a later attach succeeds.
  */
 export type ChangeBroadcaster = {
   /**
-   * Adds a listener and returns an idempotent unsubscribe function. When this listener causes the
-   * attach and the provider's `subscribe` throws, the broadcaster stays detached and rethrows. The
-   * next listener tries again.
+   * Adds a listener, attaches the provider when needed, and returns an idempotent unsubscribe
+   * function. It never throws.
    */
   subscribe(listener: ChangeListener): () => void
+  /**
+   * Attaches the provider again when listeners wait and an earlier attach failed.
+   */
+  attach(): void
 }
 
 export function createChangeBroadcaster(
-  subscribe: (notify: ChangeListener) => () => void
+  subscribe: (notify: ChangeListener) => () => void,
+  onAttachError: (error: unknown) => void
 ): ChangeBroadcaster {
   // One entry per subscription, so one function subscribed twice needs two unsubscribes.
   const listeners = new Set<{ listener: ChangeListener }>()
@@ -32,23 +40,27 @@ export function createChangeBroadcaster(
     }
   }
 
+  const attach = () => {
+    if (attached || listeners.size === 0) {
+      return
+    }
+    // Set before the call: a listener that subscribes again during a synchronous notification
+    // must not attach a second time.
+    attached = true
+    try {
+      detach = subscribe(notify)
+    } catch (error) {
+      attached = false
+      onAttachError(error)
+    }
+  }
+
   return {
+    attach,
     subscribe(listener) {
       const entry = { listener }
       listeners.add(entry)
-
-      if (!attached) {
-        // Set before the call: a listener that subscribes again during a synchronous notification
-        // must not attach a second time.
-        attached = true
-        try {
-          detach = subscribe(notify)
-        } catch (error) {
-          attached = false
-          listeners.delete(entry)
-          throw error
-        }
-      }
+      attach()
 
       let subscribed = true
       return () => {

@@ -140,7 +140,7 @@ The value that `createFlags` returns without `identify`. It has only `for` and `
 | `for(identity)`       | Returns a `FlagReader` for `identity`. A missing identity makes its reads return defaults with an `IdentityNotFoundError`. |
 | `subscribe(listener)` | Calls `listener(keys?)` after each provider change. Returns a function that removes the listener.                          |
 
-`subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report.
+`subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report. The listener stays registered, and it receives changes once a later subscription or evaluation attaches the provider.
 
 ### `FlagReader`
 

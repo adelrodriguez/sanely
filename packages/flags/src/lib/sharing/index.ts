@@ -195,47 +195,47 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
   config: Sharing<TIdentity>
 ): void {
   const { changes, state } = config
-  const { subscription } = state
-  if (!changes || subscription.attached) {
+  if (!changes) {
+    return
+  }
+  // The listener is registered once. Later evaluations ask the broadcaster to attach again when an
+  // earlier attach failed.
+  if (state.subscription.registered) {
+    changes.attach()
     return
   }
 
   // Set before the attach, so a provider that notifies synchronously cannot add a second listener.
-  subscription.attached = true
-  try {
-    changes.subscribe((changedFlagKeys) => {
-      // An invalidated flag's in-flight provider call is stale too: already-attached followers
-      // keep the leader's decision, but later evaluations must not join it.
-      const changed = changedFlagKeys && new Set(changedFlagKeys)
-      for (const [pendingKey, entry] of state.pending) {
-        if (!changed || changed.has(entry.flagKey)) {
-          state.pending.delete(pendingKey)
-        }
+  state.subscription.registered = true
+  changes.subscribe((changedFlagKeys) => {
+    // An invalidated flag's in-flight provider call is stale too: already-attached followers
+    // keep the leader's decision, but later evaluations must not join it.
+    const changed = changedFlagKeys && new Set(changedFlagKeys)
+    for (const [pendingKey, entry] of state.pending) {
+      if (!changed || changed.has(entry.flagKey)) {
+        state.pending.delete(pendingKey)
       }
-      // Invalidate open write tickets independently of the key index, which only fills when the
-      // store can delete: a decision fetched before the change must never be written after it.
-      const { writes } = state
-      writes.generation += 1
-      const store = config.store
-      const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
-      for (const flagKey of flagKeys) {
-        const cacheKeys = state.keysByFlag.get(flagKey)
-        if (!cacheKeys) {
-          continue
-        }
-        state.keysByFlag.delete(flagKey)
-        if (!store) {
-          continue
-        }
-        for (const [cacheKey, identity] of cacheKeys) {
-          deleteCacheEntry(config, { flagKey, identity }, store, cacheKey)
-        }
+    }
+    // Invalidate open write tickets independently of the key index, which only fills when the
+    // store can delete: a decision fetched before the change must never be written after it.
+    const { writes } = state
+    writes.generation += 1
+    const store = config.store
+    const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
+    for (const flagKey of flagKeys) {
+      const cacheKeys = state.keysByFlag.get(flagKey)
+      if (!cacheKeys) {
+        continue
       }
-    })
-  } catch (error) {
-    subscription.attached = false
-    reportInBackground(config.onError, { _tag: "SubscribeFailed", error: normalizeError(error) })
-  }
+      state.keysByFlag.delete(flagKey)
+      if (!store) {
+        continue
+      }
+      for (const [cacheKey, identity] of cacheKeys) {
+        deleteCacheEntry(config, { flagKey, identity }, store, cacheKey)
+      }
+    }
+  })
 }
 
 type StoreConsultation = {

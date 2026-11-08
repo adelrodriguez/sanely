@@ -394,6 +394,27 @@ function snapshotApplies(context: FlagsContextValue): boolean {
   return identity === undefined || distinctIdOf(identity) === snapshot.distinctId
 }
 
+function createFlagCache(
+  flags: AnyFlags,
+  cacheOptions: FlagCacheOptions | undefined,
+  snapshot?: FlagSnapshot
+): FlagCache {
+  const options = cacheOptions ?? {}
+  assertCacheOptions(options)
+  const clock = getChangeClock(flags)
+  return {
+    buckets: new Map(),
+    maxEntries: options.maxEntries ?? DEFAULT_MAX_ENTRIES,
+    pendingTtlMs: options.pendingTtlMs,
+    snapshot: snapshot && {
+      distinctId: snapshot.distinctId,
+      entries: new Map(Object.entries(snapshot.flags)),
+      watch: { clock, since: clock.count },
+    },
+    ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
+  }
+}
+
 /**
  * Supplies a reader, an identity, and a flag cache to the hooks below it. Each mount has its own
  * cache, so a server never shares one between requests.
@@ -408,28 +429,23 @@ export function FlagsProvider<TFlags extends AnyFlags>(
 ): ReactNode {
   const { cache: cacheOptions, children, flags, snapshot } = props
   const identity: Subject | undefined = props.identity
-  // oxlint-disable-next-line react/hook-use-state -- The mounted cache is never replaced, and useState is the only hook that guarantees a stable identity across renders.
-  const [cache] = useState((): FlagCache => {
-    const options = cacheOptions ?? {}
-    assertCacheOptions(options)
-    const clock = getChangeClock(flags)
-    return {
-      buckets: new Map(),
-      maxEntries: options.maxEntries ?? DEFAULT_MAX_ENTRIES,
-      pendingTtlMs: options.pendingTtlMs,
-      snapshot: snapshot && {
-        distinctId: snapshot.distinctId,
-        entries: new Map(Object.entries(snapshot.flags)),
-        watch: { clock, since: clock.count },
-      },
-      ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
-    }
-  })
+  const [mounted, setMounted] = useState(() => ({
+    cache: createFlagCache(flags, cacheOptions, snapshot),
+    flags,
+  }))
+  let { cache } = mounted
+  if (mounted.flags !== flags) {
+    // A new reader gets a new cache, so no value or subscription of the old reader carries over.
+    // The snapshot belongs to the reader that the provider mounted with.
+    const next = { cache: createFlagCache(flags, cacheOptions), flags }
+    setMounted(next)
+    cache = next.cache
+  }
   const key = identityKey(identity)
-  // The identity key changes only when the identity's content changes, so a new identity object
-  // with the same content keeps the same context value.
-  // oxlint-disable-next-line react/exhaustive-deps -- `key` stands for `identity`.
-  const value = useMemo(() => ({ cache, flags, identity, identityKey: key }), [cache, flags, key])
+  const value = useMemo(
+    () => ({ cache, flags, identity, identityKey: key }),
+    [cache, flags, identity, key]
+  )
   return <FlagsContext value={value}>{children}</FlagsContext>
 }
 

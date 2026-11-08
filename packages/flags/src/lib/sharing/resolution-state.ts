@@ -33,7 +33,7 @@ export type ResolutionState<TIdentity extends Subject> = {
   pending: Map<string, PendingResolution>
   // The invalidation listener never leaves the change broadcaster, so its unsubscribe function is
   // intentionally not retained.
-  subscription: { attached: boolean }
+  subscription: { registered: boolean }
   // One counter for the reader: any flag-change notification invalidates every open write ticket.
   // A pending write lives for milliseconds and the next evaluation re-establishes it, so dropping
   // one is always safe. It is cheaper than tracking which flags a notification covers.
@@ -45,7 +45,7 @@ export function createResolutionState<TIdentity extends Subject>(): ResolutionSt
     keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),
-    subscription: { attached: false },
+    subscription: { registered: false },
     writes: { generation: 0 },
   }
 }

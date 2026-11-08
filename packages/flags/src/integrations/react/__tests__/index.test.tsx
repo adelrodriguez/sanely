@@ -143,6 +143,16 @@ function EmptyTuple() {
 
 type TestFlags = ReturnType<typeof makeFlags>["flags"]
 
+function readerTree(flags: TestFlags) {
+  return (
+    <FlagsProvider flags={flags}>
+      <Suspense fallback="loading">
+        <Value item={beta} />
+      </Suspense>
+    </FlagsProvider>
+  )
+}
+
 function identityTree(flags: TestFlags, distinctId: string, cache: object, capture: ReactNode) {
   return (
     <FlagsProvider flags={flags} identity={{ distinctId }} cache={cache}>
@@ -264,6 +274,28 @@ describe("React integration", () => {
     )
     expect(await screen.findAllByText("true")).toHaveLength(2)
     expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  it("reads from a new reader when the flags prop changes", async () => {
+    const first = makeFlags()
+    const second = makeFlags()
+    second.state.value = false
+    const { rerender } = await renderAsync(readerTree(first.flags))
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    await act(() => {
+      rerender(readerTree(second.flags))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+
+    // The provider of the replaced reader no longer re-renders the component.
+    second.decideOne.mockClear()
+    await act(() => {
+      first.emit(["beta"])
+      return Promise.resolve()
+    })
+    expect(second.decideOne).not.toHaveBeenCalled()
   })
 
   it("evaluates for the provider identity instead of identify", async () => {
@@ -534,6 +566,46 @@ describe("React integration", () => {
     expect(decideOne).toHaveBeenCalledTimes(1)
     await sleep(1)
     expect(reports).toContain("SubscribeFailed")
+  })
+
+  it("drops a snapshot value after a change once a failed subscribe recovers", async () => {
+    let notify: ((keys?: readonly string[]) => void) | undefined
+    let attempts = 0
+    const flags = createFlags({
+      identify: () => ({ distinctId: "user" }),
+      onError: vi.fn(),
+      provider: defineProvider({
+        decideOne: () => decision.boolean(false),
+        name: "recovering",
+        subscribe: (listener) => {
+          attempts += 1
+          if (attempts === 1) throw new Error("subscribe failed")
+          notify = listener
+          return () => {
+            notify = undefined
+          }
+        },
+      }),
+    })
+    const snapshot: FlagSnapshot = {
+      distinctId: "user",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(screen.getByText("true")).toBeTruthy()
+    expect(notify).toBeDefined()
+
+    await act(async () => {
+      notify?.(["beta"])
+      await sleep(1)
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
   })
 
   it("re-reads after the last reader unmounts and mounts again", async () => {
@@ -856,7 +928,7 @@ describe("server rendering", () => {
     expect(client.decide).not.toHaveBeenCalled()
 
     client.state.value = false
-    await act(() => {
+    act(() => {
       client.emit(["beta"])
     })
     // The batch evaluates in a timer-driven flush round, so wait for it instead of a fixed delay.

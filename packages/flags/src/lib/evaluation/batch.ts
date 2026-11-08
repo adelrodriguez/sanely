@@ -66,6 +66,8 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
     ? Math.max(...timeouts)
     : undefined
   const batchDeadline = createEvaluationSignal(callerSignal, batchTimeoutMs)
+  // Each flag's deadline starts now, so the shared identity resolution counts against it.
+  const deadlines = timeouts.map((timeout) => createEvaluationSignal(callerSignal, timeout))
 
   // Resolve the identity once. Every evaluation in the batch gets this identity, or this error.
   // A flush round opens only after an evaluation resolved this identity, so the round reads it.
@@ -171,13 +173,14 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
   try {
     return (await Promise.all(
       flags.map(async (flag, index) => {
-        const deadline = createEvaluationSignal(callerSignal, timeouts[index])
+        const deadline = deadlines[index]
         try {
           return await evaluate(evaluator, flag, identifyOnce, decide, {
-            deadline: deadline.signal,
+            deadline: deadline?.signal ?? batchDeadline.signal,
           })
         } finally {
-          deadline.cleanup()
+          // Stop this flag's timer as soon as it settles, so its signal never aborts afterward.
+          deadline?.cleanup()
         }
       })
     )) as Results

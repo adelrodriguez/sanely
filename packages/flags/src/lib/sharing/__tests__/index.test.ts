@@ -50,7 +50,12 @@ function createConfig(
   subscribe?: (notify: ChangeListener) => () => void,
   onError = vi.fn()
 ): Sharing<Subject> {
-  return createSharing(options, subscribe && createChangeBroadcaster(subscribe), onError)
+  const changes =
+    subscribe
+    && createChangeBroadcaster(subscribe, (error) => {
+      onError({ _tag: "SubscribeFailed", error })
+    })
+  return createSharing(options, changes, onError)
 }
 
 type StoreFunctions = {
@@ -497,10 +502,11 @@ describe("resolveDecision", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ _tag: "SubscribeFailed", error: expect.any(Error) })
     )
-    expect(config.state.subscription.attached).toBe(false)
+    expect(config.state.subscription.registered).toBe(true)
 
     await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
     expect(subscribe).toHaveBeenCalledTimes(2)
-    expect(config.state.subscription.attached).toBe(true)
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    expect(subscribe).toHaveBeenCalledTimes(2)
   })
 })

@@ -542,6 +542,26 @@ describe("batches", () => {
     expect(slowDetails).toEqual({ flagKey: "slow", source: "provider", value: true })
   })
 
+  test("counts identity resolution against each flag's deadline", async () => {
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      identify: async () => {
+        await delay(40)
+        return user
+      },
+      provider: defineProvider({ decideOne, name: "fast" }),
+    })
+
+    const [capped, roomy] = await flags.detailsMany([
+      flag.boolean("capped", false, { timeoutMs: 10 }),
+      flag.boolean("roomy", false, { timeoutMs: 200 }),
+    ])
+
+    expect(capped.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(roomy).toEqual({ flagKey: "roomy", source: "provider", value: true })
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
   test("gives each decideOne call the flag's own deadline", async () => {
     const signals: Record<string, AbortSignal | undefined> = {}
     const flags = createFlags({

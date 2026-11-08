@@ -20,7 +20,7 @@ function createProvider() {
 describe("createChangeBroadcaster", () => {
   test("attaches on the first listener and detaches when the last listener leaves", () => {
     const provider = createProvider()
-    const broadcaster = createChangeBroadcaster(provider.subscribe)
+    const broadcaster = createChangeBroadcaster(provider.subscribe, () => null)
 
     expect(provider.subscribe).not.toHaveBeenCalled()
     const first = broadcaster.subscribe(() => null)
@@ -38,7 +38,7 @@ describe("createChangeBroadcaster", () => {
 
   test("makes unsubscribe idempotent", () => {
     const provider = createProvider()
-    const broadcaster = createChangeBroadcaster(provider.subscribe)
+    const broadcaster = createChangeBroadcaster(provider.subscribe, () => null)
     const first = broadcaster.subscribe(() => null)
     broadcaster.subscribe(() => null)
 
@@ -50,7 +50,7 @@ describe("createChangeBroadcaster", () => {
 
   test("keeps one function subscribed twice until both subscriptions leave", () => {
     const provider = createProvider()
-    const broadcaster = createChangeBroadcaster(provider.subscribe)
+    const broadcaster = createChangeBroadcaster(provider.subscribe, () => null)
     const listener = vi.fn()
     const first = broadcaster.subscribe(listener)
     const second = broadcaster.subscribe(listener)
@@ -64,7 +64,7 @@ describe("createChangeBroadcaster", () => {
 
   test("notifies every listener synchronously in subscription order", () => {
     const provider = createProvider()
-    const broadcaster = createChangeBroadcaster(provider.subscribe)
+    const broadcaster = createChangeBroadcaster(provider.subscribe, () => null)
     const calls: string[] = []
     broadcaster.subscribe((keys) => calls.push(`first:${String(keys)}`))
     broadcaster.subscribe((keys) => calls.push(`second:${String(keys)}`))
@@ -81,10 +81,13 @@ describe("createChangeBroadcaster", () => {
   })
 
   test("delivers a notification sent synchronously during the attach", () => {
-    const broadcaster = createChangeBroadcaster((notify) => {
-      notify(["beta-access"])
-      return () => null
-    })
+    const broadcaster = createChangeBroadcaster(
+      (notify) => {
+        notify(["beta-access"])
+        return () => null
+      },
+      () => null
+    )
     const listener = vi.fn()
 
     broadcaster.subscribe(listener)
@@ -92,22 +95,43 @@ describe("createChangeBroadcaster", () => {
     expect(listener).toHaveBeenCalledWith(["beta-access"])
   })
 
-  test("stays detached when subscribe throws and lets the next listener retry", () => {
+  test("keeps a listener when subscribe throws and delivers changes after a retry", () => {
+    let notify: ChangeListener | undefined
     const detach = vi.fn(() => null)
     const subscribe = vi
-      .fn<(notify: ChangeListener) => () => void>()
+      .fn<(listener: ChangeListener) => () => void>()
       .mockImplementationOnce(() => {
         throw new Error("subscribe failed")
       })
-      .mockImplementation(() => detach)
-    const broadcaster = createChangeBroadcaster(subscribe)
-    const failed = vi.fn()
+      .mockImplementation((listener) => {
+        notify = listener
+        return detach
+      })
+    const onAttachError = vi.fn()
+    const broadcaster = createChangeBroadcaster(subscribe, onAttachError)
+    const early = vi.fn()
 
-    expect(() => broadcaster.subscribe(failed)).toThrow("subscribe failed")
-    const unsubscribe = broadcaster.subscribe(() => null)
+    const unsubscribeEarly = broadcaster.subscribe(early)
+    expect(onAttachError).toHaveBeenCalledWith(new Error("subscribe failed"))
 
+    broadcaster.attach()
     expect(subscribe).toHaveBeenCalledTimes(2)
-    unsubscribe()
+    broadcaster.attach()
+    expect(subscribe).toHaveBeenCalledTimes(2)
+
+    notify?.(["beta-access"])
+    expect(early).toHaveBeenCalledWith(["beta-access"])
+
+    unsubscribeEarly()
     expect(detach).toHaveBeenCalledTimes(1)
+  })
+
+  test("does not attach without listeners", () => {
+    const subscribe = vi.fn(() => () => null)
+    const broadcaster = createChangeBroadcaster(subscribe, () => null)
+
+    broadcaster.attach()
+
+    expect(subscribe).not.toHaveBeenCalled()
   })
 })
