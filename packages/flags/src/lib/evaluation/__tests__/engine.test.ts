@@ -1,417 +1,317 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
-import type {
-  AnyFlagFactoryConfig,
-  Decision,
-  FlagCallOptions,
-  FlagOptions,
-  Hook,
-  Identity,
-} from "#lib/types/index.ts"
-import { resolveConfig } from "#lib/config/resolved-config.ts"
+import type { Decision } from "#lib/definition/decision.ts"
+import type { Hook } from "#lib/evaluation/hooks.ts"
+import { flag } from "#lib/definition/index.ts"
 import {
-  type FlagSource,
-  executeFlag as executeResolvedFlag,
-  executeFlagDetails,
-} from "#lib/evaluation/engine.ts"
-import { FlagTimeoutError } from "#lib/shared/errors.ts"
+  EvaluationAbortedError,
+  EvaluationTimeoutError,
+  IdentityNotFoundError,
+  InvalidDecisionError,
+  ProviderFailedError,
+} from "#lib/errors/index.ts"
+import { type Decide, evaluate, type Evaluator, timeoutOf } from "#lib/evaluation/engine.ts"
+import { identifyAs, identifyWith, type Identity } from "#lib/identity/index.ts"
+import { type DecisionStore, createSharing } from "#lib/sharing/index.ts"
 
-function executeFlag<TIdentity extends Identity, T extends string[] = string[]>(
-  config: AnyFlagFactoryConfig<TIdentity>,
-  options: FlagOptions<T>,
-  callOptions?: FlagCallOptions<TIdentity | null>
-): Promise<boolean | T[number]> {
-  const resolved = resolveConfig(config)
-  return executeResolvedFlag(resolved, options, callOptions, resolved, {
-    timeoutMs: options.timeoutMs ?? resolved.timeoutMs,
-  })
-}
+const identity: Identity = { distinctId: "user123" }
+const betaAccess = flag.boolean("beta-access", false)
+const theme = flag.variant("theme", ["light", "dark"], "light", {
+  payload: (payload) => ({ accent: String(payload) }),
+})
 
-async function expectRejection<T>(promise: Promise<T>, message: string) {
-  let caughtError: Error | undefined
-
-  try {
-    await promise
-  } catch (error) {
-    caughtError = error instanceof Error ? error : new Error(String(error))
+function createEvaluator(overrides: Partial<Evaluator<Identity>> = {}): Evaluator<Identity> {
+  return {
+    hooks: [],
+    onError: undefined,
+    provider: { decideOne: () => Promise.resolve(null), name: "test" },
+    sharing: createSharing({ coalesce: false }, detached.changes, detached.onError),
+    timeoutMs: undefined,
+    ...overrides,
   }
-
-  expect(caughtError).toBeInstanceOf(Error)
-  expect(caughtError).toMatchObject({ message })
-  return caughtError
 }
 
-describe("executeFlag", () => {
-  test("executes boolean flag successfully", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "boolean", value: true }
+function decideWith(decision: unknown): Decide<Identity> {
+  return vi.fn(() => Promise.resolve(decision))
+}
 
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      hooks: [],
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
+const identify = identifyAs(identity)
+// A reader without provider changes or an error callback.
+const detached = { changes: undefined, onError: undefined }
 
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe(true)
-    expect(config.identify).toHaveBeenCalled()
-    expect(config.decide).toHaveBeenCalledWith("test-flag", identity, expect.any(Object))
+function neverSettles(): Promise<never> {
+  return new Promise<never>(() => {
+    // The provider never answers.
   })
+}
+const noDeadline = { signal: undefined }
 
-  test("executes variant flag successfully", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "variant", variant: "dark" }
+describe("timeoutOf", () => {
+  test("prefers the flag timeout over the reader timeout", () => {
+    const evaluator = createEvaluator({ timeoutMs: 100 })
 
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      hooks: [],
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
-
-    const options = {
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark", "system"],
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe("dark")
-  })
-
-  test("uses override identity when provided", async () => {
-    const defaultIdentity: Identity = { distinctId: "default" }
-    const overrideIdentity: Identity = { distinctId: "override" }
-    const decision: Decision = { type: "boolean", value: true }
-
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(defaultIdentity)),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options, { identity: overrideIdentity })
-
-    expect(result).toBe(true)
-    expect(config.identify).not.toHaveBeenCalled()
-    expect(config.decide).toHaveBeenCalledWith("test-flag", overrideIdentity, expect.any(Object))
-  })
-
-  test("returns default value on error", async () => {
-    const config = {
-      decide: vi.fn(() => Promise.resolve({ type: "boolean", value: true } as const)),
-      identify: vi.fn(() => Promise.reject(new Error("Identity error"))),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe(false)
-  })
-
-  test("runs all hook lifecycle methods", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "boolean", value: true }
-
-    const beforeFn = vi.fn(() => Promise.resolve())
-    const afterFn = vi.fn(() => Promise.resolve())
-    const finallyFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [
-      {
-        after: afterFn,
-        before: beforeFn,
-        finally: finallyFn,
-      },
-    ]
-
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      hooks,
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    await executeFlag(config, options)
-    await sleep(0)
-
-    expect(beforeFn).toHaveBeenCalled()
-    expect(afterFn).toHaveBeenCalled()
-    expect(finallyFn).toHaveBeenCalled()
-  })
-
-  test("short-circuits when the cache returns a decision", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const cachedDecision: Decision = { type: "boolean", value: true }
-
-    const config = {
-      cache: {
-        get: vi.fn(() => Promise.resolve(cachedDecision)),
-        set: vi.fn(() => Promise.resolve()),
-      },
-      decide: vi.fn(() => Promise.resolve({ type: "boolean", value: false } as const)),
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe(true)
-    expect(config.decide).not.toHaveBeenCalled()
-  })
-
-  test("runs error hooks when error occurs", async () => {
-    const error = new Error("Decision error")
-
-    const errorFn = vi.fn(() => Promise.resolve())
-    const finallyFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [{ error: errorFn, finally: finallyFn }]
-
-    const config = {
-      decide: vi.fn(() => Promise.reject(error)),
-      hooks,
-      identify: vi.fn(() => Promise.resolve({ distinctId: "user123" })),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe(false)
-    expect(errorFn).toHaveBeenCalledWith(
-      {
-        defaultValue: false,
-        flagKey: "test-flag",
-        identity: { distinctId: "user123" },
-        kind: "boolean",
-        signal: expect.any(AbortSignal),
-        variants: undefined,
-      },
-      error
-    )
-    expect(finallyFn).toHaveBeenCalled()
-  })
-
-  test("validates variant and throws on invalid variant", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "variant", variant: "invalid" }
-
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
-
-    const options = {
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe("light") // Returns default on error
-  })
-
-  test("rejects a non-boolean default for a boolean flag at runtime", async () => {
-    const config = {
-      decide: () => ({ type: "boolean", value: true }) as const,
-      identify: () => ({ distinctId: "user123" }),
-    }
-    const options = { defaultValue: "false", key: "beta-access" } as unknown as {
-      defaultValue: boolean
-      key: string
-    }
-
-    await expectRejection(
-      executeFlag(config, options),
-      "A boolean evaluation requires a boolean default value"
-    )
-  })
-
-  test("rejects a non-string default for a variant flag at runtime", async () => {
-    const config = {
-      decide: () => ({ type: "variant", variant: "dark" }) as const,
-      identify: () => ({ distinctId: "user123" }),
-    }
-    const options = {
-      defaultValue: false,
-      key: "theme",
-      variants: ["light", "dark"],
-    } as unknown as {
-      defaultValue: string
-      key: string
-      variants: string[]
-    }
-
-    await expectRejection(
-      executeFlag(config, options),
-      "A variant evaluation requires a string default value"
-    )
-  })
-
-  test("works without hooks", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "boolean", value: true }
-
-    const config = {
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(identity)),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    const result = await executeFlag(config, options)
-
-    expect(result).toBe(true)
-  })
-
-  test("handles null identity in hook context on error", async () => {
-    const errorFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [{ error: errorFn }]
-
-    const config = {
-      decide: vi.fn(() => Promise.resolve({ type: "boolean", value: true } as const)),
-      hooks,
-      identify: vi.fn(() => Promise.reject(new Error("Identity error"))),
-    }
-
-    const options = {
-      defaultValue: false,
-      key: "test-flag",
-    }
-
-    await executeFlag(config, options)
-
-    expect(errorFn).toHaveBeenCalledWith(
-      {
-        defaultValue: false,
-        flagKey: "test-flag",
-        identity: null,
-        kind: "boolean",
-        signal: expect.any(AbortSignal),
-        variants: undefined,
-      },
-      expect.any(Error)
-    )
+    expect(timeoutOf(evaluator, betaAccess)).toBe(100)
+    expect(timeoutOf(evaluator, flag.boolean("fast", false, { timeoutMs: 5 }))).toBe(5)
   })
 })
 
-describe("executeFlagDetails with a flag source", () => {
-  const identity = { distinctId: "user123" }
-  const options = { defaultValue: false, key: "beta-access" }
+describe("evaluate", () => {
+  test("returns a provider decision", async () => {
+    const decide = decideWith({ type: "boolean", value: true })
 
-  function createSource() {
-    return {
-      decide: vi.fn<FlagSource<Identity>["decide"]>(() =>
-        Promise.resolve({ type: "boolean", value: true })
-      ),
-      resolveIdentity: vi.fn<FlagSource<Identity>["resolveIdentity"]>(() =>
-        Promise.resolve(identity)
-      ),
-    }
-  }
+    const details = await evaluate(createEvaluator(), betaAccess, identify, decide, noDeadline)
 
-  test("asks the source for provider work only after a cache miss", async () => {
-    const cached = new Map<string, Decision>()
-    const configDecide = vi.fn(() => ({ type: "boolean", value: false }) as const)
-    const config = resolveConfig<Identity>({
-      cache: {
-        get: (key) => Promise.resolve(cached.get(key)),
-        set: (key, value) => {
-          cached.set(key, value)
-          return Promise.resolve()
-        },
-      },
-      decide: configDecide,
-      identify: () => null,
-    })
-    const source = createSource()
-    const deadline = { timeoutMs: undefined }
-
-    const first = await executeFlagDetails(config, options, undefined, source, deadline)
-    await sleep(0)
-    const second = await executeFlagDetails(config, options, undefined, source, deadline)
-
-    expect(first).toMatchObject({ source: "provider", value: true })
-    expect(second).toMatchObject({ source: "cache", value: true })
-    expect(source.resolveIdentity).toHaveBeenCalledTimes(2)
-    expect(source.decide).toHaveBeenCalledTimes(1)
-    expect(source.decide).toHaveBeenCalledWith("beta-access", identity, {
-      signal: expect.any(AbortSignal),
-    })
-    expect(configDecide).not.toHaveBeenCalled()
+    expect(details).toEqual({ flagKey: "beta-access", source: "provider", value: true })
+    expect(decide).toHaveBeenCalledWith(betaAccess, identity, { signal: expect.any(AbortSignal) })
   })
 
-  test("returns the timeout error when the deadline signal aborts", async () => {
-    const config = resolveConfig<Identity>({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => identity,
-    })
-    const source = createSource()
-    source.decide.mockImplementation(() => Promise.withResolvers<Decision>().promise)
-    const controller = new AbortController()
+  test("returns a variant with its parsed payload", async () => {
+    const details = await evaluate(
+      createEvaluator(),
+      theme,
+      identify,
+      decideWith({ payload: "red", type: "variant", variant: "dark" }),
+      noDeadline
+    )
 
-    const evaluation = executeFlagDetails(config, options, undefined, source, {
+    expect(details).toEqual({
+      flagKey: "theme",
+      payload: { accent: "red" },
+      source: "provider",
+      value: "dark",
+    })
+  })
+
+  test("returns a stored decision without asking the provider", async () => {
+    const stored: Decision = { type: "boolean", value: true }
+    const store: DecisionStore = {
+      get: () => Promise.resolve(stored),
+      set: () => Promise.resolve(),
+    }
+    const decide = decideWith(null)
+    const evaluator = createEvaluator({
+      sharing: createSharing({ store }, detached.changes, detached.onError),
+    })
+
+    const details = await evaluate(evaluator, betaAccess, identify, decide, noDeadline)
+
+    expect(details.source).toBe("cache")
+    expect(decide).not.toHaveBeenCalled()
+  })
+
+  test("falls back with IdentityNotFoundError when the identity is missing", async () => {
+    const details = await evaluate(
+      createEvaluator(),
+      betaAccess,
+      identifyWith<Identity>(() => null),
+      decideWith(null),
+      noDeadline
+    )
+
+    expect(details).toMatchObject({ source: "default", value: false })
+    expect(details.error).toBeInstanceOf(IdentityNotFoundError)
+  })
+
+  test("falls back with InvalidDecisionError for a decision that does not fit", async () => {
+    const details = await evaluate(
+      createEvaluator(),
+      theme,
+      identify,
+      decideWith({ type: "variant", variant: "purple" }),
+      noDeadline
+    )
+
+    expect(details).toMatchObject({ source: "default", value: "light" })
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+  })
+
+  test("keeps a provider failure", async () => {
+    const failure = new ProviderFailedError({ cause: new Error("down"), provider: "test" })
+
+    const details = await evaluate(
+      createEvaluator(),
+      betaAccess,
+      identify,
+      () => Promise.reject(failure),
+      noDeadline
+    )
+
+    expect(details.error).toBe(failure)
+  })
+
+  test("wraps an unexpected failure as ProviderFailedError", async () => {
+    const details = await evaluate(
+      createEvaluator(),
+      betaAccess,
+      identify,
+      () => Promise.reject(new Error("unexpected")),
+      noDeadline
+    )
+
+    expect(details.error).toBeInstanceOf(ProviderFailedError)
+    expect(details.error).toMatchObject({ provider: "test" })
+  })
+
+  test("falls back with EvaluationTimeoutError after the timeout", async () => {
+    const details = await evaluate(
+      createEvaluator({ timeoutMs: 5 }),
+      betaAccess,
+      identify,
+      neverSettles,
+      noDeadline
+    )
+
+    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(details.error).toMatchObject({ timeoutMs: 5 })
+  })
+
+  test("falls back with EvaluationAbortedError when the caller aborts", async () => {
+    const controller = new AbortController()
+    const reason = new Error("stop")
+    const pending = evaluate(createEvaluator(), betaAccess, identify, neverSettles, {
       signal: controller.signal,
     })
-    controller.abort(new FlagTimeoutError(5))
-    const details = await evaluation
+    controller.abort(reason)
 
-    expect(details.source).toBe("default")
-    expect(details.value).toBe(false)
-    expect(details.error).toBeInstanceOf(FlagTimeoutError)
+    const details = await pending
+
+    expect(details.error).toBeInstanceOf(EvaluationAbortedError)
+    expect(details.error?.cause).toBe(reason)
   })
 
   test("adds no timeout of its own when the deadline is a signal", async () => {
-    const config = resolveConfig<Identity>({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => identity,
-      timeoutMs: 1,
-    })
-    const source = createSource()
-    source.decide.mockImplementation(async () => {
-      await sleep(20)
+    const decide = vi.fn(async () => {
+      await sleep(15)
       return { type: "boolean", value: true }
     })
 
-    const details = await executeFlagDetails(
-      config,
-      { ...options, timeoutMs: 1 },
-      undefined,
-      source,
-      { signal: new AbortController().signal }
+    const details = await evaluate(
+      createEvaluator({ timeoutMs: 1 }),
+      betaAccess,
+      identify,
+      decide,
+      { deadline: new AbortController().signal }
     )
 
-    expect(details).toMatchObject({ source: "provider", value: true })
+    expect(details.source).toBe("provider")
+  })
+
+  test("returns a deadline signal's timeout error", async () => {
+    const deadline = new AbortController()
+    deadline.abort(new EvaluationTimeoutError(3))
+
+    const details = await evaluate(createEvaluator(), betaAccess, identify, decideWith(null), {
+      deadline: deadline.signal,
+    })
+
+    expect(details.error).toBe(deadline.signal.reason)
+  })
+
+  test("runs before, after, and finally hooks on success", async () => {
+    const calls: string[] = []
+    const hook: Hook<Identity> = {
+      after: (context, decision, meta) => {
+        calls.push(
+          `after:${meta.source}:${String(decision.type)}:${String(context.identity?.distinctId)}`
+        )
+      },
+      before: (context) => {
+        calls.push(`before:${context.flag.key}`)
+      },
+      error: () => {
+        calls.push("error")
+      },
+      finally: () => {
+        calls.push("finally")
+      },
+    }
+
+    await evaluate(
+      createEvaluator({ hooks: [hook] }),
+      betaAccess,
+      identify,
+      decideWith({ type: "boolean", value: true }),
+      noDeadline
+    )
+    await sleep(0)
+
+    expect(calls).toEqual(["before:beta-access", "after:provider:boolean:user123", "finally"])
+  })
+
+  test("runs error and finally hooks with a null identity when identity fails", async () => {
+    const error = vi.fn()
+    const done = vi.fn()
+
+    await evaluate(
+      createEvaluator({ hooks: [{ error, finally: done }] }),
+      betaAccess,
+      identifyWith<Identity>(() => null),
+      decideWith(null),
+      noDeadline
+    )
+    await sleep(0)
+
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ identity: null }),
+      expect.any(IdentityNotFoundError)
+    )
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  test("dispatches error hooks without waiting when the deadline has passed", async () => {
+    const error = vi.fn(neverSettles)
+
+    const details = await evaluate(
+      createEvaluator({ hooks: [{ error }], timeoutMs: 5 }),
+      betaAccess,
+      identify,
+      neverSettles,
+      noDeadline
+    )
+    await sleep(0)
+
+    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(error).toHaveBeenCalledTimes(1)
+  })
+
+  test("stops waiting for slow error hooks at the deadline", async () => {
+    const error = vi.fn(neverSettles)
+
+    const details = await evaluate(
+      createEvaluator({ hooks: [{ error }], timeoutMs: 20 }),
+      betaAccess,
+      identify,
+      () => Promise.reject(new Error("down")),
+      noDeadline
+    )
+
+    expect(details.error).toBeInstanceOf(ProviderFailedError)
+    expect(error).toHaveBeenCalledTimes(1)
+  })
+
+  test("reports a failing hook through onError", async () => {
+    const onError = vi.fn()
+
+    await evaluate(
+      createEvaluator({
+        hooks: [
+          {
+            before: () => {
+              throw new Error("hook failed")
+            },
+          },
+        ],
+        onError,
+      }),
+      betaAccess,
+      identify,
+      decideWith({ type: "boolean", value: true }),
+      noDeadline
+    )
+    await sleep(0)
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ _tag: "HookFailed", hookIndex: 0, phase: "before" })
+    )
   })
 })

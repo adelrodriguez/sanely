@@ -16,20 +16,32 @@ import { type Decide, evaluate, type EvaluationDetails, type Evaluator, timeoutO
  * when its timer fires, so evaluations that resolve from the store never delay or join it. Each
  * evaluation joins `shared` with its provider signal, so the request stops only when every
  * evaluation has left, and not when the batch returns: an evaluation can lead a coalesced call that
- * an evaluation outside the batch still waits for.
+ * an evaluation outside the batch still waits for. Each key also has its own shared signal, so a
+ * `decideOne` call stops when the evaluations that wait for that key have left.
  */
 type FlushRound = {
-  decisions: Map<string, PromiseWithResolvers<unknown>>
+  decisions: Map<string, RoundDecision>
   flags: Map<string, Flag>
   shared: SharedSignal
 }
 
+type RoundDecision = {
+  pending: PromiseWithResolvers<unknown>
+  shared: SharedSignal
+}
+
 function settleRound(round: FlushRound, flag: Flag, settle: () => unknown): void {
-  const pending = round.decisions.get(flag.key)
+  const decision = round.decisions.get(flag.key)
   try {
-    pending?.resolve(settle())
+    decision?.pending.resolve(settle())
   } catch (error) {
-    pending?.reject(normalizeError(error))
+    decision?.pending.reject(normalizeError(error))
+  }
+}
+
+function rejectRound(round: FlushRound, error: unknown): void {
+  for (const decision of round.decisions.values()) {
+    decision.pending.reject(normalizeError(error))
   }
 }
 
@@ -95,31 +107,32 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
             settleRound(current, flag, () => pickDecision(decisions, flag))
           }
         } catch (error) {
-          for (const pending of current.decisions.values()) {
-            pending.reject(normalizeError(error))
-          }
+          rejectRound(current, error)
         }
       } else {
         await Promise.allSettled(
           roundFlags.map(async (flag) => {
+            // Each call runs on its key's own signal, so one flag's deadline stops only its call.
+            const keySignal = current.decisions.get(flag.key)?.shared.signal ?? signal
             try {
               const decision = await raceWithSignal(
-                () => provider.decideOne(flag, subject, { signal }),
-                signal
+                () => provider.decideOne(flag, subject, { signal: keySignal }),
+                keySignal
               )
               settleRound(current, flag, () => decision)
             } catch (error) {
-              current.decisions.get(flag.key)?.reject(normalizeError(error))
+              current.decisions.get(flag.key)?.pending.reject(normalizeError(error))
             }
           })
         )
       }
     } catch (error) {
-      for (const pending of current.decisions.values()) {
-        pending.reject(normalizeError(error))
-      }
+      rejectRound(current, error)
     } finally {
       current.shared.release()
+      for (const decision of current.decisions.values()) {
+        decision.shared.release()
+      }
       settled.abort()
     }
   }
@@ -138,15 +151,16 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
       }, 0)
       round = current
     }
-    let pending = round.decisions.get(flag.key)
-    if (!pending) {
-      pending = Promise.withResolvers<unknown>()
-      void pending.promise.catch(() => null)
-      round.decisions.set(flag.key, pending)
+    let decision = round.decisions.get(flag.key)
+    if (!decision) {
+      decision = { pending: Promise.withResolvers<unknown>(), shared: createSharedSignal() }
+      void decision.pending.promise.catch(() => null)
+      round.decisions.set(flag.key, decision)
       round.flags.set(flag.key, flag)
     }
     round.shared.join(providerSignal)
-    return pending.promise
+    decision.shared.join(providerSignal)
+    return decision.pending.promise
   }
 
   // An evaluation asks for a decision only when it needs provider work: after a store miss, and

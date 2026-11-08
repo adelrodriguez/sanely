@@ -1,24 +1,20 @@
 import { describe, expect, test, vi } from "vitest"
-import type { HookContext } from "#lib/types/index.ts"
-import { getEvaluationKey } from "#lib/flag/evaluation-key.ts"
+import { flag } from "#lib/definition/index.ts"
+import { anonymous, type EvaluationContext } from "#lib/identity/index.ts"
+import { getEvaluationKey } from "#lib/sharing/evaluation-key.ts"
 
 const signal = new AbortController().signal
 
-const booleanContext: HookContext = {
-  defaultValue: false,
-  flagKey: "beta-access",
+const booleanContext: EvaluationContext = {
+  flag: flag.boolean("beta-access", false),
   identity: { distinctId: "user-1" },
-  kind: "boolean",
   signal,
 }
 
-const variantContext: HookContext = {
-  defaultValue: "light",
-  flagKey: "theme",
+const variantContext: EvaluationContext = {
+  flag: flag.variant("theme", ["light", "dark"], "light"),
   identity: { distinctId: 42 },
-  kind: "variant",
   signal,
-  variants: ["light", "dark"],
 }
 
 describe("getEvaluationKey", () => {
@@ -38,18 +34,19 @@ describe("getEvaluationKey", () => {
     expect(numeric).not.toBe(text)
   })
 
-  test("returns undefined for an anonymous identity", () => {
-    const evaluationKey = vi.fn(() => "custom")
+  test("returns undefined before the identity resolves and for anonymous", () => {
+    const key = vi.fn(() => "custom")
 
     expect(getEvaluationKey({ ...booleanContext, identity: null })).toBeUndefined()
-    expect(getEvaluationKey({ ...booleanContext, identity: null }, evaluationKey)).toBeUndefined()
-    expect(evaluationKey).not.toHaveBeenCalled()
+    expect(getEvaluationKey({ ...booleanContext, identity: null }, key)).toBeUndefined()
+    expect(getEvaluationKey({ ...booleanContext, identity: anonymous }, key)).toBeUndefined()
+    expect(key).not.toHaveBeenCalled()
   })
 
-  test("uses a custom evaluationKey projection", () => {
-    const evaluationKey = vi.fn((context: HookContext) => `custom:${context.flagKey}`)
+  test("uses a custom key function", () => {
+    const key = vi.fn((context: EvaluationContext) => `custom:${context.flag.key}`)
 
-    expect(getEvaluationKey(booleanContext, evaluationKey)).toBe("custom:beta-access")
-    expect(evaluationKey).toHaveBeenCalledWith(booleanContext)
+    expect(getEvaluationKey(booleanContext, key)).toBe("custom:beta-access")
+    expect(key).toHaveBeenCalledWith(booleanContext)
   })
 })

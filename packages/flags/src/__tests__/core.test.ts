@@ -1,131 +1,221 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
-import type { Decision, EvaluationDetails, Hook, Identity } from "#index.ts"
-import { createFlags, decision, IdentityNotFoundError, MalformedDecisionError } from "#index.ts"
+import type { Decision, Flag, Hook, Identity } from "#index.ts"
+import {
+  anonymous,
+  createFlags,
+  decision,
+  defineProvider,
+  EvaluationAbortedError,
+  EvaluationTimeoutError,
+  flag,
+  FlagDefinitionError,
+  IdentityNotFoundError,
+  InvalidDecisionError,
+  ProviderFailedError,
+} from "#index.ts"
+import { fakeProvider, memoryStore } from "#testing/index.ts"
 
-describe("createFlags", () => {
+const user: Identity = { distinctId: "user123" }
+const betaAccess = flag.boolean("beta-access", false)
+const theme = flag.variant("theme", ["light", "dark", "system"], "light")
+
+function provideOne(decide: (flag: Flag, identity: Identity) => unknown, name = "test") {
+  return defineProvider({
+    // The engine validates what the provider returns, so tests can return invalid decisions.
+    decideOne: (item, identity: Identity) => decide(item, identity) as Decision,
+    name,
+  })
+}
+
+const alwaysTrue = provideOne(() => decision.boolean(true))
+
+describe("flag definitions", () => {
   test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
-    "rejects an invalid factory timeout of %p",
+    "rejects an invalid flag timeout of %p",
     (timeoutMs) => {
-      expect(() =>
-        createFlags({
-          decide: () => ({ type: "boolean", value: true }),
-          identify: () => ({ distinctId: "user123" }),
-          timeoutMs,
-        })
-      ).toThrow(RangeError)
-    }
-  )
-
-  test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
-    "rejects an invalid per-flag timeout of %p",
-    (timeoutMs) => {
-      const flag = createFlags({
-        decide: () => ({ type: "boolean", value: true }),
-        identify: () => ({ distinctId: "user123" }),
-      })
-
-      expect(() => flag({ defaultValue: false, key: "beta-access", timeoutMs })).toThrow(RangeError)
+      expect(() => flag.boolean("beta-access", false, { timeoutMs })).toThrow(FlagDefinitionError)
+      expect(() => flag.variant("theme", ["light"], "light", { timeoutMs })).toThrow(
+        FlagDefinitionError
+      )
     }
   )
 
   test.each([
-    { field: "key", options: { defaultValue: false, key: 1 } },
-    { field: "key", options: { defaultValue: false, key: "" } },
-    { field: "defaultValue", options: { defaultValue: "light", key: "theme" } },
+    { build: () => flag.boolean(1 as unknown as string, false), field: "key" },
+    { build: () => flag.boolean("", false), field: "key" },
+    { build: () => flag.boolean("beta", "yes" as unknown as boolean), field: "defaultValue" },
     {
+      build: () => flag.variant("theme", "light" as unknown as ["light"], "light"),
       field: "variants",
-      options: { defaultValue: "light", key: "theme", variants: "light" },
     },
-    { field: "variants", options: { defaultValue: "light", key: "theme", variants: [] } },
+    { build: () => flag.variant("theme", [] as unknown as ["light"], "light"), field: "variants" },
     {
+      build: () => flag.variant("theme", ["light", 1] as unknown as ["light"], "light"),
       field: "variants",
-      options: { defaultValue: "light", key: "theme", variants: ["light", 1] },
     },
+    { build: () => flag.variant("theme", ["light", "light"], "light"), field: "variants" },
     {
-      field: "variants",
-      options: { defaultValue: "light", key: "theme", variants: ["light", "light"] },
-    },
-    {
+      build: () => flag.variant("theme", ["light", "dark"], "system" as "light"),
       field: "defaultValue",
-      options: { defaultValue: "system", key: "theme", variants: ["light", "dark"] },
     },
-  ])("rejects invalid $field flag options at creation", ({ field, options }) => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-
-    // @ts-expect-error -- Exercise runtime validation for JavaScript and untyped callers.
-    expect(() => flag(options)).toThrow(field)
+    {
+      build: () =>
+        flag.variant("theme", ["light"], "light", {
+          payload: "parse" as unknown as () => unknown,
+        }),
+      field: "payload",
+    },
+  ])("rejects an invalid $field at definition", ({ build, field }) => {
+    expect(build).toThrow(FlagDefinitionError)
+    expect(build).toThrow(field)
   })
 
-  test("constructs valid boolean and single-variant evaluators", () => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
+  test("returns frozen data", () => {
+    expect(betaAccess).toEqual({
+      defaultValue: false,
+      key: "beta-access",
+      kind: "boolean",
+      timeoutMs: undefined,
     })
+    expect(Object.isFrozen(betaAccess)).toBe(true)
+    expect(Object.isFrozen(theme)).toBe(true)
+    expect(Object.isFrozen(theme.variants)).toBe(true)
+    expect(flag.variant("single", ["only"], "only").variants).toEqual(["only"])
+  })
 
-    expect(flag({ defaultValue: false, key: "beta-access" })).toBeTypeOf("function")
-    expect(flag({ defaultValue: "light", key: "theme", variants: ["light"] })).toBeTypeOf(
-      "function"
+  test("copies the variants so later changes to the array do not leak in", () => {
+    const variants: [string, string] = ["a", "b"]
+    const defined = flag.variant("letters", variants, "a")
+    variants[1] = "a"
+    expect(defined.variants).toEqual(["a", "b"])
+  })
+})
+
+describe("defineProvider", () => {
+  test.each([
+    { case: "a non-object", value: null },
+    { case: "an empty name", value: { decideOne: () => decision.boolean(true), name: "" } },
+    { case: "neither method", value: { name: "p" } },
+    {
+      case: "both methods",
+      value: { decide: () => ({}), decideOne: () => decision.boolean(true), name: "p" },
+    },
+    { case: "a non-function decide", value: { decide: 1, name: "p" } },
+    { case: "a non-function decideOne", value: { decideOne: 1, name: "p" } },
+    {
+      case: "a non-function subscribe",
+      value: { decideOne: () => decision.boolean(true), name: "p", subscribe: 1 },
+    },
+  ])("rejects $case", ({ value }) => {
+    expect(() => defineProvider(value as never)).toThrow(FlagDefinitionError)
+  })
+
+  test("returns a frozen copy", () => {
+    const definition = { decideOne: () => decision.boolean(true), name: "p" }
+    const provider = defineProvider(definition)
+    expect(provider).not.toBe(definition)
+    expect(Object.isFrozen(provider)).toBe(true)
+  })
+})
+
+describe("createFlags", () => {
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
+    "rejects an invalid reader timeout of %p",
+    (timeoutMs) => {
+      expect(() => createFlags({ identify: () => user, provider: alwaysTrue, timeoutMs })).toThrow(
+        FlagDefinitionError
+      )
+    }
+  )
+
+  test("rejects an invalid provider", () => {
+    expect(() => createFlags({ identify: () => user, provider: { name: "bad" } as never })).toThrow(
+      FlagDefinitionError
     )
   })
 
-  test("creates a flag factory function", () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    expect(typeof flag).toBe("function")
+  test("rejects an identify that is not a function", () => {
+    expect(() =>
+      createFlags({ identify: "user" as unknown as () => Identity, provider: alwaysTrue })
+    ).toThrow(FlagDefinitionError)
   })
 
   test("accepts synchronous identify and decide functions", async () => {
-    const flag = createFlags({
-      decide: (_key, identity) => ({ type: "boolean", value: identity.distinctId === "user123" }),
-      identify: () => ({ distinctId: "user123" }),
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne((_flag, identity) =>
+        decision.boolean(identity.distinctId === "user123")
+      ),
     })
 
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-
-    expect(await betaFlag()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
   })
 
-  test("supports a factory that requires an identity from every caller", async () => {
+  test("accepts asynchronous identify and decide functions", async () => {
+    const flags = createFlags({
+      identify: () => Promise.resolve(user),
+      provider: defineProvider({
+        decideOne: () => Promise.resolve(decision.boolean(true)),
+        name: "async",
+      }),
+    })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+  })
+
+  test("returns a reader without root reads when identify is absent", async () => {
     type RequestIdentity = Identity & { plan: "free" | "pro" }
-    const decide = vi.fn((_key: string, identity: RequestIdentity) =>
+    const decideOne = vi.fn((_flag: Flag, identity: RequestIdentity) =>
       decision.boolean(identity.plan === "pro")
     )
-    const flag = createFlags<RequestIdentity>({ decide })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
+    const serverFlags = createFlags({ provider: defineProvider({ decideOne, name: "plans" }) })
     const identity: RequestIdentity = { distinctId: "user123", plan: "pro" }
 
-    expect(await betaFlag({ identity })).toBe(true)
-    const batch = await flag.batch([betaFlag], { identity })
-    expect(batch.get(betaFlag)).toBe(true)
+    expect("get" in serverFlags).toBe(false)
+    expect(Object.keys(serverFlags).toSorted()).toEqual(["for", "subscribe"])
+    expect(await serverFlags.for(identity).get(betaAccess)).toBe(true)
+    expect(await serverFlags.for(identity).getMany([betaAccess])).toEqual([true])
+    expect(decideOne).toHaveBeenCalledWith(betaAccess, identity, {
+      signal: expect.any(AbortSignal),
+    })
+  })
 
-    const runtimeFlag = betaFlag as unknown as {
-      (): Promise<boolean>
-      details(): Promise<EvaluationDetails<boolean>>
-    }
-    expect(await runtimeFlag()).toBe(false)
-    const details = await runtimeFlag.details()
+  test("for() reads for the given identity without calling identify", async () => {
+    const identify = vi.fn(() => ({ distinctId: "default" }))
+    const flags = createFlags({
+      identify,
+      provider: provideOne((_flag, identity) =>
+        decision.boolean(identity.distinctId === "override")
+      ),
+    })
+
+    expect(await flags.for({ distinctId: "override" }).details(betaAccess)).toEqual({
+      flagKey: "beta-access",
+      source: "provider",
+      value: true,
+    })
+    expect(identify).not.toHaveBeenCalled()
+  })
+
+  test("for() falls back with IdentityNotFoundError for a missing identity", async () => {
+    const flags = createFlags({ provider: alwaysTrue })
+    const details = await flags.for(undefined as unknown as Identity).details(betaAccess)
+
     expect(details.value).toBe(false)
     expect(details.error).toBeInstanceOf(IdentityNotFoundError)
   })
 
-  test("fans out provider changes through a lazy factory subscription", async () => {
-    let notify!: (change: { keys?: readonly string[] }) => void
+  test("fans out provider changes through a lazy subscription", async () => {
+    let notify!: (keys?: readonly string[]) => void
     const detachProvider = vi.fn(() => null)
     const subscribe = vi.fn((listener: typeof notify) => {
       notify = listener
       return detachProvider
     })
-    const flag = createFlags({
-      decide: () => decision.boolean(true),
-      identify: () => ({ distinctId: "user123" }),
-      subscribe,
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decideOne: () => decision.boolean(true), name: "p", subscribe }),
     })
     const observed: Array<readonly string[] | undefined> = []
     const throwingListener = vi.fn(() => {
@@ -133,14 +223,14 @@ describe("createFlags", () => {
     })
 
     expect(subscribe).not.toHaveBeenCalled()
-    const detachThrowingListener = flag.changes.subscribe(throwingListener)
-    const detachObservingListener = flag.changes.subscribe((keys) => {
+    const detachThrowingListener = flags.subscribe(throwingListener)
+    const detachObservingListener = flags.subscribe((keys) => {
       observed.push(keys)
     })
     expect(subscribe).toHaveBeenCalledTimes(1)
 
-    notify({ keys: ["beta-access"] })
-    notify({})
+    notify(["beta-access"])
+    notify()
     await Promise.resolve()
     expect(throwingListener).toHaveBeenCalledTimes(2)
     expect(observed).toEqual([["beta-access"], undefined])
@@ -151,624 +241,682 @@ describe("createFlags", () => {
     expect(detachProvider).toHaveBeenCalledTimes(1)
   })
 
-  test("creates boolean flag that evaluates to true", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "boolean", value: true }
+  test("subscribe returns a no-op without a provider subscribe", () => {
+    const flags = createFlags({ identify: () => user, provider: alwaysTrue })
+    const unsubscribe = flags.subscribe(() => null)
+    expect(unsubscribe).toBeTypeOf("function")
+    expect(() => {
+      unsubscribe()
+    }).not.toThrow()
+  })
 
-    const flag = createFlags({
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(identity)),
+  test("reports a throwing provider subscribe and returns a no-op", async () => {
+    const onError = vi.fn()
+    const failure = new Error("subscribe failed")
+    const flags = createFlags({
+      identify: () => user,
+      onError,
+      provider: defineProvider({
+        decideOne: () => decision.boolean(true),
+        name: "p",
+        subscribe: () => {
+          throw failure
+        },
+      }),
     })
 
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
+    const unsubscribe = flags.subscribe(() => null)
+    expect(() => {
+      unsubscribe()
+    }).not.toThrow()
+    await sleep(0)
+    expect(onError).toHaveBeenCalledWith({ _tag: "SubscribeFailed", error: failure })
+  })
+})
 
-    expect(result).toBe(true)
+describe("evaluation", () => {
+  test("evaluates boolean flags", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne((item) => decision.boolean(item.key === "on")),
+    })
+
+    expect(await flags.get(flag.boolean("on", false))).toBe(true)
+    expect(await flags.get(flag.boolean("off", true))).toBe(false)
+  })
+
+  test("evaluates variant flags", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("dark")),
+    })
+
+    expect(await flags.get(theme)).toBe("dark")
   })
 
   test("returns provider evaluation details without changing the plain value", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
+    const flags = createFlags({ identify: () => user, provider: alwaysTrue })
 
-    expect(await betaFlag.details()).toEqual({
+    expect(await flags.details(betaAccess)).toEqual({
       flagKey: "beta-access",
       source: "provider",
       value: true,
     })
-    expect(await betaFlag()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
   })
 
-  test("returns cache evaluation details", async () => {
-    const flag = createFlags({
+  test("returns store evaluation details", async () => {
+    const decideOne = vi.fn(() => decision.boolean(false))
+    const flags = createFlags({
       cache: {
-        get: () => Promise.resolve({ type: "boolean", value: true }),
-        set: () => Promise.resolve(),
+        store: {
+          get: () => Promise.resolve(decision.boolean(true)),
+          set: () => Promise.resolve(),
+        },
       },
-      decide: () => ({ type: "boolean", value: false }),
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({ decideOne, name: "p" }),
     })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await betaFlag.details()).toEqual({
+    expect(await flags.details(betaAccess)).toEqual({
       flagKey: "beta-access",
       source: "cache",
       value: true,
     })
+    expect(decideOne).not.toHaveBeenCalled()
   })
 
-  test("returns the provider error with default evaluation details", async () => {
-    const error = new Error("Provider unavailable")
-    const flag = createFlags({
-      decide: () => Promise.reject(error),
-      identify: () => ({ distinctId: "user123" }),
+  test("writes provider decisions to the store and reads them back", async () => {
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => user,
+      provider: defineProvider({ decideOne, name: "p" }),
     })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await betaFlag.details()).toEqual({
-      error,
-      flagKey: "beta-access",
-      source: "default",
-      value: false,
-    })
+    const first = await flags.details(betaAccess)
+    await sleep(0)
+    const second = await flags.details(betaAccess)
+    expect(first.source).toBe("provider")
+    expect(second.source).toBe("cache")
+    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
-  test("normalizes undefined rejections without hiding the failure", async () => {
-    const flag = createFlags({
-      // oxlint-disable-next-line eslint/arrow-body-style -- Keep the intentional invalid rejection localized.
-      decide: () => {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Exercise hostile JavaScript callers.
-        return Promise.reject<Decision>()
-      },
-      identify: () => ({ distinctId: "user123" }),
+  test("calls the provider on every read without a store", async () => {
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decideOne, name: "p" }),
     })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await betaFlag()).toBe(false)
+    await flags.get(betaAccess)
+    await flags.get(betaAccess)
+    await flags.get(betaAccess)
 
-    const details = await betaFlag.details()
-    expect(details.source).toBe("default")
-    if (details.source === "default") {
-      expect(details.error).toBeInstanceOf(Error)
-      expect(details.error.message).toBe("undefined")
+    expect(decideOne).toHaveBeenCalledTimes(3)
+  })
+
+  test("passes the flag definition and identity to the provider", async () => {
+    type CustomIdentity = Identity & { email: string; role: string }
+    const identity: CustomIdentity = {
+      distinctId: "user123",
+      email: "u@example.com",
+      role: "admin",
     }
+    const decideOne = vi.fn((_flag: Flag, subject: CustomIdentity) =>
+      decision.boolean(subject.role === "admin")
+    )
+    const flags = createFlags({
+      identify: () => identity,
+      provider: defineProvider({ decideOne, name: "roles" }),
+    })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(decideOne).toHaveBeenCalledWith(betaAccess, identity, {
+      signal: expect.any(AbortSignal),
+    })
   })
 
-  test("never rejects when error inspection throws", async () => {
-    const { proxy, revoke } = Proxy.revocable({}, {})
-    revoke()
-    const flag = createFlags({
-      decide: () => {
-        // oxlint-disable-next-line typescript/only-throw-error -- Exercise hostile JavaScript callers.
-        throw proxy
-      },
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
+  test("handles a numeric distinctId", async () => {
+    const flags = createFlags({ identify: () => ({ distinctId: 12_345 }), provider: alwaysTrue })
 
-    expect(await betaFlag()).toBe(false)
-
-    const details = await betaFlag.details()
-    expect(details.source).toBe("default")
-    if (details.source === "default") {
-      expect(details.error).toBeInstanceOf(Error)
-      expect(details.error.message).toBe("Uninspectable value thrown")
-    }
+    expect(await flags.get(betaAccess)).toBe(true)
   })
 
-  test("returns the identity error with default evaluation details", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => null,
+  test("decides one flag through a bulk provider", async () => {
+    const decide = vi.fn((flags: readonly Flag[]) =>
+      Object.fromEntries(flags.map((item) => [item.key, decision.boolean(true)]))
+    )
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
     })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const details = await betaFlag.details()
 
-    expect(details).toEqual({
-      error: expect.any(Error),
-      flagKey: "beta-access",
-      source: "default",
-      value: false,
-    })
-    expect(details.error).toHaveProperty("message", "Identity not found")
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(decide).toHaveBeenCalledWith([betaAccess], user, { signal: expect.any(AbortSignal) })
   })
+})
 
-  test("details accepts an override identity", async () => {
-    const identify = vi.fn(() => ({ distinctId: "default" }))
-    const overrideIdentity = { distinctId: "override" }
-    const flag = createFlags({
-      decide: (_key, identity) => ({ type: "boolean", value: identity.distinctId === "override" }),
-      identify,
-    })
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-
-    expect(await betaFlag.details({ identity: overrideIdentity })).toEqual({
-      flagKey: "beta-access",
-      source: "provider",
-      value: true,
-    })
-    expect(identify).not.toHaveBeenCalled()
-  })
-
-  test("preserves variant value inference in evaluation details", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "variant", variant: "dark" }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark", "system"],
-    })
-
-    const details: EvaluationDetails<"light" | "dark" | "system"> = await themeFlag.details()
-
-    expect(details).toEqual({ flagKey: "theme", source: "provider", value: "dark" })
-  })
-
-  test("surfaces variant payloads only through evaluation details", async () => {
+describe("payloads", () => {
+  test("surfaces raw variant payloads only through details", async () => {
     const payload = { experiment: "checkout-theme", version: 2 }
-    const flag = createFlags({
-      decide: () => ({ payload, type: "variant", variant: "dark" }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("dark", payload)),
     })
 
-    expect(await themeFlag()).toBe("dark")
-    expect(await themeFlag.details()).toEqual({
-      flagKey: "theme",
-      payload,
+    expect(await flags.get(theme)).toBe("dark")
+    const details = await flags.details(theme)
+    expect(details).toEqual({ flagKey: "theme", payload, source: "provider", value: "dark" })
+    if (details.source !== "default") expect(details.payload).toBe(payload)
+  })
+
+  test("returns the parsed payload", async () => {
+    const parsed = flag.variant("parsed", ["light", "dark"], "light", {
+      payload: (raw) => ({ accent: String(Reflect.get(raw as object, "accent")) }),
+    })
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("dark", { accent: "red", extra: true })),
+    })
+
+    expect(await flags.details(parsed)).toEqual({
+      flagKey: "parsed",
+      payload: { accent: "red" },
       source: "provider",
       value: "dark",
     })
   })
 
-  test("passes a declared variant payload through without validation", async () => {
-    const payload = { experiment: "checkout-theme", metadata: new Map([["cohort", 4]]) }
-    const flag = createFlags({
-      decide: () => decision.variant("dark", payload),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const themeFlag = flag<typeof payload>({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
+  test("does not call the parser without a payload", async () => {
+    const parse = vi.fn(() => "parsed")
+    const parsed = flag.variant("parsed", ["light", "dark"], "light", { payload: parse })
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("dark")),
     })
 
-    const details = await themeFlag.details()
-
-    expect(details.payload).toBe(payload)
-  })
-
-  test("leaves payload undefined for a variant decision without one", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "variant", variant: "dark" }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-
-    const details = await themeFlag.details()
-    expect(details.payload).toBeUndefined()
+    const details = await flags.details(parsed)
     expect("payload" in details).toBe(false)
+    expect(parse).not.toHaveBeenCalled()
   })
 
   test("does not expose payloads from rejected variant decisions", async () => {
-    const flag = createFlags({
-      decide: () => ({ payload: { experiment: "stale" }, type: "variant", variant: "purple" }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("purple", { experiment: "stale" })),
     })
 
-    const details = await themeFlag.details()
+    const details = await flags.details(theme)
     expect(details).toEqual({
-      error: expect.any(Error),
+      error: expect.any(InvalidDecisionError),
       flagKey: "theme",
       source: "default",
       value: "light",
     })
     expect("payload" in details).toBe(false)
   })
+})
 
-  test("falls back with an error for malformed provider decisions", async () => {
-    const malformed = [{}, { value: "true" }, { type: "boolean", value: "true" }]
-
-    const details = await Promise.all(
-      malformed.map(async (providerDecision) => {
-        const flag = createFlags({
-          decide: () => providerDecision as unknown as Decision,
-          identify: () => ({ distinctId: "user123" }),
-        })
-        return await flag({ defaultValue: false, key: "beta-access" }).details()
-      })
+describe("evaluation errors", () => {
+  test("IdentityNotFoundError when identify returns nothing", async () => {
+    const identifiers: Array<() => Identity | null | Promise<null>> = [
+      () => null,
+      () => Promise.resolve(null),
+    ]
+    const results = await Promise.all(
+      identifiers.map((identify) =>
+        createFlags({ identify, provider: alwaysTrue }).details(betaAccess)
+      )
     )
-
-    for (const result of details) {
-      expect(result.value).toBe(false)
-      expect(result.source).toBe("default")
-      expect(result.error).toBeInstanceOf(MalformedDecisionError)
-    }
-  })
-
-  test("creates boolean flag that evaluates to false", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "boolean", value: false }
-
-    const flag = createFlags({
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(identity)),
-    })
-
-    const betaFlag = flag({ defaultValue: true, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(false)
-  })
-
-  test("creates variant flag with string variants", async () => {
-    const identity: Identity = { distinctId: "user123" }
-    const decision: Decision = { type: "variant", variant: "dark" }
-
-    const flag = createFlags({
-      decide: vi.fn(() => Promise.resolve(decision)),
-      identify: vi.fn(() => Promise.resolve(identity)),
-    })
-
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark", "system"],
-    })
-
-    const result = await themeFlag()
-
-    expect(result).toBe("dark")
-  })
-
-  test("returns default value when identity not found", async () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      identify: () => Promise.resolve(null),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(false)
-  })
-
-  test("returns default value when decide throws error", async () => {
-    const flag = createFlags({
-      decide: () => Promise.reject(new Error("Provider error")),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(false)
-  })
-
-  test("uses override identity when provided", async () => {
-    const defaultIdentity: Identity = { distinctId: "default" }
-    const overrideIdentity: Identity = { distinctId: "override" }
-
-    const identifyFn = vi.fn(() => Promise.resolve(defaultIdentity))
-    const decideFn = vi.fn((_key: string, identity: Identity) =>
-      Promise.resolve({ type: "boolean", value: identity.distinctId === "override" } as const)
-    )
-
-    const flag = createFlags({
-      decide: decideFn,
-      identify: identifyFn,
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag({ identity: overrideIdentity })
-
-    expect(result).toBe(true)
-    expect(identifyFn).not.toHaveBeenCalled()
-    expect(decideFn).toHaveBeenCalledWith(
-      "beta-access",
-      overrideIdentity,
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
-    )
-  })
-
-  test("passes hooks to flag execution", async () => {
-    const beforeFn = vi.fn(() => Promise.resolve())
-    const afterFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [{ after: afterFn, before: beforeFn }]
-
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      hooks,
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    await betaFlag()
-
-    expect(beforeFn).toHaveBeenCalled()
-    expect(afterFn).toHaveBeenCalled()
-  })
-
-  test("cache can short-circuit evaluation", async () => {
-    const cachedDecision: Decision = { type: "boolean", value: true }
-    const decideFn = vi.fn(() => Promise.resolve({ type: "boolean", value: false } as const))
-
-    const flag = createFlags({
-      cache: {
-        get: () => Promise.resolve(cachedDecision),
-        set: () => Promise.resolve(),
-      },
-      decide: decideFn,
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(true)
-    expect(decideFn).not.toHaveBeenCalled() // Short-circuited
-  })
-
-  test("creates several flags from one flag factory", async () => {
-    const flag = createFlags({
-      decide: (key) => Promise.resolve({ type: "boolean", value: key === "flag1" } as const),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const flag1 = flag({ defaultValue: false, key: "flag1" })
-    const flag2 = flag({ defaultValue: false, key: "flag2" })
-
-    const result1 = await flag1()
-    const result2 = await flag2()
-
-    expect(result1).toBe(true)
-    expect(result2).toBe(false)
-  })
-
-  test("validates variant decision against variants list", async () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "variant", variant: "invalid" } as const),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-
-    const result = await themeFlag()
-
-    // Should return default when validation fails
-    expect(result).toBe("light")
-  })
-
-  test("accepts valid variant from variants list", async () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "variant", variant: "dark" } as const),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const themeFlag = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark", "system"],
-    })
-
-    const result = await themeFlag()
-
-    expect(result).toBe("dark")
-  })
-
-  test("works with custom identity type", async () => {
-    interface CustomIdentity extends Identity {
-      email: string
-      plan: "free" | "pro"
-    }
-
-    const customIdentity: CustomIdentity = {
-      distinctId: "user123",
-      email: "user@example.com",
-      plan: "pro",
-    }
-
-    const flag = createFlags<CustomIdentity>({
-      decide: (_key, identity) =>
-        Promise.resolve({ type: "boolean", value: identity.plan === "pro" } as const),
-      identify: () => Promise.resolve(customIdentity),
-    })
-
-    const proFlag = flag({ defaultValue: false, key: "pro-feature" })
-    const result = await proFlag()
-
-    expect(result).toBe(true)
-  })
-
-  test("error hooks are called on failure", async () => {
-    const error = new Error("Test error")
-    const errorFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [{ error: errorFn }]
-
-    const flag = createFlags({
-      decide: () => Promise.reject(error),
-      hooks,
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    await betaFlag()
-
-    expect(errorFn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        defaultValue: false,
+    for (const details of results) {
+      expect(details).toEqual({
+        error: expect.any(IdentityNotFoundError),
         flagKey: "beta-access",
-        identity: { distinctId: "user123" },
-        kind: "boolean",
-        signal: expect.any(AbortSignal),
-        variants: undefined,
-      }),
-      error
+        source: "default",
+        value: false,
+      })
+      expect(details.error?._tag).toBe("IdentityNotFoundError")
+    }
+  })
+
+  test("IdentityNotFoundError with the cause when identify throws", async () => {
+    const failure = new Error("session expired")
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      identify: () => Promise.reject(failure),
+      provider: defineProvider({ decideOne, name: "p" }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.error).toBeInstanceOf(IdentityNotFoundError)
+    expect(details.error?.cause).toBe(failure)
+    expect(decideOne).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    { case: "a non-object", flagToRead: betaAccess, value: null },
+    { case: "a missing type", flagToRead: betaAccess, value: {} },
+    {
+      case: "a string boolean value",
+      flagToRead: betaAccess,
+      value: { type: "boolean", value: "true" },
+    },
+    { case: "a non-string variant", flagToRead: theme, value: { type: "variant", variant: 1 } },
+    {
+      case: "a variant decision for a boolean flag",
+      flagToRead: betaAccess,
+      value: decision.variant("dark"),
+    },
+    {
+      case: "a boolean decision for a variant flag",
+      flagToRead: theme,
+      value: decision.boolean(true),
+    },
+    { case: "an unknown variant", flagToRead: theme, value: decision.variant("purple") },
+  ])("InvalidDecisionError for $case", async ({ value, flagToRead }) => {
+    const flags = createFlags({ identify: () => user, provider: provideOne(() => value) })
+    const details = await flags.details(flagToRead)
+
+    expect(details.source).toBe("default")
+    expect(details.value).toBe(flagToRead.defaultValue)
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+    expect(details.error?._tag).toBe("InvalidDecisionError")
+    if (details.error instanceof InvalidDecisionError) {
+      expect(details.error.decision).toBe(value)
+      expect(details.error.reason).toBeTypeOf("string")
+    }
+  })
+
+  test("InvalidDecisionError when the payload parser throws", async () => {
+    const failure = new Error("bad payload")
+    const parsed = flag.variant("parsed", ["light", "dark"], "light", {
+      payload: () => {
+        throw failure
+      },
+    })
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => decision.variant("dark", { accent: 1 })),
+    })
+
+    const details = await flags.details(parsed)
+    expect(details.value).toBe("light")
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+    expect(details.error?.cause).toBe(failure)
+  })
+
+  test("InvalidDecisionError when a bulk provider leaves out the key", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide: () => ({}), name: "bulk" }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+    expect(details.error).toHaveProperty(
+      "reason",
+      "the provider returned no decision for this flag"
     )
   })
 
-  test("finally hooks always run", async () => {
-    const finallyFn = vi.fn(() => Promise.resolve())
-
-    const hooks: Hook[] = [{ finally: finallyFn }]
-
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      hooks,
-      identify: () => Promise.resolve({ distinctId: "user123" }),
+  test("does not treat inherited record properties as decisions", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide: () => ({}), name: "bulk" }),
     })
 
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    await betaFlag()
+    const details = await flags.details(flag.boolean("toString", false))
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+  })
+
+  test("ProviderFailedError with the provider name and cause", async () => {
+    const failure = new Error("Provider unavailable")
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => {
+        throw failure
+      }, "launchdarkly"),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details).toEqual({
+      error: expect.any(ProviderFailedError),
+      flagKey: "beta-access",
+      source: "default",
+      value: false,
+    })
+    expect(details.error).toHaveProperty("provider", "launchdarkly")
+    expect(details.error?.cause).toBe(failure)
+    expect(details.error?._tag).toBe("ProviderFailedError")
+  })
+
+  test("ProviderFailedError for a rejecting bulk provider", async () => {
+    const failure = new Error("bulk failed")
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide: () => Promise.reject(failure), name: "bulk" }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.error).toBeInstanceOf(ProviderFailedError)
+    expect(details.error?.cause).toBe(failure)
+  })
+
+  test("keeps an undefined rejection as the cause", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Exercise hostile JavaScript providers.
+        decideOne: () => Promise.reject<Decision>(),
+        name: "p",
+      }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.value).toBe(false)
+    expect(details.error).toBeInstanceOf(ProviderFailedError)
+    expect(details.error?.cause).toBeUndefined()
+  })
+
+  test("never rejects when the thrown value cannot be inspected", async () => {
+    const { proxy, revoke } = Proxy.revocable({}, {})
+    revoke()
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(() => {
+        // oxlint-disable-next-line typescript/only-throw-error -- Exercise hostile JavaScript providers.
+        throw proxy
+      }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.value).toBe(false)
+    expect(details.error).toBeInstanceOf(ProviderFailedError)
+  })
+
+  test("EvaluationTimeoutError when the reader timeout passes", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: () =>
+          new Promise<Decision>(() => {
+            // Never settles.
+          }),
+        name: "slow",
+      }),
+      timeoutMs: 10,
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(details.error).toHaveProperty("timeoutMs", 10)
+    expect(details.error?._tag).toBe("EvaluationTimeoutError")
+  })
+
+  test("a flag timeout replaces the reader timeout", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: async () => {
+          await sleep(30)
+          return decision.boolean(true)
+        },
+        name: "slow",
+      }),
+      timeoutMs: 5,
+    })
+
+    expect(await flags.get(flag.boolean("patient", false, { timeoutMs: 500 }))).toBe(true)
+    const eager = await flags.details(flag.boolean("eager", false))
+    expect(eager.error).toBeInstanceOf(EvaluationTimeoutError)
+  })
+
+  test("EvaluationAbortedError with the signal reason", async () => {
+    const reason = new Error("stop")
+    const controller = new AbortController()
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: () =>
+          new Promise<Decision>(() => {
+            // Never settles.
+          }),
+        name: "slow",
+      }),
+    })
+
+    const pending = flags.details(betaAccess, { signal: controller.signal })
+    controller.abort(reason)
+    const details = await pending
+    expect(details.error).toBeInstanceOf(EvaluationAbortedError)
+    expect(details.error?.cause).toBe(reason)
+    expect(details.error?._tag).toBe("EvaluationAbortedError")
+
+    const already = await flags.details(betaAccess, { signal: controller.signal })
+    expect(already.error).toBeInstanceOf(EvaluationAbortedError)
+  })
+})
+
+describe("anonymous", () => {
+  test("passes anonymous to a provider that accepts it", async () => {
+    const decideOne = vi.fn((_flag: Flag, identity: Identity | typeof anonymous) =>
+      decision.boolean(identity === anonymous)
+    )
+    const flags = createFlags({
+      identify: () => anonymous,
+      provider: defineProvider({ decideOne, name: "anon" }),
+    })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(decideOne).toHaveBeenCalledWith(betaAccess, anonymous, expect.any(Object))
+    expect(
+      await createFlags({ provider: defineProvider({ decideOne, name: "anon" }) })
+        .for(anonymous)
+        .get(betaAccess)
+    ).toBe(true)
+  })
+
+  test("never caches or coalesces an anonymous evaluation", async () => {
+    const store = {
+      get: vi.fn(() => Promise.resolve(decision.boolean(true))),
+      set: vi.fn(() => Promise.resolve()),
+    }
+    const decideOne = vi.fn(async (_flag: Flag, _identity: Identity | typeof anonymous) => {
+      await sleep(5)
+      return decision.boolean(false)
+    })
+    const flags = createFlags({
+      cache: { coalesce: true, store },
+      identify: () => anonymous,
+      provider: defineProvider({ decideOne, name: "anon" }),
+    })
+
+    const results = await Promise.all([flags.details(betaAccess), flags.details(betaAccess)])
     await sleep(0)
 
-    expect(finallyFn).toHaveBeenCalled()
+    expect(results.map((result) => result.source)).toEqual(["provider", "provider"])
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    expect(store.get).not.toHaveBeenCalled()
+    expect(store.set).not.toHaveBeenCalled()
+  })
+})
+
+describe("hooks", () => {
+  test("runs before and after hooks", async () => {
+    const before = vi.fn()
+    const after = vi.fn()
+    const flags = createFlags({
+      hooks: [{ after, before }],
+      identify: () => user,
+      provider: alwaysTrue,
+    })
+
+    await flags.get(betaAccess)
+    await sleep(0)
+
+    expect(before).toHaveBeenCalledWith(
+      expect.objectContaining({ flag: betaAccess, identity: user, signal: expect.any(AbortSignal) })
+    )
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({ flag: betaAccess }),
+      decision.boolean(true),
+      {
+        source: "provider",
+      }
+    )
   })
 
-  test("finally hooks run even on error", async () => {
-    const finallyFn = vi.fn(() => Promise.resolve())
+  test("runs error hooks with the evaluation error", async () => {
+    const error = vi.fn()
+    const flags = createFlags({
+      hooks: [{ error }],
+      identify: () => user,
+      provider: provideOne(() => {
+        throw new Error("Test error")
+      }),
+    })
 
-    const hooks: Hook[] = [{ finally: finallyFn }]
+    await flags.get(betaAccess)
 
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ flag: betaAccess, identity: user }),
+      expect.any(ProviderFailedError)
+    )
+  })
+
+  test("runs finally hooks on success and on failure", async () => {
+    const onFinally = vi.fn()
+    const hooks: Hook[] = [{ finally: onFinally }]
+
+    await createFlags({ hooks, identify: () => user, provider: alwaysTrue }).get(betaAccess)
+    await createFlags({
       hooks,
       identify: () => Promise.reject(new Error("Identity error")),
-    })
+      provider: alwaysTrue,
+    }).get(betaAccess)
+    await sleep(0)
 
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    await betaFlag()
-
-    expect(finallyFn).toHaveBeenCalled()
+    expect(onFinally).toHaveBeenCalledTimes(2)
   })
 
-  test("works without hooks configuration", async () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(true)
+  test("works with an empty hooks array", async () => {
+    expect(
+      await createFlags({ hooks: [], identify: () => user, provider: alwaysTrue }).get(betaAccess)
+    ).toBe(true)
   })
 
-  test("works with empty hooks array", async () => {
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      hooks: [],
-      identify: () => Promise.resolve({ distinctId: "user123" }),
+  test("reports a throwing hook without changing the result", async () => {
+    const onError = vi.fn()
+    const failure = new Error("hook failed")
+    const flags = createFlags({
+      hooks: [
+        {
+          before: () => {
+            throw failure
+          },
+        },
+      ],
+      identify: () => user,
+      onError,
+      provider: alwaysTrue,
     })
 
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(true)
-  })
-
-  test("flag function can be called multiple times", async () => {
-    let callCount = 0
-    const flag = createFlags({
-      decide: () => {
-        callCount += 1
-        return Promise.resolve({ type: "boolean", value: true } as const)
-      },
-      identify: () => Promise.resolve({ distinctId: "user123" }),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-
-    await betaFlag()
-    await betaFlag()
-    await betaFlag()
-
-    expect(callCount).toBe(3)
-  })
-
-  test("different flags are independent", async () => {
-    const identifyFn = vi.fn(() => Promise.resolve({ distinctId: "user123" }))
-    const decideFn = vi.fn((_key: string) =>
-      Promise.resolve({ type: "boolean", value: true } as const)
+    expect(await flags.get(betaAccess)).toBe(true)
+    await sleep(0)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ _tag: "HookFailed", error: failure, hookIndex: 0, phase: "before" })
     )
+  })
+})
 
-    const flag = createFlags({
-      decide: decideFn,
-      identify: identifyFn,
+describe("snapshot", () => {
+  test("records values, sources, error tags, and the distinctId", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: fakeProvider([[betaAccess, true]]),
     })
 
-    const flag1 = flag({ defaultValue: false, key: "flag1" })
-    const flag2 = flag({ defaultValue: false, key: "flag2" })
-
-    await flag1()
-    await flag2()
-
-    expect(decideFn).toHaveBeenCalledWith("flag1", { distinctId: "user123" }, expect.any(Object))
-    expect(decideFn).toHaveBeenCalledWith("flag2", { distinctId: "user123" }, expect.any(Object))
-  })
-
-  test("handles numeric distinctId", async () => {
-    const identity: Identity = { distinctId: 12_345 }
-
-    const flag = createFlags({
-      decide: () => Promise.resolve({ type: "boolean", value: true } as const),
-      identify: () => Promise.resolve(identity),
-    })
-
-    const betaFlag = flag({ defaultValue: false, key: "beta-access" })
-    const result = await betaFlag()
-
-    expect(result).toBe(true)
-  })
-
-  test("preserves additional identity properties", async () => {
-    interface CustomIdentity extends Identity {
-      email: string
-      role: string
-    }
-
-    const customIdentity: CustomIdentity = {
+    expect(await flags.snapshot([betaAccess, theme])).toEqual({
       distinctId: "user123",
-      email: "user@example.com",
-      role: "admin",
-    }
-
-    const decideFn = vi.fn((_key: string, identity: CustomIdentity) =>
-      Promise.resolve({ type: "boolean", value: identity.role === "admin" } as const)
-    )
-
-    const flag = createFlags<CustomIdentity>({
-      decide: decideFn,
-      identify: () => Promise.resolve(customIdentity),
+      flags: {
+        "beta-access": { kind: "boolean", source: "provider", value: true },
+        theme: {
+          error: "InvalidDecisionError",
+          kind: "variant",
+          source: "default",
+          value: "light",
+        },
+      },
     })
+  })
 
-    const adminFlag = flag({ defaultValue: false, key: "admin-feature" })
-    const result = await adminFlag()
+  test("records a null distinctId for anonymous and for a missing identity", async () => {
+    const provider = fakeProvider([[betaAccess, true]])
+    const anonymousSnapshot = await createFlags({ identify: () => anonymous, provider }).snapshot([
+      betaAccess,
+    ])
+    const missing = await createFlags({ identify: () => null, provider }).snapshot([betaAccess])
 
-    expect(result).toBe(true)
-    expect(decideFn).toHaveBeenCalledWith("admin-feature", customIdentity, expect.any(Object))
+    expect(anonymousSnapshot.distinctId).toBeNull()
+    expect(missing).toEqual({
+      distinctId: null,
+      flags: {
+        "beta-access": {
+          error: "IdentityNotFoundError",
+          kind: "boolean",
+          source: "default",
+          value: false,
+        },
+      },
+    })
+  })
+
+  test("serializes through JSON without loss", async () => {
+    const flags = createFlags({ provider: fakeProvider([[theme, "dark"]]) })
+    const snapshot = await flags.for({ distinctId: 7 }).snapshot([theme])
+
+    expect(structuredClone(snapshot)).toEqual(snapshot)
+    const wire = JSON.stringify(snapshot)
+    expect(JSON.parse(wire) as unknown).toStrictEqual({ ...snapshot })
+    expect(snapshot.distinctId).toBe(7)
+  })
+
+  test("resolves the identity once", async () => {
+    const identify = vi.fn(() => user)
+    await createFlags({ identify, provider: alwaysTrue }).snapshot([
+      betaAccess,
+      flag.boolean("other", false),
+    ])
+
+    expect(identify).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("fakeProvider", () => {
+  test("answers with set values and notifies listeners", async () => {
+    const provider = fakeProvider([[theme, "dark", { accent: "red" }]])
+    const flags = createFlags({ identify: () => user, provider })
+    const listener = vi.fn()
+    flags.subscribe(listener)
+
+    expect(await flags.details(theme)).toEqual({
+      flagKey: "theme",
+      payload: { accent: "red" },
+      source: "provider",
+      value: "dark",
+    })
+    provider.set(betaAccess, true)
+    await sleep(0)
+
+    expect(listener).toHaveBeenCalledWith(["beta-access"])
+    expect(await flags.get(betaAccess)).toBe(true)
+  })
+
+  test("starts empty without entries", async () => {
+    const details = await createFlags({ identify: () => user, provider: fakeProvider() }).details(
+      betaAccess
+    )
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
   })
 })

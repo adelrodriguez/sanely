@@ -38,7 +38,7 @@ const user: UserIdentity = { distinctId: "u1", plan: "pro" }
 {
   expectTypeOf(betaAccess.defaultValue).toEqualTypeOf<boolean>()
   expectTypeOf(theme.defaultValue).toEqualTypeOf<"light" | "dark" | "system">()
-  expectTypeOf(layout.variants).toEqualTypeOf<readonly ("grid" | "list")[]>()
+  expectTypeOf(layout.variants).toEqualTypeOf<ReadonlyArray<"grid" | "list">>()
   // @ts-expect-error The default must be one of the variants.
   flag.variant("size", ["s", "m"], "l")
   // @ts-expect-error A boolean flag needs a boolean default.
@@ -62,7 +62,7 @@ const user: UserIdentity = { distinctId: "u1", plan: "pro" }
 
   // Without an annotation, the provider evaluates any identity.
   const plain = defineProvider({ decideOne: () => decision.boolean(true), name: "plain" })
-  expectTypeOf(plain).toEqualTypeOf<Provider<Identity>>()
+  expectTypeOf(plain).toEqualTypeOf<Provider>()
 
   // @ts-expect-error A provider takes exactly one of decide and decideOne.
   defineProvider({
@@ -88,8 +88,8 @@ const serverFlags = createFlags({ provider: userProvider })
   createFlags({ identify: () => anonymous, provider: userProvider })
   // @ts-expect-error `for` takes the provider's identity.
   serverFlags.for({ distinctId: "u1" })
-  // @ts-expect-error A reader without `identify` reads only through `for`.
-  void serverFlags.get(betaAccess)
+  // A reader without `identify` reads only through `for`.
+  expectTypeOf(serverFlags).not.toHaveProperty("get")
 
   expectTypeOf(serverFlags.for(user)).toEqualTypeOf<FlagReader>()
 }

@@ -1,18 +1,17 @@
 import { describe, expect, test, vi } from "vitest"
-import type { FlagChange } from "#lib/types/index.ts"
-import { createChangeBroadcaster } from "#lib/config/change-broadcaster.ts"
+import { type ChangeListener, createChangeBroadcaster } from "#lib/changes/index.ts"
 
 function createProvider() {
-  let notify: ((change: FlagChange) => void) | undefined
+  let notify: ChangeListener | undefined
   const detach = vi.fn(() => null)
-  const subscribe = vi.fn((listener: (change: FlagChange) => void) => {
+  const subscribe = vi.fn((listener: ChangeListener) => {
     notify = listener
     return detach
   })
   return {
     detach,
-    notify(change: FlagChange) {
-      notify?.(change)
+    notify(keys?: readonly string[]) {
+      notify?.(keys)
     },
     subscribe,
   }
@@ -57,7 +56,7 @@ describe("createChangeBroadcaster", () => {
     const second = broadcaster.subscribe(listener)
 
     first()
-    provider.notify({ keys: ["beta-access"] })
+    provider.notify(["beta-access"])
     expect(listener).toHaveBeenCalledTimes(1)
     second()
     expect(provider.detach).toHaveBeenCalledTimes(1)
@@ -70,8 +69,8 @@ describe("createChangeBroadcaster", () => {
     broadcaster.subscribe((keys) => calls.push(`first:${String(keys)}`))
     broadcaster.subscribe((keys) => calls.push(`second:${String(keys)}`))
 
-    provider.notify({ keys: ["beta-access"] })
-    provider.notify({})
+    provider.notify(["beta-access"])
+    provider.notify()
 
     expect(calls).toEqual([
       "first:beta-access",
@@ -83,7 +82,7 @@ describe("createChangeBroadcaster", () => {
 
   test("delivers a notification sent synchronously during the attach", () => {
     const broadcaster = createChangeBroadcaster((notify) => {
-      notify({ keys: ["beta-access"] })
+      notify(["beta-access"])
       return () => null
     })
     const listener = vi.fn()
@@ -96,7 +95,7 @@ describe("createChangeBroadcaster", () => {
   test("stays detached when subscribe throws and lets the next listener retry", () => {
     const detach = vi.fn(() => null)
     const subscribe = vi
-      .fn<(notify: (change: FlagChange) => void) => () => void>()
+      .fn<(notify: ChangeListener) => () => void>()
       .mockImplementationOnce(() => {
         throw new Error("subscribe failed")
       })

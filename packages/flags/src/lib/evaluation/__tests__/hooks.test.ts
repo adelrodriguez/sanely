@@ -1,15 +1,26 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, expectTypeOf, test, vi } from "vitest"
-import type { Decision, Hook, HookContext, HookErrorReport } from "#lib/types/index.ts"
-import { createHookRunner, type HookRunner } from "#lib/evaluation/stages/hooks.ts"
+import type { Decision } from "#lib/definition/decision.ts"
+import type { EvaluationContext } from "#lib/identity/index.ts"
+import { flag } from "#lib/definition/index.ts"
+import { ProviderFailedError } from "#lib/errors/index.ts"
+import {
+  createHookRunner,
+  type Hook,
+  type HookFailedReport,
+  type HookRunner,
+} from "#lib/evaluation/hooks.ts"
 
-const context: HookContext = {
-  defaultValue: false,
-  flagKey: "test-flag",
+const context: EvaluationContext = {
+  flag: flag.boolean("test-flag", false),
   identity: { distinctId: "user123" },
-  kind: "boolean",
   signal: new AbortController().signal,
 }
+
+// A runner without an error callback.
+const detached = { onError: undefined }
+
+const providerError = () => new ProviderFailedError({ cause: new Error("x"), provider: "test" })
 
 const decision: Decision = { type: "boolean", value: true }
 
@@ -17,7 +28,7 @@ const rejectHook = () => Promise.reject(new Error("Hook error"))
 
 describe("createHookRunner", () => {
   test("runs all before hooks and reports failures", async () => {
-    const reports: HookErrorReport[] = []
+    const reports: HookFailedReport[] = []
     const failed = vi.fn(() => Promise.reject(new Error("Hook error")))
     const passed = vi.fn(() => Promise.resolve())
     const runner = createHookRunner([{ before: failed }, { before: passed }], context, (report) => {
@@ -30,16 +41,24 @@ describe("createHookRunner", () => {
     expect(failed).toHaveBeenCalledWith(context)
     expect(passed).toHaveBeenCalledWith(context)
     expect(reports).toEqual([
-      { context, error: new Error("Hook error"), hookIndex: 0, phase: "before" },
+      {
+        _tag: "HookFailed",
+        context,
+        error: new Error("Hook error"),
+        hookIndex: 0,
+        phase: "before",
+      },
     ])
   })
 
   test("runs all error hooks and resolves when one rejects", async () => {
     const failed = vi.fn(() => Promise.reject(new Error("Hook error")))
     const passed = vi.fn(() => Promise.resolve())
-    const error = new Error("Provider error")
+    const error = providerError()
 
-    await createHookRunner([{ error: failed }, { error: passed }], context).error(error)
+    await createHookRunner([{ error: failed }, { error: passed }], context, detached.onError).error(
+      error
+    )
 
     expect(failed).toHaveBeenCalledWith(context, error)
     expect(passed).toHaveBeenCalledWith(context, error)
@@ -58,21 +77,23 @@ describe("createHookRunner", () => {
       },
     ]
 
-    createHookRunner(hooks, context).dispatchAfterThenFinally(decision, { source: "cache" })
+    createHookRunner(hooks, context, detached.onError).dispatchAfterThenFinally(decision, {
+      source: "cache",
+    })
     await sleep(0)
 
     expect(calls).toEqual(["after:cache:true", "finally"])
   })
 
   test("reports rejecting detached hooks with their phase and hook index", async () => {
-    const reports: HookErrorReport[] = []
+    const reports: HookFailedReport[] = []
     const hooks: Hook[] = [{}, { after: rejectHook, error: rejectHook, finally: rejectHook }]
     const runner = createHookRunner(hooks, context, (report) => {
       reports.push(report)
     })
 
     runner.dispatchAfterThenFinally(decision, { source: "provider" })
-    runner.dispatchError(new Error("Provider error"))
+    runner.dispatchError(providerError())
     runner.dispatchFinally()
     await sleep(0)
 
@@ -97,7 +118,7 @@ describe("createHookRunner", () => {
       )
 
       runner.dispatchAfterThenFinally(decision, { source: "provider" })
-      runner.dispatchError(new Error("Provider error"))
+      runner.dispatchError(providerError())
       runner.dispatchFinally()
       await sleep(10)
 
@@ -108,12 +129,12 @@ describe("createHookRunner", () => {
   })
 
   test("accepts an empty hook list in every phase", async () => {
-    const runner = createHookRunner([], context)
+    const runner = createHookRunner([], context, detached.onError)
 
     await runner.before()
-    await runner.error(new Error("Provider error"))
+    await runner.error(providerError())
     runner.dispatchAfterThenFinally(decision, { source: "provider" })
-    runner.dispatchError(new Error("Provider error"))
+    runner.dispatchError(providerError())
     runner.dispatchFinally()
   })
 
