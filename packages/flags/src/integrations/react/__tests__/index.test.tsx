@@ -1,768 +1,232 @@
 // @vitest-environment happy-dom
 
 import { setTimeout as sleep } from "node:timers/promises"
-import { act, cleanup, render, screen } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import { Component, type ReactNode, Suspense } from "react"
+import { hydrateRoot } from "react-dom/client"
+import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { createFlags, type DecisionCacheErrorReport, decision } from "#index.ts"
 import {
-  createFlagCache,
-  createFlagHooks,
+  type CallerFlags,
+  createFlags,
+  decision,
+  defineProvider,
+  type Flag,
+  flag,
+  type FlagReader,
+  type FlagSnapshot,
+  type Identity,
+} from "#index.ts"
+import {
   FeatureFlag,
-  FlagProvider,
+  type FlagCacheControls,
+  FlagsProvider,
+  FlagsProviderMissingError,
   useFlag,
-  useFlagBatch,
   useFlagCache,
+  useFlags,
 } from "#integrations/react/index.tsx"
 
-afterEach(cleanup)
+const hydrated: Array<{ container: HTMLElement; unmount: () => void }> = []
 
-function makeFactory() {
-  const decide = vi.fn((key: string) =>
-    key === "theme" ? decision.variant("dark", { experiment: "A" }) : decision.boolean(true)
-  )
-  const decideMany = vi.fn((keys: readonly string[]) =>
-    Object.fromEntries(
-      keys.map((key) => [key, key === "theme" ? decision.variant("dark") : decision.boolean(true)])
-    )
-  )
-  const factory = createFlags({
-    decide,
-    decideMany,
-    identify: () => ({ distinctId: "default" }),
-  })
-  return { decide, decideMany, factory }
-}
-
-function changingFactory() {
-  const provider = {
-    emit: (_keys?: readonly string[]): void => undefined,
-    value: true,
+afterEach(() => {
+  cleanup()
+  for (const { container, unmount } of hydrated.splice(0)) {
+    act(() => {
+      unmount()
+    })
+    container.remove()
   }
-  const decide = vi.fn(() => decision.boolean(provider.value))
-  const decideMany = vi.fn((keys: readonly string[]) =>
-    Object.fromEntries(keys.map((key) => [key, decision.boolean(provider.value)]))
-  )
-  const factory = createFlags({
-    decide,
-    decideMany,
-    identify: () => ({ distinctId: "core" }),
-    subscribe: (notify) => {
-      provider.emit = (keys) => {
-        notify(keys === undefined ? {} : { keys })
-      }
-      return () => null
-    },
-  })
-  return { decide, decideMany, factory, provider }
-}
+})
 
-// A factory whose `subscribe` throws while `fails` returns true and attaches otherwise.
-function failingSubscribeFactory(fails: () => boolean) {
-  const reported = Promise.withResolvers<DecisionCacheErrorReport>()
-  const listeners: Array<(change: { keys?: readonly string[] }) => void> = []
-  const decide = vi.fn(() => decision.boolean(true))
-  const decideMany = vi.fn((keys: readonly string[]) =>
-    Object.fromEntries(keys.map((key) => [key, decision.boolean(true)]))
-  )
-  const factory = createFlags({
-    decide,
-    decideMany,
-    identify: () => ({ distinctId: "core" }),
-    onCacheError: (report) => {
-      reported.resolve(report)
-    },
-    subscribe: (notify) => {
-      if (fails()) {
-        throw new Error("subscribe failed")
-      }
-      listeners.push(notify)
-      return () => null
-    },
+const beta = flag.boolean("beta", false)
+const theme = flag.variant("theme", ["light", "dark"], "light")
+
+/**
+ * A provider whose boolean flags return `value` and whose variant flags return `dark`. `emit` sends
+ * a change notification, and `seen` records the identity of each call.
+ */
+function makeProvider() {
+  const state = { value: true }
+  const seen: unknown[] = []
+  let notify: ((keys?: readonly string[]) => void) | undefined
+  const answer = (item: Flag) =>
+    item.kind === "variant" ? decision.variant("dark") : decision.boolean(state.value)
+  const decideOne = vi.fn((item: Flag, identity: Identity) => {
+    seen.push(identity.distinctId)
+    return answer(item)
   })
-  const emit = (keys: readonly string[]) => {
-    for (const notify of listeners) notify({ keys })
+  const decide = vi.fn((flags: readonly Flag[], identity: Identity) => {
+    seen.push(identity.distinctId)
+    return Object.fromEntries(flags.map((item) => [item.key, answer(item)]))
+  })
+  const subscribe = (listener: (keys?: readonly string[]) => void) => {
+    notify = listener
+    return () => {
+      notify = undefined
+    }
   }
-  return { decide, decideMany, emit, factory, reported }
+  return {
+    bulk: defineProvider({ decide, name: "bulk", subscribe }),
+    decide,
+    decideOne,
+    emit: (keys?: readonly string[]) => notify?.(keys),
+    seen,
+    single: defineProvider({ decideOne, name: "single", subscribe }),
+    state,
+  }
 }
 
-async function renderAsync(node: ReactNode): Promise<void> {
+// Coalescing is off, so each cache miss makes its own provider call and the call counts show the
+// React cache's behavior alone.
+function makeFlags(kind: "bulk" | "single" = "single") {
+  const provider = makeProvider()
+  const flags = createFlags({
+    cache: { coalesce: false },
+    identify: () => ({ distinctId: "core" }),
+    provider: provider[kind],
+  })
+  return { ...provider, flags }
+}
+
+async function renderAsync(node: ReactNode) {
+  let result: ReturnType<typeof render> | undefined
   await act(() => {
-    render(node)
+    result = render(node)
     return Promise.resolve()
   })
+  if (!result) throw new Error("render did not run")
+  return result
 }
 
-describe("React integration", () => {
-  it("uses evaluators directly and shares value and details evaluations", async () => {
-    const { decide, factory } = makeFactory()
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function Value() {
-      return <span>{String(useFlag(flag))}</span>
-    }
-    function Details() {
-      return <span>{useFlag(flag, { details: true }).source}</span>
-    }
-    await renderAsync(
-      <FlagProvider>
-        <Suspense fallback="loading">
-          <Value />
-          <Details />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(await screen.findByText("provider")).toBeTruthy()
-    expect(decide).toHaveBeenCalledTimes(1)
-  })
+function Value({ item }: { item: Flag }) {
+  return <span>{String(useFlag(item))}</span>
+}
 
-  it("uses provider identity and lets hook identity override it", async () => {
-    const seen: unknown[] = []
-    const factory = createFlags({
-      decide: (_key, identity) => {
-        seen.push(identity.distinctId)
-        return decision.boolean(true)
-      },
-      identify: () => ({ distinctId: "core" }),
-    })
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function ProviderConsumer() {
-      return <span>{String(useFlag(flag))}</span>
-    }
-    function HookConsumer() {
-      return <span>{String(useFlag(flag, { identity: { distinctId: "hook" } }))}</span>
-    }
-    await renderAsync(
-      <FlagProvider identity={{ distinctId: "provider" }}>
-        <Suspense fallback="loading">
-          <ProviderConsumer />
-          <HookConsumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    await screen.findAllByText("true")
-    expect(seen.toSorted((left, right) => String(left).localeCompare(String(right)))).toEqual([
-      "hook",
-      "provider",
-    ])
-  })
+function Capture({ onCapture }: { onCapture: (controls: FlagCacheControls) => void }) {
+  onCapture(useFlagCache())
+  return null
+}
 
-  it("gives createFlagHooks hooks the identity of their own provider only", async () => {
-    const seen: unknown[] = []
-    const factory = createFlags({
-      decide: (key, identity) => {
-        seen.push(`${key}:${identity.distinctId}`)
-        return decision.boolean(true)
-      },
-      identify: () => ({ distinctId: "core" }),
-    })
-    const bound = createFlagHooks(factory)
-    const flag = factory({ defaultValue: false, key: "single" })
-    const other = factory({ defaultValue: false, key: "batch" })
-    const plain = factory({ defaultValue: false, key: "plain" })
-    function BoundConsumer() {
-      const [batchValue] = bound.useFlagBatch([other])
-      return <span>{`${String(bound.useFlag(flag))}-${String(batchValue)}`}</span>
-    }
-    function PlainConsumer() {
-      return <span>{String(useFlag(plain))}</span>
-    }
-    await renderAsync(
-      <bound.FlagProvider identity={{ distinctId: "bound" }}>
-        <Suspense fallback="loading">
-          <BoundConsumer />
-          <PlainConsumer />
-        </Suspense>
-      </bound.FlagProvider>
-    )
-    await screen.findByText("true-true")
-    await screen.findByText("true")
-    expect(seen.toSorted((left, right) => String(left).localeCompare(String(right)))).toEqual([
-      "batch:bound",
-      "plain:bound",
-      "single:bound",
-    ])
-  })
+/**
+ * Captures the cache controls of the nearest provider through the returned `capture` element.
+ */
+function captureCache() {
+  let captured: FlagCacheControls | undefined
+  const capture = (
+    <Capture
+      onCapture={(controls) => {
+        captured = controls
+      }}
+    />
+  )
+  const controls = () => {
+    if (!captured) throw new Error("the cache was not captured")
+    return captured
+  }
+  return { capture, controls }
+}
 
-  it("does not give createFlagHooks hooks the identity of a plain FlagProvider", async () => {
-    const seen: unknown[] = []
-    const factory = createFlags({
-      decide: (_key, identity) => {
-        seen.push(identity.distinctId)
-        return decision.boolean(true)
-      },
-      identify: () => ({ distinctId: "core" }),
-    })
-    const bound = createFlagHooks(factory)
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function BoundConsumer() {
-      return <span>{String(bound.useFlag(flag))}</span>
-    }
-    await renderAsync(
-      <FlagProvider identity={{ distinctId: "untyped" }}>
-        <Suspense fallback="loading">
-          <BoundConsumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    await screen.findByText("true")
-    expect(seen).toEqual(["core"])
-  })
+function CacheConsumer() {
+  useFlagCache()
+  return null
+}
 
-  it("supports custom functions and live invalidation", async () => {
-    const call = vi.fn(() => Promise.resolve(7))
-    const cache = createFlagCache()
-    function Consumer() {
-      return <span>{useFlag(call, { key: "answer" })}</span>
-    }
-    await renderAsync(
-      <FlagProvider cache={cache}>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(await screen.findByText("7")).toBeTruthy()
-    await act(() => {
-      cache.invalidateKey("answer")
-      return Promise.resolve()
-    })
-    expect(await screen.findByText("7")).toBeTruthy()
-    expect(call).toHaveBeenCalledTimes(2)
-  })
+function BetaAndTheme() {
+  const [betaValue, themeValue] = useFlags([beta, theme])
+  return <span>{`${betaValue}:${themeValue}`}</span>
+}
 
-  it("batches flags in one provider call and preserves tuple order", async () => {
-    const { decideMany, factory } = makeFactory()
-    const beta = factory({ defaultValue: false, key: "beta" })
-    const theme = factory({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
-    function Consumer() {
-      const [betaValue, themeValue] = useFlagBatch([beta, theme])
-      return <span>{`${betaValue}:${themeValue}`}</span>
-    }
-    await renderAsync(
+function EmptyTuple() {
+  return <span>{useFlags([]).length}</span>
+}
+
+type TestFlags = ReturnType<typeof makeFlags>["flags"]
+
+function readerTree(flags: TestFlags) {
+  return (
+    <FlagsProvider flags={flags}>
       <Suspense fallback="loading">
-        <Consumer />
+        <Value item={beta} />
       </Suspense>
-    )
-    expect(await screen.findByText("true:dark")).toBeTruthy()
-    expect(decideMany).toHaveBeenCalledTimes(1)
-  })
+    </FlagsProvider>
+  )
+}
 
-  it("returns an empty tuple without suspension", () => {
-    render(<EmptyBatchConsumer />)
-    expect(screen.getByText("0")).toBeTruthy()
-  })
+function identityTree(flags: TestFlags, distinctId: string, cache: object, capture: ReactNode) {
+  return (
+    <FlagsProvider flags={flags} identity={{ distinctId }} cache={cache}>
+      {capture}
+    </FlagsProvider>
+  )
+}
 
-  it("rejects batches from different factories", () => {
-    const first = makeFactory().factory({ defaultValue: false, key: "first" })
-    const second = makeFactory().factory({ defaultValue: false, key: "second" })
-    function Consumer() {
-      useFlagBatch([first, second])
-      return null
-    }
-    expect(() => render(<Consumer />)).toThrow("Batch flags must be created by this flag factory")
-  })
-
-  it("prefetches one flag and batches without a second call", async () => {
-    const { decide, decideMany, factory } = makeFactory()
-    const beta = factory({ defaultValue: false, key: "beta" })
-    const theme = factory({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
-    const cache = createFlagCache()
-    await cache.prefetch(beta)
-    await cache.prefetchBatch([beta, theme])
-    expect(decide).toHaveBeenCalledTimes(1)
-    expect(decideMany).toHaveBeenCalledTimes(1)
-  })
-
-  it("keeps batches of different evaluators with one flag key apart", async () => {
-    const decideMany = vi.fn((keys: readonly string[]) =>
-      Object.fromEntries(keys.map((key) => [key, decision.boolean(true)]))
-    )
-    const factory = createFlags({
-      decide: () => decision.boolean(true),
-      decideMany,
-      identify: () => ({ distinctId: "core" }),
-    })
-    const booleanFlag = factory({ defaultValue: false, key: "shared" })
-    const variantFlag = factory({
-      defaultValue: "light",
-      key: "shared",
-      variants: ["light", "dark"],
-    })
-    const cache = createFlagCache()
-    await cache.prefetchBatch([booleanFlag])
-    await cache.prefetchBatch([booleanFlag])
-    expect(decideMany).toHaveBeenCalledTimes(1)
-    function Consumer() {
-      const [value] = useFlagBatch([variantFlag])
-      return <span>{String(value)}</span>
-    }
-    await renderAsync(
-      <FlagProvider cache={cache}>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(await screen.findByText("light")).toBeTruthy()
-    expect(decideMany).toHaveBeenCalledTimes(2)
-
-    cache.invalidateBatch([variantFlag])
-    await cache.prefetchBatch([booleanFlag])
-    expect(decideMany).toHaveBeenCalledTimes(2)
-  })
-
-  it("returns the active cache and isolates bare providers", () => {
-    const caches: unknown[] = []
-    function Capture() {
-      caches.push(useFlagCache())
-      return null
-    }
-    render(
-      <>
-        <FlagProvider>
-          <Capture />
-        </FlagProvider>
-        <FlagProvider>
-          <Capture />
-        </FlagProvider>
-      </>
-    )
-    expect(caches[0]).not.toBe(caches[1])
-  })
-
-  it("renders FeatureFlag from an evaluator", async () => {
-    const flag = makeFactory().factory({ defaultValue: false, key: "beta" })
-    await renderAsync(
-      <FeatureFlag flag={flag} loading="loading" fallback="off">
+function Page() {
+  const [betaValue, themeValue] = useFlags([beta, theme])
+  return (
+    <main>
+      <span>{`${betaValue}:${themeValue}`}</span>
+      <FeatureFlag flag={beta} fallback="off">
         on
       </FeatureFlag>
-    )
-    expect(await screen.findByText("on")).toBeTruthy()
-  })
-
-  it("renders variant matches", async () => {
-    const flag = makeFactory().factory({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-    await renderAsync(
-      <FeatureFlag flag={flag} loading="loading" match="dark">
-        dark UI
-      </FeatureFlag>
-    )
-    expect(await screen.findByText("dark UI")).toBeTruthy()
-  })
-
-  it("invalidates through the hook cache using the provider identity", async () => {
-    const { decide, factory } = makeFactory()
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function Consumer() {
-      const cache = useFlagCache()
-      const value = useFlag(flag)
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            cache.invalidate(flag)
-          }}
-        >
-          {String(value)}
-        </button>
-      )
-    }
-    await renderAsync(
-      <FlagProvider identity={{ distinctId: "provider" }}>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(decide).toHaveBeenCalledTimes(1)
-    await act(() => {
-      screen.getByRole("button").click()
-      return Promise.resolve()
-    })
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  it("applies the provider identity to hook cache prefetching", async () => {
-    const seen: string[] = []
-    const decideMany = vi.fn((keys: readonly string[], identity: { distinctId: string }) => {
-      seen.push(identity.distinctId)
-      return Object.fromEntries(keys.map((key) => [key, decision.boolean(true)]))
-    })
-    const factory = createFlags({
-      decide: (_key, identity) => {
-        seen.push(identity.distinctId)
-        return decision.boolean(true)
-      },
-      decideMany,
-      identify: () => ({ distinctId: "core" }),
-    })
-    const beta = factory({ defaultValue: false, key: "beta" })
-    let prefetching: Promise<void> | undefined
-    function Runner() {
-      const cache = useFlagCache()
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            prefetching = (async () => {
-              await cache.prefetch(beta)
-              await cache.prefetchBatch([beta])
-              cache.invalidateBatch([beta])
-              await cache.prefetchBatch([beta])
-            })()
-          }}
-        >
-          run
-        </button>
-      )
-    }
-    render(
-      <FlagProvider identity={{ distinctId: "provider" }}>
-        <Runner />
-      </FlagProvider>
-    )
-    await act(async () => {
-      screen.getByRole("button").click()
-      await prefetching
-    })
-    expect(seen).toEqual(["provider", "provider", "provider"])
-    expect(decideMany).toHaveBeenCalledTimes(2)
-  })
-
-  it("invalidates a batch and clears the whole cache", async () => {
-    const { decideMany, factory } = makeFactory()
-    const beta = factory({ defaultValue: false, key: "beta" })
-    const theme = factory({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
-    const cache = createFlagCache()
-    function Consumer() {
-      const [betaValue, themeValue] = useFlagBatch([beta, theme])
-      return <span>{`${betaValue}:${themeValue}`}</span>
-    }
-    await renderAsync(
-      <FlagProvider cache={cache}>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(await screen.findByText("true:dark")).toBeTruthy()
-    expect(decideMany).toHaveBeenCalledTimes(1)
-    await act(() => {
-      cache.invalidateBatch([beta, theme])
-      return Promise.resolve()
-    })
-    expect(await screen.findByText("true:dark")).toBeTruthy()
-    expect(decideMany).toHaveBeenCalledTimes(2)
-    await act(() => {
-      cache.clear()
-      return Promise.resolve()
-    })
-    expect(await screen.findByText("true:dark")).toBeTruthy()
-    expect(decideMany).toHaveBeenCalledTimes(3)
-  })
-
-  it("re-evaluates only for change notifications naming a subscribed key", async () => {
-    let emit: ((keys: readonly string[]) => void) | undefined
-    const decide = vi.fn(() => decision.boolean(true))
-    const factory = createFlags({
-      decide,
-      identify: () => ({ distinctId: "core" }),
-      subscribe: (listener) => {
-        emit = (keys) => {
-          listener({ keys })
-        }
-        return () => null
-      },
-    })
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function Consumer() {
-      return <span>{String(useFlag(flag))}</span>
-    }
-    await renderAsync(
-      <FlagProvider>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(decide).toHaveBeenCalledTimes(1)
-    await act(() => {
-      emit?.(["other"])
-      return Promise.resolve()
-    })
-    expect(decide).toHaveBeenCalledTimes(1)
-    await act(() => {
-      emit?.(["beta"])
-      return Promise.resolve()
-    })
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  it.each(["prefetch", "unmount"] as const)(
-    "re-evaluates a flag that changed after %s while no component read it",
-    async (retainedBy) => {
-      const { decide, factory, provider } = changingFactory()
-      const flag = factory({ defaultValue: false, key: "beta" })
-      const cache = createFlagCache()
-      function Consumer() {
-        return <span>{String(useFlag(flag))}</span>
-      }
-      const tree = (
-        <FlagProvider cache={cache}>
-          <Suspense fallback="loading">
-            <Consumer />
-          </Suspense>
-        </FlagProvider>
-      )
-      if (retainedBy === "prefetch") {
-        await cache.prefetch(flag)
-      } else {
-        await renderAsync(tree)
-        expect(await screen.findByText("true")).toBeTruthy()
-        cleanup()
-      }
-
-      provider.value = false
-      await act(() => {
-        provider.emit(["beta"])
-        return Promise.resolve()
-      })
-      await renderAsync(tree)
-
-      expect(await screen.findByText("false")).toBeTruthy()
-      expect(decide).toHaveBeenCalledTimes(2)
-    }
+    </main>
   )
+}
 
-  it.each(["prefetch", "unmount"] as const)(
-    "re-evaluates a batch that changed after %s while no component read it",
-    async (retainedBy) => {
-      const { decideMany, factory, provider } = changingFactory()
-      const flag = factory({ defaultValue: false, key: "beta" })
-      const cache = createFlagCache()
-      function Consumer() {
-        const [value] = useFlagBatch([flag])
-        return <span>{String(value)}</span>
-      }
-      const tree = (
-        <FlagProvider cache={cache}>
-          <Suspense fallback="loading">
-            <Consumer />
-          </Suspense>
-        </FlagProvider>
-      )
-      if (retainedBy === "prefetch") {
-        await cache.prefetchBatch([flag])
-      } else {
-        await renderAsync(tree)
-        expect(await screen.findByText("true")).toBeTruthy()
-        cleanup()
-      }
-
-      provider.value = false
-      await act(() => {
-        provider.emit(["beta"])
-        return Promise.resolve()
-      })
-      await renderAsync(tree)
-
-      expect(await screen.findByText("false")).toBeTruthy()
-      expect(decideMany).toHaveBeenCalledTimes(2)
-    }
+function App({
+  flags,
+  identity,
+  snapshot,
+}: {
+  flags: TestFlags
+  identity?: Identity
+  snapshot?: FlagSnapshot
+}) {
+  const page = (
+    <Suspense fallback="loading">
+      <Page />
+    </Suspense>
   )
-
-  it.each(["prefetch", "prefetchBatch"] as const)(
-    "evaluates with %s and reports the error when subscribe throws",
-    async (method) => {
-      const { decide, decideMany, factory, reported } = failingSubscribeFactory(() => true)
-      const flag = factory({ defaultValue: false, key: "beta" })
-      const cache = createFlagCache()
-
-      await (method === "prefetch" ? cache.prefetch(flag) : cache.prefetchBatch([flag]))
-
-      expect(decide.mock.calls.length + decideMany.mock.calls.length).toBe(1)
-      expect(await reported.promise).toMatchObject({
-        error: new Error("subscribe failed"),
-        flagKey: "beta",
-        operation: "subscribe",
-      })
-    }
+  return identity ? (
+    <FlagsProvider flags={flags} identity={identity} snapshot={snapshot}>
+      {page}
+    </FlagsProvider>
+  ) : (
+    <FlagsProvider flags={flags} snapshot={snapshot}>
+      {page}
+    </FlagsProvider>
   )
+}
 
-  it("renders a flag and reports the error when subscribe throws", async () => {
-    const { decide, factory, reported } = failingSubscribeFactory(() => true)
-    const flag = factory({ defaultValue: false, key: "beta" })
-    function Consumer() {
-      return <span>{String(useFlag(flag))}</span>
-    }
-    await renderAsync(
-      <FlagProvider>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
+async function serverRender(identity: Identity) {
+  const server = makeFlags("bulk")
+  const snapshot = await server.flags.for(identity).snapshot([beta, theme])
+  const html = renderToString(<App flags={server.flags} identity={identity} snapshot={snapshot} />)
+  // The snapshot crosses the server-to-client boundary as JSON.
+  const json = JSON.stringify(snapshot)
+  return { html, snapshot: JSON.parse(json) as FlagSnapshot }
+}
 
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decide).toHaveBeenCalledTimes(1)
-    expect(await reported.promise).toMatchObject({ flagKey: "beta", operation: "subscribe" })
+function mount(html: string) {
+  const container = document.createElement("div")
+  container.innerHTML = html
+  document.body.append(container)
+  return container
+}
+
+function hydrate(
+  container: HTMLElement,
+  node: ReactNode,
+  options?: Parameters<typeof hydrateRoot>[2]
+) {
+  const root = hydrateRoot(container, node, options)
+  hydrated.push({
+    container,
+    unmount: () => {
+      root.unmount()
+    },
   })
-
-  it("attaches the change clock on a later evaluation after subscribe throws", async () => {
-    let attempts = 0
-    const { decide, emit, factory } = failingSubscribeFactory(() => {
-      attempts += 1
-      return attempts === 1
-    })
-    const flag = factory({ defaultValue: false, key: "beta" })
-    const cache = createFlagCache()
-    const first = { distinctId: "first" }
-
-    await cache.prefetch(flag, { identity: first })
-    await cache.prefetch(flag, { identity: { distinctId: "second" } })
-    await act(() => {
-      emit(["beta"])
-      return Promise.resolve()
-    })
-    await cache.prefetch(flag, { identity: first })
-
-    expect(decide).toHaveBeenCalledTimes(3)
-  })
-
-  it("keeps a retained entry when a change names another flag", async () => {
-    const { decide, factory, provider } = changingFactory()
-    const flag = factory({ defaultValue: false, key: "beta" })
-    const cache = createFlagCache()
-    await cache.prefetch(flag)
-
-    await act(() => {
-      provider.emit(["other"])
-      return Promise.resolve()
-    })
-    await cache.prefetch(flag)
-    expect(decide).toHaveBeenCalledTimes(1)
-
-    await act(() => {
-      provider.emit()
-      return Promise.resolve()
-    })
-    await cache.prefetch(flag)
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  it("releases the version store when the last subscriber unmounts", async () => {
-    const flag = makeFactory().factory({ defaultValue: false, key: "beta" })
-    const cache = createFlagCache()
-    function Consumer() {
-      return <span>{String(useFlag(flag))}</span>
-    }
-    await renderAsync(
-      <FlagProvider cache={cache}>
-        <Suspense fallback="loading">
-          <Consumer />
-        </Suspense>
-      </FlagProvider>
-    )
-    const stores = [
-      ...(cache as unknown as { allBuckets: Set<{ stores: Map<string, unknown> }> }).allBuckets,
-    ]
-    expect(stores.some((bucket) => bucket.stores.size > 0)).toBe(true)
-    cleanup()
-    expect(stores.every((bucket) => bucket.stores.size === 0)).toBe(true)
-  })
-
-  it("evicts a rejected evaluation so a later read retries", async () => {
-    const errors: unknown[] = []
-    // oxlint-disable-next-line no-console -- Captures the development warning under test.
-    const original = console.error
-    // oxlint-disable-next-line no-console -- The warning under test is emitted through console.error.
-    console.error = (...args: unknown[]) => errors.push(args[0])
-    const call = vi.fn(() => Promise.reject(new Error("boom")))
-    const cache = createFlagCache()
-    function Consumer() {
-      return <span>{useFlag(call, { key: "retry" })}</span>
-    }
-    try {
-      await renderAsync(
-        <FlagProvider cache={cache}>
-          <ErrorBoundary>
-            <Suspense fallback="loading">
-              <Consumer />
-            </Suspense>
-          </ErrorBoundary>
-        </FlagProvider>
-      )
-      expect(await screen.findByText("failed")).toBeTruthy()
-    } finally {
-      // oxlint-disable-next-line no-console -- Restores the stub installed above.
-      console.error = original
-    }
-    // The rejected entry is evicted on the next task, not synchronously.
-    await sleep(1)
-    cleanup()
-    const call2 = vi.fn(() => Promise.resolve(9))
-    function Retry() {
-      return <span>{useFlag(call2, { key: "retry" })}</span>
-    }
-    await renderAsync(
-      <FlagProvider cache={cache}>
-        <Suspense fallback="loading">
-          <Retry />
-        </Suspense>
-      </FlagProvider>
-    )
-    expect(await screen.findByText("9")).toBeTruthy()
-  })
-
-  it("rejects invalid cache options", () => {
-    expect(() => createFlagCache({ maxEntries: 0 })).toThrow(RangeError)
-    expect(() => createFlagCache({ maxEntries: 1.5 })).toThrow(RangeError)
-    expect(() => createFlagCache({ pendingTtlMs: 0 })).toThrow(RangeError)
-    expect(() => createFlagCache({ ttlMs: Number.POSITIVE_INFINITY })).toThrow(RangeError)
-  })
-
-  it("requires a key for the function form", () => {
-    expect(() => render(<KeylessConsumer />)).toThrow("useFlag(fn, options) requires a key option")
-  })
-
-  it("falls back when a variant flag has no match prop", async () => {
-    const errors: unknown[] = []
-    // oxlint-disable-next-line no-console -- Captures the development warning under test.
-    const original = console.error
-    // oxlint-disable-next-line no-console -- The warning under test is emitted through console.error.
-    console.error = (...args: unknown[]) => errors.push(args[0])
-    const flag = makeFactory().factory({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-    try {
-      await renderAsync(
-        // @ts-expect-error -- omitting match is the misuse under test.
-        <FeatureFlag flag={flag} loading="loading" fallback="off">
-          dark UI
-        </FeatureFlag>
-      )
-      expect(await screen.findByText("off")).toBeTruthy()
-    } finally {
-      // oxlint-disable-next-line no-console -- Restores the stub installed above.
-      console.error = original
-    }
-    expect(errors.some((error) => String(error).includes("requires a match prop"))).toBe(true)
-  })
-
-  it("cleans up between tests", () => {
-    cleanup()
-    expect(document.body.textContent).toBe("")
-  })
-})
+}
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false }
@@ -774,55 +238,754 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-function KeylessConsumer() {
-  // @ts-expect-error -- the key option is required for the function form.
-  useFlag(() => Promise.resolve(1))
-  return null
+function silenceConsoleError() {
+  const errors: unknown[] = []
+  const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    errors.push(args[0])
+  })
+  return {
+    errors,
+    restore: () => {
+      spy.mockRestore()
+    },
+  }
 }
 
-function EmptyBatchConsumer() {
-  return <span>{useFlagBatch([]).length}</span>
-}
+describe("React integration", () => {
+  it("throws FlagsProviderMissingError without a provider", () => {
+    const silenced = silenceConsoleError()
+    try {
+      expect(() => render(<Value item={beta} />)).toThrow(FlagsProviderMissingError)
+      expect(() => render(<CacheConsumer />)).toThrow(FlagsProviderMissingError)
+    } finally {
+      silenced.restore()
+    }
+  })
 
-function settledFactory() {
-  const decide = vi.fn(() => decision.boolean(true))
-  const factory = createFlags({ decide, identify: () => ({ distinctId: "core" }) })
-  return { decide, flag: factory({ defaultValue: false, key: "beta" }) }
-}
+  it("reads a flag once for every component that reads it", async () => {
+    const { decideOne, flags } = makeFlags()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findAllByText("true")).toHaveLength(2)
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  it("reads from a new reader when the flags prop changes", async () => {
+    const first = makeFlags()
+    const second = makeFlags()
+    second.state.value = false
+    const { rerender } = await renderAsync(readerTree(first.flags))
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    await act(() => {
+      rerender(readerTree(second.flags))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+
+    // The provider of the replaced reader no longer re-renders the component.
+    second.decideOne.mockClear()
+    await act(() => {
+      first.emit(["beta"])
+      return Promise.resolve()
+    })
+    expect(second.decideOne).not.toHaveBeenCalled()
+  })
+
+  it("evaluates for the provider identity instead of identify", async () => {
+    const { flags, seen } = makeFlags()
+    await renderAsync(
+      <FlagsProvider flags={flags} identity={{ distinctId: "provider" }}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    await screen.findByText("true")
+    expect(seen).toEqual(["provider"])
+  })
+
+  it("evaluates a reader without identify for the provider identity", async () => {
+    const provider = makeProvider()
+    const serverFlags = createFlags({ provider: provider.single })
+    await renderAsync(
+      <FlagsProvider flags={serverFlags} identity={{ distinctId: "caller" }}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    await screen.findByText("true")
+    expect(provider.seen).toEqual(["caller"])
+  })
+
+  it("keeps the cached value when the identity object changes but its content does not", async () => {
+    const { decideOne, flags } = makeFlags()
+    const tree = (distinctId: string) => (
+      <FlagsProvider flags={flags} identity={{ distinctId }}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree("first"))
+    await screen.findByText("true")
+    await act(() => {
+      rerender(tree("first"))
+      return Promise.resolve()
+    })
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    await act(() => {
+      rerender(tree("second"))
+      return Promise.resolve()
+    })
+    await screen.findByText("true")
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  it("batches flags in one provider call and preserves tuple order", async () => {
+    const { decide, flags } = makeFlags("bulk")
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <BetaAndTheme />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns an empty tuple without suspension", () => {
+    const { flags } = makeFlags()
+    render(
+      <FlagsProvider flags={flags}>
+        <EmptyTuple />
+      </FlagsProvider>
+    )
+    expect(screen.getByText("0")).toBeTruthy()
+  })
+
+  it("prefetches flags so a later read with the same flags does not call the provider", async () => {
+    const { decideOne, flags } = makeFlags()
+    const { capture, controls } = captureCache()
+    render(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+    await controls().prefetch([beta])
+    await controls().prefetch([beta])
+    await controls().prefetch([])
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps batches of different flags with one key apart", async () => {
+    const { decide, flags } = makeFlags("bulk")
+    const sharedBoolean = flag.boolean("shared", false)
+    const sharedVariant = flag.variant("shared", ["light", "dark"], "light")
+    const { capture, controls } = captureCache()
+    function Consumer() {
+      const [value] = useFlags([sharedVariant, beta])
+      return <span>{String(value)}</span>
+    }
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">
+          <Consumer />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("dark")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(1)
+    await controls().prefetch([sharedBoolean, beta])
+    expect(decide).toHaveBeenCalledTimes(2)
+    await controls().prefetch([sharedBoolean, beta])
+    expect(decide).toHaveBeenCalledTimes(2)
+  })
+
+  it("gives each provider mount its own cache", async () => {
+    const { decideOne, flags } = makeFlags()
+    const tree = (
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    await renderAsync(
+      <>
+        {tree}
+        {tree}
+      </>
+    )
+    expect(await screen.findAllByText("true")).toHaveLength(2)
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  it("invalidates flags through the hook cache and re-renders their readers", async () => {
+    const { decide, flags } = makeFlags("bulk")
+    const { capture, controls } = captureCache()
+    await renderAsync(
+      <FlagsProvider flags={flags} identity={{ distinctId: "provider" }}>
+        {capture}
+        <Suspense fallback="loading">
+          <BetaAndTheme />
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(2)
+
+    await act(() => {
+      controls().invalidate([theme])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(3)
+
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    expect(decide).toHaveBeenCalledTimes(5)
+  })
+
+  it("re-evaluates only for change notifications naming a read key", async () => {
+    const { decideOne, emit, flags } = makeFlags()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    await screen.findByText("true")
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    await act(() => {
+      emit(["other"])
+      return Promise.resolve()
+    })
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    await act(() => {
+      emit(["beta"])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    await act(() => {
+      emit()
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(["prefetch", "unmount"] as const)(
+    "re-evaluates a flag that changed after %s while no component read it",
+    async (retainedBy) => {
+      const { decideOne, emit, flags, state } = makeFlags()
+      const { capture, controls } = captureCache()
+      const tree = (show: boolean) => (
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">{show ? <Value item={beta} /> : null}</Suspense>
+        </FlagsProvider>
+      )
+      const { rerender } = await renderAsync(tree(retainedBy === "unmount"))
+      if (retainedBy === "prefetch") {
+        await controls().prefetch([beta])
+      } else {
+        expect(await screen.findByText("true")).toBeTruthy()
+        await act(() => {
+          rerender(tree(false))
+          return Promise.resolve()
+        })
+      }
+
+      state.value = false
+      await act(async () => {
+        emit(["beta"])
+        await sleep(0)
+      })
+      await act(() => {
+        rerender(tree(true))
+        return Promise.resolve()
+      })
+
+      expect(await screen.findByText("false")).toBeTruthy()
+      expect(decideOne).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it("keeps a retained entry when a change names another flag", async () => {
+    const { decideOne, emit, flags } = makeFlags()
+    const { capture, controls } = captureCache()
+    render(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+    await controls().prefetch([beta])
+    // Reader listeners run in a microtask after the notification.
+    emit(["other"])
+    await sleep(0)
+    await controls().prefetch([beta])
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    emit()
+    await sleep(0)
+    await controls().prefetch([beta])
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  it("renders a flag when the provider subscribe throws", async () => {
+    const reports: unknown[] = []
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      identify: () => ({ distinctId: "core" }),
+      onError: (report) => {
+        reports.push(report._tag)
+      },
+      provider: defineProvider({
+        decideOne,
+        name: "failing",
+        subscribe: () => {
+          throw new Error("subscribe failed")
+        },
+      }),
+    })
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    await sleep(1)
+    expect(reports).toContain("SubscribeFailed")
+  })
+
+  it("drops a snapshot value after a change once a failed subscribe recovers", async () => {
+    let notify: ((keys?: readonly string[]) => void) | undefined
+    let attempts = 0
+    const flags = createFlags({
+      identify: () => ({ distinctId: "user" }),
+      onError: vi.fn(),
+      provider: defineProvider({
+        decideOne: () => decision.boolean(false),
+        name: "recovering",
+        subscribe: (listener) => {
+          attempts += 1
+          if (attempts === 1) throw new Error("subscribe failed")
+          notify = listener
+          return () => {
+            notify = undefined
+          }
+        },
+      }),
+    })
+    const snapshot: FlagSnapshot = {
+      distinctId: "user",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(screen.getByText("true")).toBeTruthy()
+    expect(notify).toBeDefined()
+
+    await act(async () => {
+      notify?.(["beta"])
+      await sleep(1)
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+  })
+
+  it("re-reads after the last reader unmounts and mounts again", async () => {
+    const { decideOne, emit, flags } = makeFlags()
+    const tree = (
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    await renderAsync(tree)
+    await screen.findByText("true")
+    cleanup()
+    // A change with no mounted reader does not throw or re-render.
+    emit(["beta"])
+    await renderAsync(tree)
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  it("evicts a rejected evaluation so a later read retries", async () => {
+    const silenced = silenceConsoleError()
+    let fail = true
+    // Reads never reject, so a hand-built reader stands in for one that fails.
+    const details = vi.fn(() =>
+      fail
+        ? Promise.reject(new Error("boom"))
+        : Promise.resolve({ flagKey: "beta", source: "provider" as const, value: true })
+    )
+    const reader = { ...makeFlags().flags, details } as FlagReader
+    const flags: CallerFlags<Identity> = {
+      for: () => reader,
+      subscribe: () => () => null,
+    }
+    const { capture, controls } = captureCache()
+    try {
+      await renderAsync(
+        <FlagsProvider flags={flags} identity={{ distinctId: "user" }}>
+          {capture}
+          <ErrorBoundary>
+            <Suspense fallback="loading">
+              <Value item={beta} />
+            </Suspense>
+          </ErrorBoundary>
+        </FlagsProvider>
+      )
+      expect(await screen.findByText("failed")).toBeTruthy()
+    } finally {
+      silenced.restore()
+    }
+    // The rejected entry is evicted on the next task, not synchronously.
+    await sleep(1)
+    fail = false
+    await controls().prefetch([beta])
+    expect(details).toHaveBeenCalledTimes(2)
+  })
+
+  it("rejects invalid cache options", () => {
+    const { flags } = makeFlags()
+    const silenced = silenceConsoleError()
+    try {
+      for (const cache of [
+        { maxEntries: 0 },
+        { maxEntries: 1.5 },
+        { pendingTtlMs: 0 },
+        { ttlMs: Number.POSITIVE_INFINITY },
+      ]) {
+        expect(() =>
+          render(
+            <FlagsProvider flags={flags} cache={cache}>
+              child
+            </FlagsProvider>
+          )
+        ).toThrow(RangeError)
+      }
+    } finally {
+      silenced.restore()
+    }
+  })
+
+  it("returns the defaults when a reader without identify has no identity", async () => {
+    const provider = makeProvider()
+    const serverFlags = createFlags({ provider: provider.single })
+    await renderAsync(
+      // @ts-expect-error A reader without `identify` needs an identity; the misuse is under test.
+      <FlagsProvider flags={serverFlags}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(provider.decideOne).not.toHaveBeenCalled()
+  })
+})
+
+describe("FeatureFlag", () => {
+  it("renders the children when a boolean flag is true", async () => {
+    const { flags } = makeFlags()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <FeatureFlag flag={beta} loading="loading" fallback="off">
+          on
+        </FeatureFlag>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("on")).toBeTruthy()
+  })
+
+  it("renders the fallback when a boolean flag is false", async () => {
+    const { flags, state } = makeFlags()
+    state.value = false
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <FeatureFlag flag={beta} loading="loading" fallback="off">
+          on
+        </FeatureFlag>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("off")).toBeTruthy()
+  })
+
+  it("renders variant matches and the fallback for other variants", async () => {
+    const { flags } = makeFlags()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <Suspense fallback="loading">
+          <FeatureFlag flag={theme} match="dark">
+            <span>dark UI</span>
+          </FeatureFlag>
+          <FeatureFlag flag={theme} match="light" fallback={<span>not light</span>}>
+            <span>light UI</span>
+          </FeatureFlag>
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("dark UI")).toBeTruthy()
+    expect(screen.getByText("not light")).toBeTruthy()
+  })
+
+  it("renders the fallback when the evaluation falls back to a matching default", async () => {
+    const flags = createFlags({
+      identify: () => ({ distinctId: "core" }),
+      provider: defineProvider({
+        decideOne: () => {
+          throw new Error("provider down")
+        },
+        name: "down",
+      }),
+    })
+    const enabledByDefault = flag.boolean("enabled", true)
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        <FeatureFlag flag={enabledByDefault} loading="loading" fallback={<span>fallback</span>}>
+          <span>on</span>
+        </FeatureFlag>
+        <FeatureFlag
+          flag={theme}
+          match="light"
+          loading="loading"
+          fallback={<span>variant fallback</span>}
+        >
+          <span>light</span>
+        </FeatureFlag>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("fallback")).toBeTruthy()
+    expect(await screen.findByText("variant fallback")).toBeTruthy()
+  })
+})
 
 describe("flag cache bounds", () => {
   it("evicts the least recently used settled evaluation", async () => {
-    const { decide, flag } = settledFactory()
-    const cache = createFlagCache({ maxEntries: 2 })
+    const { decideOne, flags } = makeFlags()
+    const { capture, controls } = captureCache()
+    const options = { maxEntries: 2 }
+    const { rerender } = render(identityTree(flags, "first", options, capture))
+    const prefetchAs = async (distinctId: string) => {
+      rerender(identityTree(flags, distinctId, options, capture))
+      await controls().prefetch([beta])
+    }
 
-    await cache.prefetch(flag, { identity: { distinctId: "first" } })
-    await cache.prefetch(flag, { identity: { distinctId: "second" } })
+    await prefetchAs("first")
+    await prefetchAs("second")
     await sleep(1)
-    await cache.prefetch(flag, { identity: { distinctId: "first" } })
-    await cache.prefetch(flag, { identity: { distinctId: "third" } })
+    await prefetchAs("first")
+    await prefetchAs("third")
     await sleep(1)
-    expect(decide).toHaveBeenCalledTimes(3)
+    expect(decideOne).toHaveBeenCalledTimes(3)
 
-    await cache.prefetch(flag, { identity: { distinctId: "second" } })
-    expect(decide).toHaveBeenCalledTimes(4)
-    await cache.prefetch(flag, { identity: { distinctId: "third" } })
-    expect(decide).toHaveBeenCalledTimes(4)
+    await prefetchAs("second")
+    expect(decideOne).toHaveBeenCalledTimes(4)
+    await prefetchAs("third")
+    expect(decideOne).toHaveBeenCalledTimes(4)
   })
 
   it("expires settled evaluations after ttlMs", async () => {
     let now = 0
     const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now)
-    const { decide, flag } = settledFactory()
-    const cache = createFlagCache({ ttlMs: 100 })
+    try {
+      const { decideOne, flags } = makeFlags()
+      const { capture, controls } = captureCache()
+      render(
+        <FlagsProvider flags={flags} cache={{ ttlMs: 100 }}>
+          {capture}
+        </FlagsProvider>
+      )
+      await controls().prefetch([beta])
+      now = 50
+      await controls().prefetch([beta])
+      expect(decideOne).toHaveBeenCalledTimes(1)
 
-    await cache.prefetch(flag)
-    now = 50
-    await cache.prefetch(flag)
-    expect(decide).toHaveBeenCalledTimes(1)
+      now = 201
+      await controls().prefetch([beta])
+      expect(decideOne).toHaveBeenCalledTimes(2)
+    } finally {
+      dateNow.mockRestore()
+    }
+  })
 
-    now = 201
-    await cache.prefetch(flag)
-    expect(decide).toHaveBeenCalledTimes(2)
-    dateNow.mockRestore()
+  it("expires a pending evaluation after pendingTtlMs", async () => {
+    let now = 0
+    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now)
+    try {
+      const pending = Promise.withResolvers<null>()
+      const decideOne = vi.fn(async () => {
+        await pending.promise
+        return decision.boolean(true)
+      })
+      const flags = createFlags({
+        cache: { coalesce: false },
+        identify: () => ({ distinctId: "core" }),
+        provider: defineProvider({ decideOne, name: "slow" }),
+      })
+      const { capture, controls } = captureCache()
+      render(
+        <FlagsProvider flags={flags} cache={{ pendingTtlMs: 100 }}>
+          {capture}
+        </FlagsProvider>
+      )
+      const first = controls().prefetch([beta])
+      await sleep(1)
+      now = 50
+      const second = controls().prefetch([beta])
+      await sleep(1)
+      expect(decideOne).toHaveBeenCalledTimes(1)
+      now = 150
+      const third = controls().prefetch([beta])
+      await sleep(1)
+      expect(decideOne).toHaveBeenCalledTimes(2)
+      pending.resolve(null)
+      await Promise.all([first, second, third])
+    } finally {
+      dateNow.mockRestore()
+    }
+  })
+})
+
+describe("server rendering", () => {
+  it("renders from the snapshot on the server and hydrates without a mismatch or provider call", async () => {
+    const identity = { distinctId: "user" }
+    const { html, snapshot } = await serverRender(identity)
+    expect(html).toContain("true:dark")
+    expect(html).toContain("on")
+
+    const client = makeFlags("bulk")
+    const container = mount(html)
+    const recoverable: unknown[] = []
+    const silenced = silenceConsoleError()
+    try {
+      await act(async () => {
+        hydrate(container, <App flags={client.flags} identity={identity} snapshot={snapshot} />, {
+          onRecoverableError: (error) => recoverable.push(error),
+        })
+        await sleep(1)
+      })
+      expect(recoverable).toEqual([])
+      expect(silenced.errors).toEqual([])
+    } finally {
+      silenced.restore()
+    }
+    expect(container.textContent).toContain("true:dark")
+    expect(client.decide).not.toHaveBeenCalled()
+    expect(client.decideOne).not.toHaveBeenCalled()
+  })
+
+  it("uses the snapshot when the provider has no identity", async () => {
+    const { html, snapshot } = await serverRender({ distinctId: "core" })
+    const client = makeFlags("bulk")
+    const container = mount(html)
+    await act(async () => {
+      hydrate(container, <App flags={client.flags} snapshot={snapshot} />)
+      await sleep(1)
+    })
+    expect(container.textContent).toContain("true:dark")
+    expect(client.decide).not.toHaveBeenCalled()
+  })
+
+  it("ignores a snapshot made for another identity and evaluates", async () => {
+    const { snapshot } = await serverRender({ distinctId: "server-user" })
+    const client = makeFlags("bulk")
+    client.state.value = false
+    await renderAsync(
+      <App flags={client.flags} identity={{ distinctId: "client-user" }} snapshot={snapshot} />
+    )
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+    expect(client.seen).toContain("client-user")
+  })
+
+  it("drops a snapshot value after a change notification and evaluates", async () => {
+    const identity = { distinctId: "user" }
+    const { html, snapshot } = await serverRender(identity)
+    const client = makeFlags("bulk")
+    const container = mount(html)
+    await act(async () => {
+      hydrate(container, <App flags={client.flags} identity={identity} snapshot={snapshot} />)
+      await sleep(1)
+    })
+    expect(client.decide).not.toHaveBeenCalled()
+
+    client.state.value = false
+    act(() => {
+      client.emit(["beta"])
+    })
+    // The batch evaluates in a timer-driven flush round, so wait for it instead of a fixed delay.
+    await waitFor(() => {
+      expect(container.textContent).toBe("false:darkoff")
+    })
+    expect(client.decide).toHaveBeenCalled()
+  })
+
+  it("ignores a snapshot entry whose kind or value does not fit the flag", async () => {
+    const client = makeFlags("bulk")
+    const snapshot: FlagSnapshot = {
+      distinctId: "user",
+      flags: {
+        beta: { kind: "variant", source: "provider", value: "dark" },
+        theme: { kind: "variant", source: "provider", value: "blue" },
+      },
+    }
+    await renderAsync(
+      <App flags={client.flags} identity={{ distinctId: "user" }} snapshot={snapshot} />
+    )
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    // One call for the batch and one for FeatureFlag's own read of `beta`.
+    expect(client.decide).toHaveBeenCalledTimes(2)
+  })
+
+  it("drops snapshot values through the hook cache", async () => {
+    const client = makeFlags("bulk")
+    const { capture, controls } = captureCache()
+    const snapshot: FlagSnapshot = {
+      distinctId: "user",
+      flags: {
+        beta: { kind: "boolean", source: "provider", value: false },
+        theme: { kind: "variant", source: "provider", value: "light" },
+      },
+    }
+    await renderAsync(
+      <FlagsProvider flags={client.flags} identity={{ distinctId: "user" }} snapshot={snapshot}>
+        {capture}
+        <Suspense fallback="loading">
+          <Value item={beta} />
+          <Value item={theme} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(screen.getByText("false")).toBeTruthy()
+    expect(screen.getByText("light")).toBeTruthy()
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(screen.getByText("light")).toBeTruthy()
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("dark")).toBeTruthy()
   })
 })

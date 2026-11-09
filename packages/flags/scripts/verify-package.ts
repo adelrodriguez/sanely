@@ -27,6 +27,21 @@ try {
     throw new Error("The React entry must retain its client directive")
   }
 
+  // The entry points must share one `anonymous` symbol, or React would not recognize the value
+  // that the core exports.
+  const distDirectory = join(packageRoot, "dist")
+  const anonymousDefinitions = readdirSync(distDirectory, { recursive: true })
+    .map(String)
+    .filter((file) => file.endsWith(".js"))
+    .filter((file) =>
+      readFileSync(join(distDirectory, file), "utf8").includes('Symbol("@sanely/flags/anonymous")')
+    )
+  if (anonymousDefinitions.length !== 1) {
+    throw new Error(
+      `Expected one built definition of anonymous, found ${anonymousDefinitions.length}`
+    )
+  }
+
   run("pnpm", ["pack", "--pack-destination", temporaryDirectory], packageRoot)
 
   const tarballs = readdirSync(temporaryDirectory).filter((file) => file.endsWith(".tgz"))
@@ -49,16 +64,36 @@ try {
   writeFileSync(
     join(temporaryDirectory, "core.mjs"),
     `import assert from "node:assert/strict"
-import { createFlags, decision } from "@sanely/flags"
-import { defineHook } from "@sanely/flags/hooks"
+import { anonymous, createFlags, decision, defineProvider, flag } from "@sanely/flags"
+import { fakeProvider, memoryStore } from "@sanely/flags/testing"
 
-const factory = createFlags({
-  decide: () => decision.boolean(true),
-  identify: () => ({ distinctId: "consumer" }),
+const beta = flag.boolean("beta", false)
+const theme = flag.variant("theme", ["light", "dark"], "light")
+
+const provider = defineProvider({
+  decideOne: (definition) =>
+    definition.kind === "boolean" ? decision.boolean(true) : decision.variant("dark"),
+  name: "consumer",
 })
+const flags = createFlags({ identify: () => ({ distinctId: "consumer" }), provider })
+assert.deepEqual(await flags.getMany([beta, theme]), [true, "dark"])
+assert.equal(await createFlags({ provider }).for({ distinctId: "caller" }).get(beta), true)
 
-assert.equal(await factory({ defaultValue: false, key: "beta" })(), true)
-assert.deepEqual(defineHook({}), {})
+const fake = createFlags({
+  cache: { store: memoryStore() },
+  identify: () => ({ distinctId: "consumer" }),
+  provider: fakeProvider([[theme, "dark"]]),
+})
+assert.equal(await fake.get(theme), "dark")
+assert.equal((await fake.details(theme)).source, "cache")
+assert.equal((await fake.details(beta)).error._tag, "InvalidDecisionError")
+
+const snapshot = await createFlags({ identify: () => anonymous, provider: fakeProvider([[beta, true]]) })
+  .snapshot([beta])
+assert.deepEqual(snapshot, {
+  distinctId: null,
+  flags: { beta: { kind: "boolean", source: "provider", value: true } },
+})
 `
   )
   run(process.execPath, ["core.mjs"], temporaryDirectory)
@@ -78,58 +113,61 @@ assert.deepEqual(defineHook({}), {})
   writeFileSync(
     join(temporaryDirectory, "react.mjs"),
     `import assert from "node:assert/strict"
-import { createFlags, decision } from "@sanely/flags"
 import * as react from "@sanely/flags/react"
 
 assert.deepEqual(Object.keys(react).toSorted(), [
   "FeatureFlag",
-  "FlagProvider",
-  "createFlagCache",
-  "createFlagHooks",
+  "FlagsProvider",
+  "FlagsProviderMissingError",
   "useFlag",
-  "useFlagBatch",
   "useFlagCache",
+  "useFlags",
 ].toSorted())
-
-let providerCalls = 0
-const factory = createFlags({
-  decide: () => {
-    providerCalls += 1
-    return decision.boolean(true)
-  },
-  identify: () => ({ distinctId: "consumer" }),
-})
-const beta = factory({ defaultValue: false, key: "beta" })
-const cache = react.createFlagCache()
-await cache.prefetchBatch([beta])
-await cache.prefetchBatch([beta])
-assert.equal(providerCalls, 1, "Core evaluators must share their registry with React's cache")
 `
   )
   run(process.execPath, ["react.mjs"], temporaryDirectory)
 
   writeFileSync(
     join(temporaryDirectory, "consumer.ts"),
-    `import { createFlags, decision, type EvaluationDetails } from "@sanely/flags"
-import { defineHook } from "@sanely/flags/hooks"
-import { createFlagCache, type FlagValueOf, type ReactFlagCache } from "@sanely/flags/react"
+    `import {
+  createFlags,
+  decision,
+  defineProvider,
+  flag,
+  type EvaluationDetails,
+  type Flags,
+  type FlagSnapshot,
+  type Identity,
+} from "@sanely/flags"
+import type { FlagCacheControls, FlagsProviderProps } from "@sanely/flags/react"
+import { fakeProvider, type FakeProvider } from "@sanely/flags/testing"
 
-const factory = createFlags({
-  decide: () => decision.boolean(true),
-  identify: () => ({ distinctId: "consumer" }),
+type User = Identity & { plan: "free" | "pro" }
+
+const provider = defineProvider({
+  decideOne: (_flag, identity: User) => decision.boolean(identity.plan === "pro"),
+  name: "consumer",
 })
-const evaluator = factory({ defaultValue: false, key: "beta" })
-const value: FlagValueOf<typeof evaluator> = true
-const details: EvaluationDetails<boolean> = {
-  flagKey: "beta",
-  source: "provider",
-  value,
-}
-const cache: ReactFlagCache = createFlagCache()
+const beta = flag.boolean("beta", false)
+const theme = flag.variant("theme", ["light", "dark"], "light")
 
-defineHook({})
-void cache
+const flags: Flags<User> = createFlags({
+  identify: () => ({ distinctId: "consumer", plan: "pro" }),
+  provider,
+})
+const details: Promise<EvaluationDetails<typeof theme>> = flags.details(theme)
+const values: Promise<[boolean, "light" | "dark"]> = flags.getMany([beta, theme])
+const snapshot: Promise<FlagSnapshot> = flags.snapshot([beta, theme])
+const props: FlagsProviderProps<typeof flags> = { children: null, flags }
+const fake: FakeProvider = fakeProvider([[theme, "dark"]])
+declare const controls: FlagCacheControls
+
 void details
+void values
+void snapshot
+void props
+void fake
+void controls
 `
   )
   writeFileSync(

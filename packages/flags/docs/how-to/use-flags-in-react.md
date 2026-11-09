@@ -4,23 +4,29 @@ This guide shows you how to read flags in React components with `@sanely/flags/r
 
 ## Read a flag in a component
 
-1. Pass an evaluator to `useFlag`:
+1. Mount `FlagsProvider` with your reader, above the components that read flags:
 
    ```tsx
-   import { useFlag } from "@sanely/flags/react"
+   import { FlagsProvider } from "@sanely/flags/react"
+   import { flags } from "./flags/client"
 
-   function BetaPanel() {
-     const enabled = useFlag(betaAccess)
-     return enabled ? <NewPanel /> : <CurrentPanel />
+   export function App() {
+     return (
+       <FlagsProvider flags={flags}>
+         <Routes />
+       </FlagsProvider>
+     )
    }
    ```
 
-2. Put a Suspense boundary above each component that calls a flag hook:
+   A reader without `identify` needs an `identity` prop, and TypeScript checks it against the reader's identity type.
+
+2. Put a Suspense boundary above each component that reads a flag:
 
    ```tsx
    import { Suspense } from "react"
 
-   export function App() {
+   function Home() {
      return (
        <Suspense fallback={<Loading />}>
          <BetaPanel />
@@ -29,18 +35,29 @@ This guide shows you how to read flags in React components with `@sanely/flags/r
    }
    ```
 
-To evaluate several flags with one suspension, use `useFlagBatch`:
+3. Pass the flag to `useFlag`:
+
+   ```tsx
+   import { useFlag } from "@sanely/flags/react"
+   import { betaAccess } from "./flags/definitions"
+
+   function BetaPanel() {
+     return useFlag(betaAccess) ? <NewPanel /> : <CurrentPanel />
+   }
+   ```
+
+To read several flags with one suspension, use `useFlags`:
 
 ```tsx
-import { useFlagBatch } from "@sanely/flags/react"
+import { useFlags } from "@sanely/flags/react"
 
 function Page() {
-  const [hasBetaAccess, selectedTheme] = useFlagBatch([betaAccess, theme])
+  const [hasBetaAccess, selectedTheme] = useFlags([betaAccess, theme])
   return <Dashboard beta={hasBetaAccess} theme={selectedTheme} />
 }
 ```
 
-To read the details, pass `{ details: true }`: `useFlag(betaAccess, { details: true })`.
+A hook outside a `FlagsProvider` throws `FlagsProviderMissingError`.
 
 ## Render a feature conditionally
 
@@ -49,92 +66,38 @@ Use `FeatureFlag`. When you give `loading`, it adds its own Suspense boundary:
 ```tsx
 import { FeatureFlag } from "@sanely/flags/react"
 
-function App() {
-  return (
-    <FeatureFlag flag={betaAccess} loading={<Loading />} fallback={<CurrentPanel />}>
-      <NewPanel />
-    </FeatureFlag>
-  )
-}
+<FeatureFlag flag={betaAccess} loading={<Loading />} fallback={<CurrentPanel />}>
+  <NewPanel />
+</FeatureFlag>
+
+<FeatureFlag flag={theme} match="dark">
+  <DarkBanner />
+</FeatureFlag>
 ```
 
-A boolean flag matches `true` by default. A variant flag needs a `match` prop, such as `match="dark"`.
-
-## Supply the identity from a provider
-
-Mount `FlagProvider` with an identity. Flag hooks below it use that identity when you do not pass one:
-
-```tsx
-import { FlagProvider } from "@sanely/flags/react"
-
-function App() {
-  return (
-    <FlagProvider identity={{ distinctId: user.id }}>
-      <Routes />
-    </FlagProvider>
-  )
-}
-```
-
-TypeScript does not check the identity of a plain `FlagProvider`. To check it against the identity type of your flags, create the provider and the hooks from the factory:
-
-```tsx
-import { createFlagHooks } from "@sanely/flags/react"
-
-const flag = createFlags({
-  identify: async () => {
-    const user = await getCurrentUser()
-    return { distinctId: user.id, plan: user.plan }
-  },
-  decide,
-})
-
-export const { FlagProvider, useFlag, useFlagBatch } = createFlagHooks(flag)
-```
-
-The provider from `createFlagHooks` then requires `distinctId` and `plan`, and its hooks accept only flags with the same identity type and call mode. These hooks read the identity only from their own provider. Under a plain `FlagProvider`, they use `identify` from the factory.
-
-A factory without `identify` needs a type argument, such as `createFlags<UserIdentity>({ decide })`.
-
-## Render on the server
-
-All exports of `@sanely/flags/react` are client-only. Mount `FlagProvider` inside the client boundary, and above the Suspense boundaries that hold flag consumers. Each mount of a provider without a `cache` prop creates its own cache, so requests do not share cached values. A client-only application does not need `FlagProvider`.
+A boolean flag matches `true`. A variant flag needs `match`, which TypeScript types to its variants. `FeatureFlag` renders `fallback` when the value does not match, and also when the evaluation falls back to the default.
 
 ## Control the flag cache
 
-React evaluations use a bounded promise cache, with a five-minute lifetime by default. To set other limits, prefetch, or invalidate, create a cache and pass it to the provider:
+Each `FlagsProvider` mount keeps its own bounded cache, with a five-minute lifetime by default. To set other limits, pass `cache`:
 
 ```tsx
-import { createFlagCache, FlagProvider } from "@sanely/flags/react"
-
-const cache = createFlagCache({ maxEntries: 250, pendingTtlMs: 30_000, ttlMs: 60_000 })
-
-cache.prefetch(betaAccess, { identity: user })
-cache.invalidate(betaAccess, user)
-cache.clear()
-
-function App() {
-  return (
-    <FlagProvider cache={cache} identity={{ distinctId: user.id }}>
-      <Routes />
-    </FlagProvider>
-  )
-}
+<FlagsProvider flags={flags} cache={{ maxEntries: 250, pendingTtlMs: 30_000, ttlMs: 60_000 }}>
 ```
 
-A cache that you use directly cannot read a provider identity, so give an explicit identity to its methods. Inside the provider, `useFlagCache()` returns the active cache, and its methods use the provider identity when you leave the identity out:
+To prefetch or invalidate, call `useFlagCache` inside the provider:
 
 ```tsx
 import { useFlagCache } from "@sanely/flags/react"
 
 function RefreshButton() {
   const cache = useFlagCache()
-  return <button onClick={() => cache.invalidate(betaAccess)}>Refresh</button>
+  return <button onClick={() => cache.invalidate([betaAccess])}>Refresh</button>
 }
 ```
 
-When the factory has a [`subscribe` function](./cache-provider-decisions.md#drop-decisions-when-the-provider-changes-a-flag), a provider change invalidates the matching entries, and the components that read those flags evaluate again. Entries from `prefetch` and `prefetchBatch`, and entries that no mounted component reads, evaluate again on their next read.
+`prefetch(flags)` helps a later `useFlag` or `useFlags` with the same flags in the same order. When the provider has a [`subscribe` function](./write-a-provider.md#report-flag-changes), a change drops the cached values of the changed flags, and the components that read them evaluate again.
 
-An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. Other values, such as `Date`, `Map`, symbols, functions, bigints, and circular references, throw a `TypeError`.
+To render flags on the server without a loading state, see [How to render flags on the server](./render-flags-on-the-server.md).
 
 Refer to the [React reference](../reference.md#sanelyflagsreact) for every export.

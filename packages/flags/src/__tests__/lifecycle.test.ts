@@ -1,16 +1,29 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type {
-  DecisionCache,
-  DecisionCacheErrorReport,
+  Anonymous,
+  ChangeListener,
   Decision,
-  HookContext,
-  HookErrorReport,
+  DecisionStore,
+  ErrorReport,
+  EvaluationContext,
+  EvaluationError,
+  Identity,
+  StoreFailedReport,
 } from "#index.ts"
-import { createFlags, FlagTimeoutError, InvalidVariantError } from "#index.ts"
+import {
+  anonymous,
+  createFlags,
+  defineProvider,
+  EvaluationAbortedError,
+  EvaluationTimeoutError,
+  flag,
+  InvalidDecisionError,
+  ProviderFailedError,
+} from "#index.ts"
 
 function createDeferred<T>() {
-  let rejectDeferred!: (reason?: Error) => void
+  let rejectDeferred!: (reason?: unknown) => void
   let resolveDeferred!: (value: T | PromiseLike<T>) => void
   const promise = new Promise<T>((resolve, reject) => {
     rejectDeferred = reject
@@ -24,32 +37,55 @@ async function flushBackground(): Promise<void> {
   await sleep(0)
 }
 
-// A cached boolean flag whose provider value and change notifications the test controls.
-function changingFlag(cache: DecisionCache) {
-  const provider = {
-    notify: (_change: { keys?: readonly string[] }): void => undefined,
+const user = { distinctId: "user123" }
+const identify = () => user
+const betaAccess = flag.boolean("beta-access", false)
+const theme = flag.variant("theme", ["light", "dark"], "light")
+const TRUE: Decision = { type: "boolean", value: true }
+const FALSE: Decision = { type: "boolean", value: false }
+
+function storeReports(reports: ErrorReport[]): StoreFailedReport[] {
+  return reports.filter((report): report is StoreFailedReport => report._tag === "StoreFailed")
+}
+
+// A provider whose decision and change notifications the test controls.
+function controlledProvider() {
+  const control = {
+    notify: ((_keys?: readonly string[]): void => undefined) as ChangeListener,
     value: true,
   }
-  const decide = vi.fn((): Decision => ({ type: "boolean", value: provider.value }))
-  const flag = createFlags({
-    cache,
-    decide,
-    identify: () => ({ distinctId: "user123" }),
-    subscribe: (listener) => {
-      provider.notify = listener
+  const decideOne = vi.fn((): Decision => ({ type: "boolean", value: control.value }))
+  const provider = defineProvider({
+    decideOne,
+    name: "controlled",
+    subscribe: (notify) => {
+      control.notify = notify
       return () => null
     },
   })
-  return { decide, evaluator: flag({ defaultValue: false, key: "beta-access" }), provider }
+  return { control, decideOne, provider }
+}
+
+// A cached boolean flag whose provider value and change notifications the test controls.
+function changingFlag(store: DecisionStore) {
+  const { control, decideOne, provider } = controlledProvider()
+  const flags = createFlags({ cache: { store }, identify, provider })
+  return { control, decideOne, flags }
+}
+
+function slowTrue() {
+  return vi.fn(async () => {
+    await sleep(5)
+    return TRUE
+  })
 }
 
 describe("observer hook lifecycle", () => {
   test("shares one stable context through successful observer phases", async () => {
-    const starts = new WeakMap<HookContext, number>()
-    const contexts: HookContext[] = []
+    const starts = new WeakMap<EvaluationContext, number>()
+    const contexts: EvaluationContext[] = []
     const values: number[] = []
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
+    const flags = createFlags({
       hooks: [
         {
           after(context) {
@@ -67,29 +103,32 @@ describe("observer hook lifecycle", () => {
           },
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
 
     expect(values).toEqual([42, 42])
     expect(contexts.every((context) => context === contexts[0])).toBe(true)
+    expect(contexts[0]?.flag).toBe(betaAccess)
+    expect(contexts[0]?.identity).toBe(user)
   })
 
-  test("snapshots hooks at build time so later config mutation does not affect evaluations", async () => {
+  test("snapshots hooks at build time so later option mutation does not affect evaluations", async () => {
     const snapshottedHook = vi.fn(() => Promise.resolve())
     const lateHook = vi.fn(() => Promise.resolve())
     const hooks = [{ before: snapshottedHook }]
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
+    const flags = createFlags({
       hooks,
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
     hooks.push({ before: lateHook })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
 
     expect(snapshottedHook).toHaveBeenCalledTimes(1)
@@ -98,28 +137,52 @@ describe("observer hook lifecycle", () => {
 
   test("reports cache and provider decision sources to after hooks", async () => {
     const sources: string[] = []
-    const cache = new Map<string, Decision>()
-    const flag = createFlags({
+    const cached = new Map<string, Decision>()
+    const flags = createFlags({
       cache: {
-        get: (key) => Promise.resolve(cache.get(key)),
-        set: (key, value) => {
-          cache.set(key, value)
-          return Promise.resolve()
+        store: {
+          get: (key) => Promise.resolve(cached.get(key)),
+          set: (key, value) => {
+            cached.set(key, value)
+            return Promise.resolve()
+          },
         },
       },
-      decide: () => ({ type: "boolean", value: true }),
       hooks: [{ after: (_context, _decision, meta) => void sources.push(meta.source) }],
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    const providerDetails = await evaluator.details()
+    const providerDetails = await flags.details(betaAccess)
     expect(providerDetails.source).toBe("provider")
     await flushBackground()
-    const cacheDetails = await evaluator.details()
+    const cacheDetails = await flags.details(betaAccess)
     expect(cacheDetails.source).toBe("cache")
     await flushBackground()
     expect(sources).toEqual(["provider", "cache"])
+  })
+
+  test("passes the tagged evaluation error to error hooks", async () => {
+    const errors: EvaluationError[] = []
+    const failure = new Error("provider failed")
+    const flags = createFlags({
+      hooks: [{ error: (_context, error) => void errors.push(error) }],
+      identify,
+      provider: defineProvider({
+        decideOne: () => {
+          throw failure
+        },
+        name: "failing",
+      }),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.source).toBe("default")
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBe(details.error)
+    expect(errors[0]?._tag).toBe("ProviderFailedError")
+    expect(errors[0]).toBeInstanceOf(ProviderFailedError)
+    expect(errors[0]?.cause).toBe(failure)
   })
 
   test("returns after an abort while error hooks continue to completion", async () => {
@@ -127,10 +190,7 @@ describe("observer hook lifecycle", () => {
     const releaseErrorHook = createDeferred<null>()
     const finallyHook = vi.fn(() => Promise.resolve())
     const controller = new AbortController()
-    const flag = createFlags({
-      decide: () => {
-        throw new Error("provider failed")
-      },
+    const flags = createFlags({
       hooks: [
         {
           error: async () => {
@@ -140,11 +200,15 @@ describe("observer hook lifecycle", () => {
           finally: finallyHook,
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({
+        decideOne: () => {
+          throw new Error("provider failed")
+        },
+        name: "failing",
+      }),
     })
-    const evaluation = flag({ defaultValue: false, key: "beta-access" }).details({
-      signal: controller.signal,
-    })
+    const evaluation = flags.details(betaAccess, { signal: controller.signal })
     await errorHookStarted.promise
 
     controller.abort(new Error("caller stopped"))
@@ -159,9 +223,9 @@ describe("observer hook lifecycle", () => {
   test("does not await error hooks when the signal is already aborted", async () => {
     const releaseErrorHook = createDeferred<null>()
     const controller = new AbortController()
-    controller.abort(new Error("caller stopped"))
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
+    const reason = new Error("caller stopped")
+    controller.abort(reason)
+    const flags = createFlags({
       hooks: [
         {
           error: async () => {
@@ -169,20 +233,20 @@ describe("observer hook lifecycle", () => {
           },
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
-    const details = await flag({ defaultValue: false, key: "beta-access" }).details({
-      signal: controller.signal,
-    })
+    const details = await flags.details(betaAccess, { signal: controller.signal })
 
-    expect(details.error?.message).toBe("caller stopped")
+    expect(details.error).toBeInstanceOf(EvaluationAbortedError)
+    expect(details.error?.cause).toBe(reason)
     releaseErrorHook.resolve(null)
   })
 
   for (const phase of ["before", "after", "error", "finally"] as const) {
     test(`reports a ${phase} observer failure without changing the result`, async () => {
-      const reports: HookErrorReport[] = []
+      const reports: ErrorReport[] = []
       const fail = () => {
         throw new Error(`${phase} failed`)
       }
@@ -194,22 +258,30 @@ describe("observer hook lifecycle", () => {
             : phase === "error"
               ? { error: fail }
               : { finally: fail }
-      const flag = createFlags({
-        decide: () => {
-          if (phase === "error") {
-            throw new Error("provider failed")
-          }
-          return { type: "boolean", value: true }
-        },
+      const flags = createFlags({
         hooks: [hook],
-        identify: () => ({ distinctId: "user123" }),
-        onHookError: (report) => void reports.push(report),
+        identify,
+        onError: (report) => void reports.push(report),
+        provider: defineProvider({
+          decideOne: () => {
+            if (phase === "error") {
+              throw new Error("provider failed")
+            }
+            return TRUE
+          },
+          name: "test",
+        }),
       })
 
-      expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(phase !== "error")
+      expect(await flags.get(betaAccess)).toBe(phase !== "error")
       await flushBackground()
       expect(reports).toHaveLength(1)
-      expect(reports[0]?.phase).toBe(phase)
+      expect(reports[0]).toMatchObject({
+        _tag: "HookFailed",
+        error: new Error(`${phase} failed`),
+        hookIndex: 0,
+        phase,
+      })
     })
   }
 })
@@ -222,70 +294,77 @@ describe("first-class cache", () => {
       stored.set(key, decision)
       return Promise.resolve()
     })
-    const decide = vi.fn(() => ({ type: "variant", variant: "dark" }) as const)
-    const flag = createFlags({
-      cache: { get, set },
-      decide,
-      identify: () => ({ distinctId: "user123" }),
+    const decideOne = vi.fn((): Decision => ({ type: "variant", variant: "dark" }))
+    const flags = createFlags({
+      cache: { store: { get, set } },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const theme = flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
 
-    const providerDetails = await theme.details()
+    const providerDetails = await flags.details(theme)
     expect(providerDetails.source).toBe("provider")
     await flushBackground()
     expect(set).toHaveBeenCalledWith('["theme","variant",["light","dark"],"string","user123"]', {
       type: "variant",
       variant: "dark",
     })
-    const cacheDetails = await theme.details()
+    const cacheDetails = await flags.details(theme)
     expect(cacheDetails.source).toBe("cache")
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
   test("supports a custom identity-sensitive key", async () => {
+    type TenantIdentity = Identity & { tenant: string }
     const keys: string[] = []
-    const flag = createFlags<{ distinctId: string; tenant: string }>({
+    const flags = createFlags({
       cache: {
-        get: (key) => {
-          keys.push(key)
-          return Promise.resolve(null)
+        key: (context) =>
+          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+        store: {
+          get: (key) => {
+            keys.push(key)
+            return Promise.resolve(null)
+          },
+          set: () => Promise.resolve(),
         },
-        set: () => Promise.resolve(),
       },
-      decide: () => ({ type: "boolean", value: true }),
-      evaluationKey: (context) => `${context.identity?.tenant}:${context.flagKey}`,
       identify: () => ({ distinctId: "user123", tenant: "acme" }),
+      provider: defineProvider({
+        decideOne: (_flag, _identity: TenantIdentity) => TRUE,
+        name: "test",
+      }),
     })
 
-    await flag({ defaultValue: false, key: "beta-access" })()
+    await flags.get(betaAccess)
     expect(keys).toEqual(["acme:beta-access"])
   })
 
   test("reports custom cache key failures without reading the store", async () => {
-    const reports: DecisionCacheErrorReport[] = []
+    const reports: ErrorReport[] = []
     const error = new Error("key failed")
     const get = vi.fn(() => Promise.resolve(null))
-    const flag = createFlags({
+    const flags = createFlags({
       cache: {
-        get,
-        set: () => Promise.resolve(),
+        key: () => {
+          throw error
+        },
+        store: { get, set: () => Promise.resolve() },
       },
-      decide: () => ({ type: "boolean", value: true }),
-      evaluationKey: () => {
-        throw error
-      },
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
 
     expect(get).not.toHaveBeenCalled()
     expect(reports).toHaveLength(1)
     expect(reports[0]).toMatchObject({
+      _tag: "StoreFailed",
       error,
       flagKey: "beta-access",
+      identity: user,
       key: "beta-access",
       operation: "key",
     })
@@ -293,154 +372,159 @@ describe("first-class cache", () => {
 
   test("keeps numeric and string identity keys separate", async () => {
     const stored = new Map<string, Decision>()
-    const decide = vi.fn((_key: string, identity: { distinctId: number | string }) => ({
-      type: "boolean" as const,
+    const decideOne = vi.fn((_flag: unknown, identity: Identity): Decision => ({
+      type: "boolean",
       value: typeof identity.distinctId === "number",
     }))
-    const flag = createFlags<{ distinctId: number | string }>({
+    const flags = createFlags({
       cache: {
-        get: (key) => Promise.resolve(stored.get(key)),
-        set: (key, value) => {
-          stored.set(key, value)
-          return Promise.resolve()
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
         },
       },
-      decide,
-      identify: () => ({ distinctId: "unused" }),
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await evaluator({ identity: { distinctId: 1 } })).toBe(true)
-    expect(await evaluator({ identity: { distinctId: "1" } })).toBe(false)
+    expect(await flags.for({ distinctId: 1 }).get(betaAccess)).toBe(true)
+    expect(await flags.for({ distinctId: "1" }).get(betaAccess)).toBe(false)
     await flushBackground()
-    expect(await evaluator({ identity: { distinctId: 1 } })).toBe(true)
-    expect(await evaluator({ identity: { distinctId: "1" } })).toBe(false)
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await flags.for({ distinctId: 1 }).get(betaAccess)).toBe(true)
+    expect(await flags.for({ distinctId: "1" }).get(betaAccess)).toBe(false)
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("treats an invalid cached decision as a miss, reports it, and evicts it", async () => {
-    const reports: DecisionCacheErrorReport[] = []
+    const reports: ErrorReport[] = []
     const remove = vi.fn(() => Promise.resolve(true))
     const set = vi.fn(() => Promise.resolve())
-    const decide = vi.fn(() => ({ type: "variant", variant: "dark" }) as const)
-    const flag = createFlags({
+    const decideOne = vi.fn((): Decision => ({ type: "variant", variant: "dark" }))
+    const flags = createFlags({
       cache: {
-        delete: remove,
-        get: () => Promise.resolve({ type: "variant", variant: "stale" }),
-        set,
+        store: {
+          delete: remove,
+          get: () => Promise.resolve({ type: "variant", variant: "stale" }),
+          set,
+        },
       },
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne, name: "test" }),
     })
 
-    expect(await flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
-      "dark"
-    )
+    expect(await flags.get(theme)).toBe("dark")
     await flushBackground()
 
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decideOne).toHaveBeenCalledTimes(1)
     expect(remove).toHaveBeenCalledTimes(1)
     expect(set).toHaveBeenCalledTimes(1)
     expect(reports).toHaveLength(1)
-    expect(reports[0]?.operation).toBe("validate")
-    expect(reports[0]?.error).toBeInstanceOf(InvalidVariantError)
+    expect(reports[0]).toMatchObject({ _tag: "StoreFailed", operation: "validate" })
+    expect(storeReports(reports)[0]?.error).toBeInstanceOf(InvalidDecisionError)
   })
 
   test("reports get and set failures without failing evaluation", async () => {
-    const reports: DecisionCacheErrorReport[] = []
-    const flag = createFlags({
+    const reports: ErrorReport[] = []
+    const flags = createFlags({
       cache: {
-        get: () => Promise.reject(new Error("read failed")),
-        set: () => Promise.reject(new Error("write failed")),
+        store: {
+          get: () => Promise.reject(new Error("read failed")),
+          set: () => Promise.reject(new Error("write failed")),
+        },
       },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
-    expect(reports.map(({ operation }) => operation)).toEqual(["get", "set"])
+    expect(storeReports(reports).map(({ operation }) => operation)).toEqual(["get", "set"])
   })
 
   test("ignores cache eviction when the store has no delete operation", async () => {
-    const reports: DecisionCacheErrorReport[] = []
-    const flag = createFlags({
+    const reports: ErrorReport[] = []
+    const flags = createFlags({
       cache: {
-        get: () => Promise.resolve({ type: "variant", variant: "stale" }),
-        set: () => Promise.resolve(),
+        store: {
+          get: () => Promise.resolve({ type: "variant", variant: "stale" }),
+          set: () => Promise.resolve(),
+        },
       },
-      decide: () => ({ type: "variant", variant: "dark" }),
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({
+        decideOne: () => ({ type: "variant", variant: "dark" }),
+        name: "test",
+      }),
     })
 
-    expect(await flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })()).toBe(
-      "dark"
-    )
+    expect(await flags.get(theme)).toBe("dark")
     await flushBackground()
 
-    expect(reports.map(({ operation }) => operation)).toEqual(["validate"])
+    expect(storeReports(reports).map(({ operation }) => operation)).toEqual(["validate"])
   })
 
-  test("attaches one invalidation subscription for the factory's lifetime", async () => {
-    const subscribe = vi.fn((listener: (change: { keys?: readonly string[] }) => void) => {
-      listener({ keys: ["beta-access"] })
+  test("attaches one invalidation subscription for the reader's lifetime", async () => {
+    const detach = vi.fn(() => null)
+    const subscribe = vi.fn((notify: ChangeListener) => {
+      notify(["beta-access"])
       return detach
     })
-    const detach = vi.fn(() => null)
-    const flag = createFlags({
+    const flags = createFlags({
       cache: {
-        delete: () => Promise.resolve(true),
-        get: () => Promise.resolve(null),
-        set: () => Promise.resolve(),
+        store: {
+          delete: () => Promise.resolve(true),
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+        },
       },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      subscribe,
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test", subscribe }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await evaluator()).toBe(true)
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     expect(subscribe).toHaveBeenCalledTimes(1)
     expect(detach).not.toHaveBeenCalled()
   })
 
   test("shares one provider subscription between invalidation and change listeners", async () => {
-    let notify!: (change: { keys?: readonly string[] }) => void
+    let notify!: ChangeListener
     const detach = vi.fn(() => null)
-    const subscribe = vi.fn((listener: typeof notify) => {
+    const subscribe = vi.fn((listener: ChangeListener) => {
       notify = listener
       return detach
     })
     const cached = new Map<string, Decision>()
-    const flag = createFlags({
+    const flags = createFlags({
       cache: {
-        delete: (key) => Promise.resolve(cached.delete(key)),
-        get: (key) => Promise.resolve(cached.get(key)),
-        set: (key, value) => {
-          cached.set(key, value)
-          return Promise.resolve()
+        store: {
+          delete: (key) => Promise.resolve(cached.delete(key)),
+          get: (key) => Promise.resolve(cached.get(key)),
+          set: (key, value) => {
+            cached.set(key, value)
+            return Promise.resolve()
+          },
         },
       },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      subscribe,
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test", subscribe }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const changed: Array<readonly string[] | undefined> = []
 
-    const unsubscribe = flag.changes.subscribe((keys) => {
+    const unsubscribe = flags.subscribe((keys) => {
       changed.push(keys)
     })
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
     expect(cached.size).toBe(1)
     expect(subscribe).toHaveBeenCalledTimes(1)
 
-    notify({ keys: ["beta-access"] })
+    notify(["beta-access"])
     await flushBackground()
     expect(cached.size).toBe(0)
     expect(changed).toEqual([["beta-access"]])
@@ -451,101 +535,111 @@ describe("first-class cache", () => {
   })
 
   test("reports delete failures without failing invalidation", async () => {
-    const reports: DecisionCacheErrorReport[] = []
-    let notify!: (change: { keys?: readonly string[] }) => void
-    const flag = createFlags({
+    const reports: ErrorReport[] = []
+    let notify!: ChangeListener
+    const flags = createFlags({
       cache: {
-        delete: () => Promise.reject(new Error("delete failed")),
-        get: () => Promise.resolve(null),
-        set: () => Promise.resolve(),
+        store: {
+          delete: () => Promise.reject(new Error("delete failed")),
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+        },
       },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
-      subscribe: (listener) => {
-        notify = listener
-        return () => void notify
-      },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({
+        decideOne: () => TRUE,
+        name: "test",
+        subscribe: (listener) => {
+          notify = listener
+          return () => null
+        },
+      }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
-    notify({ keys: ["beta-access"] })
+    expect(await flags.get(betaAccess)).toBe(true)
+    notify(["beta-access"])
     await flushBackground()
-    expect(reports.map(({ operation }) => operation)).toContain("delete")
+    expect(storeReports(reports).map(({ operation }) => operation)).toContain("delete")
   })
 
   test("invalidates only notified flags and supports keyless invalidation", async () => {
-    let notify!: (change: { keys?: readonly string[] }) => void
+    let notify!: ChangeListener
     const removed: string[] = []
-    const store = {
-      delete: (key: string) => {
-        removed.push(key)
-        return Promise.resolve(true)
+    const flags = createFlags({
+      cache: {
+        store: {
+          delete: (key: string) => {
+            removed.push(key)
+            return Promise.resolve(true)
+          },
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+        },
       },
-      get: () => Promise.resolve(null),
-      set: () => Promise.resolve(),
-    }
-    const flag = createFlags({
-      cache: store,
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (listener) => {
-        notify = listener
-        return () => void notify
-      },
+      identify,
+      provider: defineProvider({
+        decideOne: () => TRUE,
+        name: "test",
+        subscribe: (listener) => {
+          notify = listener
+          return () => null
+        },
+      }),
     })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: false, key: "second" })
+    const first = flag.boolean("first", false)
+    const second = flag.boolean("second", false)
 
-    await first()
-    await second()
-    notify({ keys: ["first"] })
+    await flags.get(first)
+    await flags.get(second)
+    notify(["first"])
     await flushBackground()
     expect(removed).toHaveLength(1)
     expect(removed[0]).toContain("first")
 
-    notify({})
+    notify()
     await flushBackground()
     expect(removed).toHaveLength(2)
     expect(removed[1]).toContain("second")
   })
 
   test("does not write a provider decision after its flag is invalidated", async () => {
-    const provider = createDeferred<Decision>()
+    const pending = createDeferred<Decision>()
     const providerStarted = createDeferred<boolean>()
     const set = vi.fn(() => Promise.resolve())
-    const decide = vi.fn(() => {
+    const decideOne = vi.fn((): Decision | Promise<Decision> => {
+      if (decideOne.mock.calls.length > 1) return TRUE
       providerStarted.resolve(true)
-      return provider.promise
+      return pending.promise
     })
-    let notify!: (change: { keys?: readonly string[] }) => void
-    const flag = createFlags({
+    let notify!: ChangeListener
+    const flags = createFlags({
       cache: {
-        delete: () => Promise.resolve(true),
-        get: () => Promise.resolve(null),
-        set,
+        store: { delete: () => Promise.resolve(true), get: () => Promise.resolve(null), set },
       },
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (listener) => {
-        notify = listener
-        return () => void notify
-      },
+      identify,
+      provider: defineProvider({
+        decideOne,
+        name: "test",
+        subscribe: (listener) => {
+          notify = listener
+          return () => null
+        },
+      }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    const evaluation = evaluator()
+    const evaluation = flags.get(betaAccess)
     await providerStarted.promise
-    notify({ keys: ["beta-access"] })
-    provider.resolve({ type: "boolean", value: true })
+    notify(["beta-access"])
+    pending.resolve(TRUE)
 
     expect(await evaluation).toBe(true)
     await flushBackground()
     expect(set).not.toHaveBeenCalled()
 
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(decideOne).toHaveBeenCalledTimes(2)
     expect(set).toHaveBeenCalledTimes(1)
   })
 
@@ -553,7 +647,7 @@ describe("first-class cache", () => {
     const stored = new Map<string, Decision>()
     const write = createDeferred<null>()
     const writeStarted = createDeferred<null>()
-    const { evaluator, provider } = changingFlag({
+    const { control, flags } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => Promise.resolve(stored.get(key)),
       set: async (key, value) => {
@@ -563,15 +657,15 @@ describe("first-class cache", () => {
       },
     })
 
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await writeStarted.promise
-    provider.value = false
-    provider.notify({ keys: ["beta-access"] })
+    control.value = false
+    control.notify(["beta-access"])
     await flushBackground()
     write.resolve(null)
     await flushBackground()
 
-    expect(await evaluator()).toBe(false)
+    expect(await flags.get(betaAccess)).toBe(false)
   })
 
   test("keeps a newer write when an older write finishes after a change", async () => {
@@ -579,7 +673,7 @@ describe("first-class cache", () => {
     const firstWrite = createDeferred<null>()
     const firstWriteStarted = createDeferred<null>()
     let writes = 0
-    const { decide, evaluator, provider } = changingFlag({
+    const { control, decideOne, flags } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => Promise.resolve(stored.get(key)),
       set: async (key, value) => {
@@ -592,22 +686,22 @@ describe("first-class cache", () => {
       },
     })
 
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await firstWriteStarted.promise
-    provider.value = false
-    provider.notify({ keys: ["beta-access"] })
-    expect(await evaluator()).toBe(false)
+    control.value = false
+    control.notify(["beta-access"])
+    expect(await flags.get(betaAccess)).toBe(false)
     firstWrite.resolve(null)
     await flushBackground()
 
-    expect(await evaluator.details()).toMatchObject({ source: "cache", value: false })
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("does not read a decision while the delete for a change is in flight", async () => {
     const stored = new Map<string, Decision>()
     const deletion = createDeferred<null>()
-    const { evaluator, provider } = changingFlag({
+    const { control, flags } = changingFlag({
       delete: async (key) => {
         await deletion.promise
         return stored.delete(key)
@@ -619,12 +713,12 @@ describe("first-class cache", () => {
       },
     })
 
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
-    provider.value = false
-    provider.notify({ keys: ["beta-access"] })
+    control.value = false
+    control.notify(["beta-access"])
 
-    expect(await evaluator()).toBe(false)
+    expect(await flags.get(betaAccess)).toBe(false)
     deletion.resolve(null)
   })
 
@@ -634,7 +728,7 @@ describe("first-class cache", () => {
     const firstReadStarted = createDeferred<null>()
     const written = createDeferred<null>()
     let reads = 0
-    const { decide, evaluator, provider } = changingFlag({
+    const { control, decideOne, flags } = changingFlag({
       delete: (key) => Promise.resolve(stored.delete(key)),
       get: (key) => {
         reads += 1
@@ -651,572 +745,593 @@ describe("first-class cache", () => {
       },
     })
 
-    const evaluation = evaluator()
+    const evaluation = flags.get(betaAccess)
     await firstReadStarted.promise
-    provider.notify({ keys: ["beta-access"] })
+    control.notify(["beta-access"])
     firstRead.resolve(null)
     expect(await evaluation).toBe(true)
     await written.promise
     expect(stored.size).toBe(1)
 
-    provider.value = false
-    provider.notify({ keys: ["beta-access"] })
+    control.value = false
+    control.notify(["beta-access"])
     await flushBackground()
 
     expect(stored.size).toBe(0)
-    expect(await evaluator.details()).toMatchObject({ source: "provider", value: false })
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: false })
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("does not read or write the cache for an anonymous identity", async () => {
     const get = vi.fn(() => Promise.resolve<Decision | null>(null))
     const set = vi.fn(() => Promise.resolve())
-    const flag = createFlags({
-      anonymous: "allow",
-      cache: { get, set },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => null,
+    const flags = createFlags({
+      cache: { store: { get, set } },
+      identify: () => anonymous,
+      provider: defineProvider({
+        decideOne: (_flag, _identity: Identity | Anonymous) => TRUE,
+        name: "test",
+      }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
     expect(get).not.toHaveBeenCalled()
     expect(set).not.toHaveBeenCalled()
   })
 
-  test("aborts while cache.get is pending", async () => {
+  test("does not call a custom key function for an anonymous identity", async () => {
+    const key = vi.fn(() => "shared")
+    const get = vi.fn(() => Promise.resolve<Decision | null>(null))
+    const flags = createFlags({
+      cache: { key, store: { get, set: () => Promise.resolve() } },
+      identify: () => anonymous,
+      provider: defineProvider({
+        decideOne: (_flag, _identity: Identity | Anonymous) => TRUE,
+        name: "test",
+      }),
+    })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(key).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  test("aborts while the store read is pending", async () => {
     const pending = createDeferred<Decision | undefined>()
     const controller = new AbortController()
     const reason = new Error("caller stopped")
-    const flag = createFlags({
-      cache: { get: () => pending.promise, set: () => Promise.resolve() },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
+    const flags = createFlags({
+      cache: { store: { get: () => pending.promise, set: () => Promise.resolve() } },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
-    const evaluation = flag({ defaultValue: false, key: "beta-access" }).details({
-      signal: controller.signal,
-    })
+    const evaluation = flags.details(betaAccess, { signal: controller.signal })
 
     await sleep(0)
     controller.abort(reason)
-    expect(await evaluation).toEqual({
-      error: reason,
-      flagKey: "beta-access",
-      source: "default",
-      value: false,
-    })
+    const details = await evaluation
+    expect(details).toMatchObject({ flagKey: "beta-access", source: "default", value: false })
+    expect(details.error).toBeInstanceOf(EvaluationAbortedError)
+    expect(details.error?.cause).toBe(reason)
   })
 
   test("writes only once for a coalesced provider leader", async () => {
     const set = vi.fn(() => Promise.resolve())
-    const decide = vi.fn(async () => {
-      await sleep(5)
-      return { type: "boolean", value: true } as const
+    const decideOne = slowTrue()
+    const flags = createFlags({
+      cache: { coalesce: true, store: { get: () => Promise.resolve(null), set } },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const flag = createFlags({
-      cache: { get: () => Promise.resolve(null), set },
-      coalesce: true,
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await Promise.all([evaluator(), evaluator()])).toEqual([true, true])
+    expect(await Promise.all([flags.get(betaAccess), flags.get(betaAccess)])).toEqual([true, true])
     await flushBackground()
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decideOne).toHaveBeenCalledTimes(1)
     expect(set).toHaveBeenCalledTimes(1)
   })
 
   test("does not wait for a cache write", async () => {
     const write = createDeferred<null>()
-    const flag = createFlags({
-      cache: { get: () => Promise.resolve(null), set: async () => void (await write.promise) },
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
+    const flags = createFlags({
+      cache: {
+        store: { get: () => Promise.resolve(null), set: async () => void (await write.promise) },
+      },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
     })
 
-    expect(await flag({ defaultValue: false, key: "beta-access" })()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     write.resolve(null)
   })
 })
 
 describe("request coalescing", () => {
   test("shares concurrent provider work for one evaluation key by default", async () => {
-    const decide = vi.fn(async () => {
-      await sleep(5)
-      return { type: "boolean", value: true } as const
-    })
-    const flag = createFlags({
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
+    const decideOne = slowTrue()
+    const flags = createFlags({ identify, provider: defineProvider({ decideOne, name: "test" }) })
 
-    expect(await Promise.all([evaluator(), evaluator(), evaluator()])).toEqual([true, true, true])
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(
+      await Promise.all([flags.get(betaAccess), flags.get(betaAccess), flags.get(betaAccess)])
+    ).toEqual([true, true, true])
+    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
   test("gives every evaluation its own provider call when coalescing is disabled", async () => {
-    const decide = vi.fn(async () => {
-      await sleep(5)
-      return { type: "boolean", value: true } as const
+    const decideOne = slowTrue()
+    const flags = createFlags({
+      cache: { coalesce: false },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const flag = createFlags({
-      coalesce: false,
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await Promise.all([evaluator(), evaluator(), evaluator()])).toEqual([true, true, true])
-    expect(decide).toHaveBeenCalledTimes(3)
+    expect(
+      await Promise.all([flags.get(betaAccess), flags.get(betaAccess), flags.get(betaAccess)])
+    ).toEqual([true, true, true])
+    expect(decideOne).toHaveBeenCalledTimes(3)
   })
 
-  test("does not share provider work across factories built from one config object", async () => {
-    const decide = vi.fn(async () => {
+  test("never coalesces anonymous evaluations", async () => {
+    const decideOne = vi.fn(async (_flag: unknown, _identity: Identity | Anonymous) => {
       await sleep(5)
-      return { type: "boolean", value: true } as const
+      return TRUE
     })
-    const config = {
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-    }
-    const first = createFlags(config)({ defaultValue: false, key: "beta-access" })
-    const second = createFlags(config)({ defaultValue: false, key: "beta-access" })
+    const flags = createFlags({
+      identify: () => anonymous,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
 
-    expect(await Promise.all([first(), second()])).toEqual([true, true])
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await Promise.all([flags.get(betaAccess), flags.get(betaAccess)])).toEqual([true, true])
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    expect(decideOne.mock.calls.every(([, identity]) => identity === anonymous)).toBe(true)
+  })
+
+  test("does not share provider work across readers built from one options object", async () => {
+    const decideOne = slowTrue()
+    const options = { identify, provider: defineProvider({ decideOne, name: "test" }) }
+    const first = createFlags(options)
+    const second = createFlags(options)
+
+    expect(await Promise.all([first.get(betaAccess), second.get(betaAccess)])).toEqual([true, true])
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("does not share provider work across incompatible flag shapes", async () => {
-    const decide = vi.fn(async () => {
+    const decideOne = vi.fn(async (shape: { kind: string }): Promise<Decision> => {
       await sleep(5)
-      return { type: "boolean", value: true } as const
+      return shape.kind === "boolean" ? TRUE : { type: "variant", variant: "a" }
     })
-    const flag = createFlags({
-      coalesce: true,
-      decide,
-      identify: () => ({ distinctId: "user123" }),
+    const flags = createFlags({
+      cache: { coalesce: true },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const booleanFlag = flag({ defaultValue: false, key: "shared" })
-    const variantFlag = flag({ defaultValue: "a", key: "shared", variants: ["a", "b"] })
+    const booleanFlag = flag.boolean("shared", false)
+    const variantFlag = flag.variant("shared", ["a", "b"], "a")
 
-    await Promise.all([booleanFlag(), variantFlag()])
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await Promise.all([flags.get(booleanFlag), flags.get(variantFlag)])).toEqual([true, "a"])
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("supports an identity-sensitive coalescing key", async () => {
-    const decide = vi.fn(async () => {
+    type TenantIdentity = Identity & { tenant: string }
+    const decideOne = vi.fn(async (_flag: unknown, _identity: TenantIdentity) => {
       await sleep(5)
-      return { type: "boolean", value: true } as const
+      return TRUE
     })
-    const flag = createFlags<{ distinctId: string; tenant: string }>({
-      coalesce: true,
-      decide,
-      evaluationKey: (context) => `${context.identity?.tenant}:${context.flagKey}`,
-      identify: () => ({ distinctId: "user123", tenant: "unused" }),
+    const flags = createFlags({
+      cache: {
+        coalesce: true,
+        key: (context) =>
+          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+      },
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
     await Promise.all([
-      evaluator({ identity: { distinctId: "user123", tenant: "first" } }),
-      evaluator({ identity: { distinctId: "user123", tenant: "second" } }),
+      flags.for({ distinctId: "user123", tenant: "first" }).get(betaAccess),
+      flags.for({ distinctId: "user123", tenant: "second" }).get(betaAccess),
     ])
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("does not cancel the leader when a follower aborts", async () => {
-    const provider = createDeferred<Decision>()
+    const pending = createDeferred<Decision>()
     const controller = new AbortController()
-    const flag = createFlags({
-      coalesce: true,
-      decide: () => provider.promise,
-      identify: () => ({ distinctId: "user123" }),
+    const reason = new Error("follower stopped")
+    const flags = createFlags({
+      cache: { coalesce: true },
+      identify,
+      provider: defineProvider({ decideOne: () => pending.promise, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
-    const leader = evaluator()
+    const leader = flags.get(betaAccess)
     await sleep(0)
-    const follower = evaluator.details({ signal: controller.signal })
+    const follower = flags.details(betaAccess, { signal: controller.signal })
     await sleep(0)
 
-    controller.abort(new Error("follower stopped"))
-    provider.resolve({ type: "boolean", value: true })
+    controller.abort(reason)
+    pending.resolve(TRUE)
 
     expect(await leader).toBe(true)
     const followerDetails = await follower
     expect(followerDetails.source).toBe("default")
-    expect(followerDetails.error?.message).toBe("follower stopped")
+    expect(followerDetails.error).toBeInstanceOf(EvaluationAbortedError)
+    expect(followerDetails.error?.cause).toBe(reason)
   })
 
   test("keeps the shared provider call for a follower when the leader cancels", async () => {
-    const provider = createDeferred<Decision>()
-    const providerSignal = createDeferred<AbortSignal | undefined>()
-    const decide = vi.fn((_key: string, _identity: unknown, options?: { signal?: AbortSignal }) => {
-      providerSignal.resolve(options?.signal)
-      return provider.promise
-    })
+    const pending = createDeferred<Decision>()
+    const providerSignal = createDeferred<AbortSignal>()
+    const decideOne = vi.fn(
+      (_flag: unknown, _identity: Identity, options: { signal: AbortSignal }) => {
+        providerSignal.resolve(options.signal)
+        return pending.promise
+      }
+    )
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const flag = createFlags({
-      decide,
-      // The second key read is the follower's, in the same synchronous step as its join.
-      evaluationKey: (context) => {
-        keyReads += 1
-        if (keyReads === 2) followerJoined.resolve(null)
-        return context.flagKey
+    const flags = createFlags({
+      cache: {
+        // The second key read is the follower's, in the same synchronous step as its join.
+        key: (context) => {
+          keyReads += 1
+          if (keyReads === 2) followerJoined.resolve(null)
+          return context.flag.key
+        },
       },
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const controller = new AbortController()
     const reason = new Error("leader stopped")
 
-    const leader = evaluator.details({ signal: controller.signal })
+    const leader = flags.details(betaAccess, { signal: controller.signal })
     const signal = await providerSignal.promise
-    const follower = evaluator.details()
+    const follower = flags.details(betaAccess)
     await followerJoined.promise
     controller.abort(reason)
-    provider.resolve({ type: "boolean", value: true })
+    pending.resolve(TRUE)
 
-    expect(await leader).toEqual({
-      error: reason,
-      flagKey: "beta-access",
-      source: "default",
-      value: false,
-    })
+    const leaderDetails = await leader
+    expect(leaderDetails).toMatchObject({ flagKey: "beta-access", source: "default", value: false })
+    expect(leaderDetails.error?.cause).toBe(reason)
     expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
-    expect(signal?.aborted).toBe(false)
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(signal.aborted).toBe(false)
+    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
   test("keeps the shared provider call for a follower with a later deadline", async () => {
     vi.useFakeTimers()
     try {
-      const provider = createDeferred<Decision>()
+      const pending = createDeferred<Decision>()
       const providerStarted = createDeferred<null>()
-      const decide = vi.fn(
-        (_key: string, _identity: unknown, options?: { signal?: AbortSignal }) => {
+      const decideOne = vi.fn(
+        (_flag: unknown, _identity: Identity, options: { signal: AbortSignal }) => {
           providerStarted.resolve(null)
           return new Promise<Decision>((resolve, reject) => {
-            options?.signal?.addEventListener("abort", () => {
+            options.signal.addEventListener("abort", () => {
               reject(new Error("provider stopped"))
             })
-            void provider.promise.then(resolve)
+            void pending.promise.then(resolve)
           })
         }
       )
       const followerJoined = createDeferred<null>()
       let keyReads = 0
-      const flag = createFlags({
-        decide,
-        evaluationKey: (context) => {
-          keyReads += 1
-          if (keyReads === 2) followerJoined.resolve(null)
-          return context.flagKey
+      const flags = createFlags({
+        cache: {
+          key: (context) => {
+            keyReads += 1
+            if (keyReads === 2) followerJoined.resolve(null)
+            return context.flag.key
+          },
         },
-        identify: () => ({ distinctId: "user123" }),
+        identify,
+        provider: defineProvider({ decideOne, name: "test" }),
       })
-      const fast = flag({ defaultValue: false, key: "beta-access", timeoutMs: 10 })
-      const slow = flag({ defaultValue: false, key: "beta-access", timeoutMs: 1000 })
+      const fast = flag.boolean("beta-access", false, { timeoutMs: 10 })
+      const slow = flag.boolean("beta-access", false, { timeoutMs: 1000 })
 
-      const leader = fast.details()
+      const leader = flags.details(fast)
       await providerStarted.promise
-      const follower = slow.details()
+      const follower = flags.details(slow)
       await followerJoined.promise
       await vi.advanceTimersByTimeAsync(10)
       const leaderDetails = await leader
       expect(leaderDetails.source).toBe("default")
-      expect(leaderDetails.error).toBeInstanceOf(FlagTimeoutError)
+      expect(leaderDetails.error).toBeInstanceOf(EvaluationTimeoutError)
 
-      provider.resolve({ type: "boolean", value: true })
+      pending.resolve(TRUE)
       expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
-      expect(decide).toHaveBeenCalledTimes(1)
+      expect(decideOne).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
   })
 
   test("cancels the shared provider call once every caller has cancelled", async () => {
-    const providerSignal = createDeferred<AbortSignal | undefined>()
-    const decide = vi.fn(
+    const providerSignal = createDeferred<AbortSignal>()
+    const decideOne = vi.fn(
       (
-        _key: string,
-        _identity: unknown,
-        options?: { signal?: AbortSignal }
+        _flag: unknown,
+        _identity: Identity,
+        options: { signal: AbortSignal }
       ): Decision | Promise<Decision> => {
-        if (decide.mock.calls.length > 1) {
-          return { type: "boolean", value: true }
+        if (decideOne.mock.calls.length > 1) {
+          return TRUE
         }
-        providerSignal.resolve(options?.signal)
+        providerSignal.resolve(options.signal)
         return createDeferred<Decision>().promise
       }
     )
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const flag = createFlags({
-      decide,
-      evaluationKey: (context) => {
-        keyReads += 1
-        if (keyReads === 2) followerJoined.resolve(null)
-        return context.flagKey
+    const flags = createFlags({
+      cache: {
+        key: (context) => {
+          keyReads += 1
+          if (keyReads === 2) followerJoined.resolve(null)
+          return context.flag.key
+        },
       },
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const leaderController = new AbortController()
     const followerController = new AbortController()
 
-    const leader = evaluator.details({ signal: leaderController.signal })
+    const leader = flags.details(betaAccess, { signal: leaderController.signal })
     const signal = await providerSignal.promise
-    const follower = evaluator.details({ signal: followerController.signal })
+    const follower = flags.details(betaAccess, { signal: followerController.signal })
     await followerJoined.promise
 
     leaderController.abort(new Error("leader stopped"))
-    expect(signal?.aborted).toBe(false)
+    expect(signal.aborted).toBe(false)
     followerController.abort(new Error("follower stopped"))
-    expect(signal?.aborted).toBe(true)
+    expect(signal.aborted).toBe(true)
 
     const [leaderDetails, followerDetails] = await Promise.all([leader, follower])
     expect(leaderDetails.source).toBe("default")
     expect(followerDetails.source).toBe("default")
-    expect(await evaluator()).toBe(true)
-    expect(decide).toHaveBeenCalledTimes(2)
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   test("keeps a batch's shared provider call for an outside follower when the batch cancels", async () => {
     const batchProvider = createDeferred<Record<string, Decision>>()
-    const providerSignal = createDeferred<AbortSignal | undefined>()
-    const decideMany = vi.fn(
-      (_keys: readonly string[], _identity: unknown, options?: { signal?: AbortSignal }) => {
-        providerSignal.resolve(options?.signal)
+    const providerSignal = createDeferred<AbortSignal>()
+    const decide = vi.fn(
+      (_flags: unknown, _identity: Identity, options: { signal: AbortSignal }) => {
+        providerSignal.resolve(options.signal)
         return batchProvider.promise
       }
     )
     const followerJoined = createDeferred<null>()
     let keyReads = 0
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany,
-      evaluationKey: (context) => {
-        keyReads += 1
-        if (keyReads === 2) followerJoined.resolve(null)
-        return context.flagKey
+    const flags = createFlags({
+      cache: {
+        key: (context) => {
+          keyReads += 1
+          if (keyReads === 2) followerJoined.resolve(null)
+          return context.flag.key
+        },
       },
-      identify: () => ({ distinctId: "user123" }),
+      identify,
+      provider: defineProvider({ decide, name: "test" }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
     const controller = new AbortController()
 
-    const batch = flag.batch([evaluator], { signal: controller.signal })
+    const batch = flags.detailsMany([betaAccess], { signal: controller.signal })
     const signal = await providerSignal.promise
-    const follower = evaluator.details()
+    const follower = flags.details(betaAccess)
     await followerJoined.promise
     controller.abort(new Error("batch stopped"))
-    const batchResult = await batch
-    expect(batchResult.details(evaluator).source).toBe("default")
-    expect(signal?.aborted).toBe(false)
-    batchProvider.resolve({ "beta-access": { type: "boolean", value: true } })
+    const [batchDetails] = await batch
+    expect(batchDetails.source).toBe("default")
+    expect(signal.aborted).toBe(false)
+    batchProvider.resolve({ "beta-access": TRUE })
 
     expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
-    expect(decideMany).toHaveBeenCalledTimes(1)
+    expect(decide).toHaveBeenCalledTimes(1)
   })
 
-  test("does not coalesce onto in-flight provider work after invalidation", async () => {
-    const first = createDeferred<Decision>()
-    let notifyChange: ((change: { keys?: readonly string[] }) => void) | undefined
-    const decide = vi.fn((): Decision | Promise<Decision> =>
-      decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
-    )
-    const flag = createFlags({
-      cache: {
+  // Each case drops in-flight provider work on a change notification, with a different store.
+  const invalidationStores: Array<[string, DecisionStore | undefined]> = [
+    [
+      "a store that can delete",
+      {
         delete: () => Promise.resolve(true),
         get: () => Promise.resolve(null),
         set: () => Promise.resolve(),
       },
-      coalesce: true,
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (notify) => {
-        notifyChange = notify
-        return () => null
-      },
+    ],
+    ["no store", undefined],
+    [
+      "a store that cannot delete",
+      { get: () => Promise.resolve(null), set: () => Promise.resolve() },
+    ],
+  ]
+  for (const [label, store] of invalidationStores) {
+    test(`does not coalesce onto in-flight provider work after invalidation with ${label}`, async () => {
+      const first = createDeferred<Decision>()
+      let notifyChange: ChangeListener | undefined
+      const decideOne = vi.fn((): Decision | Promise<Decision> =>
+        decideOne.mock.calls.length === 1 ? first.promise : FALSE
+      )
+      const flags = createFlags({
+        cache: store ? { coalesce: true, store } : { coalesce: true },
+        identify,
+        provider: defineProvider({
+          decideOne,
+          name: "test",
+          subscribe: (notify) => {
+            notifyChange = notify
+            return () => null
+          },
+        }),
+      })
+      const enabled = flag.boolean("beta-access", true)
+
+      const leader = flags.get(enabled)
+      await sleep(0)
+      notifyChange?.(["beta-access"])
+      const late = flags.get(enabled)
+      await sleep(0)
+
+      first.resolve(TRUE)
+      expect(await leader).toBe(true)
+      expect(await late).toBe(false)
+      expect(decideOne).toHaveBeenCalledTimes(2)
     })
-    const evaluator = flag({ defaultValue: true, key: "beta-access" })
-
-    const leader = evaluator()
-    await sleep(0)
-    notifyChange?.({ keys: ["beta-access"] })
-    const late = evaluator()
-    await sleep(0)
-
-    first.resolve({ type: "boolean", value: true })
-    expect(await leader).toBe(true)
-    expect(await late).toBe(false)
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  test("drops in-flight provider work on invalidation without a cache store", async () => {
-    const first = createDeferred<Decision>()
-    let notifyChange: ((change: { keys?: readonly string[] }) => void) | undefined
-    const decide = vi.fn((): Decision | Promise<Decision> =>
-      decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
-    )
-    const flag = createFlags({
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (notify) => {
-        notifyChange = notify
-        return () => null
-      },
-    })
-    const evaluator = flag({ defaultValue: true, key: "beta-access" })
-
-    const leader = evaluator()
-    await sleep(0)
-    notifyChange?.({ keys: ["beta-access"] })
-    const late = evaluator()
-    await sleep(0)
-
-    first.resolve({ type: "boolean", value: true })
-    expect(await leader).toBe(true)
-    expect(await late).toBe(false)
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  test("drops in-flight provider work on invalidation when the cache store cannot delete", async () => {
-    const first = createDeferred<Decision>()
-    let notifyChange: ((change: { keys?: readonly string[] }) => void) | undefined
-    const decide = vi.fn((): Decision | Promise<Decision> =>
-      decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
-    )
-    const flag = createFlags({
-      cache: {
-        get: () => Promise.resolve(null),
-        set: () => Promise.resolve(),
-      },
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (notify) => {
-        notifyChange = notify
-        return () => null
-      },
-    })
-    const evaluator = flag({ defaultValue: true, key: "beta-access" })
-
-    const leader = evaluator()
-    await sleep(0)
-    notifyChange?.({ keys: ["beta-access"] })
-    const late = evaluator()
-    await sleep(0)
-
-    first.resolve({ type: "boolean", value: true })
-    expect(await leader).toBe(true)
-    expect(await late).toBe(false)
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
+  }
 
   test("does not write a pre-change decision into a store that cannot delete", async () => {
     const first = createDeferred<Decision>()
-    const store = new Map<string, Decision>()
-    let notifyChange: ((change: { keys?: readonly string[] }) => void) | undefined
-    const decide = vi.fn((): Decision | Promise<Decision> =>
-      decide.mock.calls.length === 1 ? first.promise : { type: "boolean", value: false }
+    const stored = new Map<string, Decision>()
+    let notifyChange: ChangeListener | undefined
+    const decideOne = vi.fn((): Decision | Promise<Decision> =>
+      decideOne.mock.calls.length === 1 ? first.promise : FALSE
     )
-    const flag = createFlags({
+    const flags = createFlags({
       cache: {
-        get: (key) => Promise.resolve(store.get(key) ?? null),
-        set: (key, decision) => {
-          store.set(key, decision)
-          return Promise.resolve()
+        store: {
+          get: (key) => Promise.resolve(stored.get(key) ?? null),
+          set: (key, decision) => {
+            stored.set(key, decision)
+            return Promise.resolve()
+          },
         },
       },
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-      subscribe: (notify) => {
-        notifyChange = notify
-        return () => null
-      },
+      identify,
+      provider: defineProvider({
+        decideOne,
+        name: "test",
+        subscribe: (notify) => {
+          notifyChange = notify
+          return () => null
+        },
+      }),
     })
-    const evaluator = flag({ defaultValue: true, key: "beta-access" })
+    const enabled = flag.boolean("beta-access", true)
 
-    const leader = evaluator()
+    const leader = flags.get(enabled)
     await sleep(0)
-    notifyChange?.({ keys: ["beta-access"] })
-    const late = evaluator()
+    notifyChange?.(["beta-access"])
+    const late = flags.get(enabled)
     await sleep(0)
 
-    first.resolve({ type: "boolean", value: true })
+    first.resolve(TRUE)
     expect(await leader).toBe(true)
     expect(await late).toBe(false)
     await flushBackground()
-    expect(await evaluator()).toBe(false)
+    expect(await flags.get(enabled)).toBe(false)
   })
 
   test("degrades softly when subscribe throws instead of poisoning coalescing", async () => {
-    const reports: DecisionCacheErrorReport[] = []
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      identify: () => ({ distinctId: "user123" }),
-      onCacheError: (report) => void reports.push(report),
-      subscribe: () => {
-        throw new Error("subscribe failed")
-      },
+    const reports: ErrorReport[] = []
+    const flags = createFlags({
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({
+        decideOne: () => TRUE,
+        name: "test",
+        subscribe: () => {
+          throw new Error("subscribe failed")
+        },
+      }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
 
-    expect(await evaluator()).toBe(true)
-    expect(await evaluator()).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
     expect(reports.length).toBeGreaterThanOrEqual(1)
-    expect(reports[0]).toMatchObject({
-      error: new Error("subscribe failed"),
-      flagKey: "beta-access",
-      operation: "subscribe",
-    })
+    expect(reports[0]).toEqual({ _tag: "SubscribeFailed", error: new Error("subscribe failed") })
   })
 
-  test("rejects every follower with the normalized leader failure and permits a retry", async () => {
-    const provider = createDeferred<Decision>()
-    const decide = vi.fn(() => provider.promise)
-    const flag = createFlags({
-      coalesce: true,
-      decide,
-      identify: () => ({ distinctId: "user123" }),
+  test("reports a throwing subscribe to a change listener and returns a no-op unsubscribe", async () => {
+    const reports: ErrorReport[] = []
+    const flags = createFlags({
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({
+        decideOne: () => TRUE,
+        name: "test",
+        subscribe: () => {
+          throw new Error("subscribe failed")
+        },
+      }),
     })
-    const evaluator = flag({ defaultValue: false, key: "beta-access" })
-    const evaluations = [evaluator.details(), evaluator.details(), evaluator.details()]
+
+    const unsubscribe = flags.subscribe(() => null)
+    expect(() => {
+      unsubscribe()
+    }).not.toThrow()
+    await flushBackground()
+    expect(reports).toEqual([{ _tag: "SubscribeFailed", error: new Error("subscribe failed") }])
+  })
+
+  test("rejects every follower with the leader's provider failure and permits a retry", async () => {
+    const pending = createDeferred<Decision>()
+    const failure = { code: "unavailable" }
+    const decideOne = vi.fn((): Promise<Decision> => pending.promise)
+    const flags = createFlags({
+      cache: { coalesce: true },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+    const evaluations = [
+      flags.details(betaAccess),
+      flags.details(betaAccess),
+      flags.details(betaAccess),
+    ]
     await sleep(0)
 
-    provider.reject({ code: "unavailable" } as never)
+    pending.reject(failure)
 
     const details = await Promise.all(evaluations)
-    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decideOne).toHaveBeenCalledTimes(1)
     expect(details.map((result) => result.source)).toEqual(["default", "default", "default"])
-    expect(details.map((result) => result.error?.message)).toEqual([
-      '{"code":"unavailable"}',
-      '{"code":"unavailable"}',
-      '{"code":"unavailable"}',
-    ])
+    for (const result of details) {
+      expect(result.error).toBeInstanceOf(ProviderFailedError)
+      expect(result.error).toMatchObject({ provider: "test" })
+      expect(result.error?.cause).toBe(failure)
+    }
+    expect(details[1]?.error).toBe(details[0]?.error)
 
-    decide.mockImplementation(() => Promise.resolve({ type: "boolean", value: true }))
-    expect(await evaluator()).toBe(true)
-    expect(decide).toHaveBeenCalledTimes(2)
+    decideOne.mockImplementation(() => Promise.resolve(TRUE))
+    expect(await flags.get(betaAccess)).toBe(true)
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 })
 
 describe("timeouts and fallback", () => {
   test("returns the default and reports a timeout", async () => {
-    const flag = createFlags({
-      decide: () =>
-        new Promise<Decision>((_resolve) => {
-          void _resolve
-        }),
-      identify: () => ({ distinctId: "user123" }),
+    const flags = createFlags({
+      identify,
+      provider: defineProvider({
+        decideOne: () => createDeferred<Decision>().promise,
+        name: "test",
+      }),
       timeoutMs: 5,
     })
 
-    const details = await flag({ defaultValue: false, key: "beta-access" }).details()
+    const details = await flags.details(betaAccess)
     expect(details.source).toBe("default")
-    expect(details.error).toBeInstanceOf(FlagTimeoutError)
+    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeoutMs: 5 })
+  })
+
+  test("uses the flag's timeout instead of the reader's", async () => {
+    const flags = createFlags({
+      identify,
+      provider: defineProvider({
+        decideOne: () => createDeferred<Decision>().promise,
+        name: "test",
+      }),
+      timeoutMs: 1000,
+    })
+
+    const details = await flags.details(flag.boolean("beta-access", false, { timeoutMs: 5 }))
+    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeoutMs: 5 })
   })
 })

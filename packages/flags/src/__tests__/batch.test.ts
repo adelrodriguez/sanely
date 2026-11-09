@@ -1,16 +1,18 @@
 import { describe, expect, test, vi } from "vitest"
-import type { Decision, Hook, Identity } from "#index.ts"
-import { createFlags, BatchFlagNotFoundError, FlagTimeoutError } from "#index.ts"
+import type { Decision, Flag, Hook, Identity } from "#index.ts"
+import {
+  anonymous,
+  createFlags,
+  decision,
+  defineProvider,
+  EvaluationTimeoutError,
+  flag,
+  IdentityNotFoundError,
+  InvalidDecisionError,
+  ProviderFailedError,
+} from "#index.ts"
 
-async function expectRejection(promise: Promise<unknown>, message: string): Promise<void> {
-  try {
-    await promise
-  } catch (error) {
-    expect(error).toHaveProperty("message", message)
-    return
-  }
-  throw new Error("Expected batch to reject")
-}
+const user: Identity = { distinctId: "user123" }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
@@ -18,87 +20,167 @@ function delay(milliseconds: number): Promise<void> {
   })
 }
 
-describe("flag batches", () => {
-  test("returns a destructurable array in flag order", async () => {
-    const flag = createFlags({
-      decide: (key) =>
-        key === "theme"
-          ? ({ type: "variant", variant: "dark" } as const)
-          : ({ type: "boolean", value: true } as const),
-      identify: () => ({ distinctId: "user" }),
-    })
-    const beta = flag({ defaultValue: false, key: "beta" })
-    const theme = flag({ defaultValue: "light", key: "theme", variants: ["light", "dark"] })
-    const batch = await flag.batch([beta, theme])
-    const [betaValue, themeValue] = batch
+function decideFor(item: Flag): Decision {
+  return item.kind === "variant" ? decision.variant("dark") : decision.boolean(true)
+}
 
-    expect(Array.isArray(batch)).toBe(true)
-    expect([betaValue, themeValue]).toEqual([batch.get(beta), batch.get(theme)])
-    expect(Array.from(batch)).toEqual([true, "dark"])
-    expect([...batch]).toEqual([true, "dark"])
+function decideAll(flags: readonly Flag[]): Record<string, Decision> {
+  return Object.fromEntries(flags.map((item) => [item.key, decideFor(item)]))
+}
+
+function decideOneFor(item: Flag): Decision {
+  return item.key === "broken" ? decision.variant("zzz") : decideFor(item)
+}
+
+const keysOf = (flags: readonly Flag[]) => flags.map((item) => item.key)
+
+describe("batches", () => {
+  test("returns the values as a tuple in flag order", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide: decideAll, name: "bulk" }),
+    })
+    const beta = flag.boolean("beta", false)
+    const theme = flag.variant("theme", ["light", "dark"], "light")
+    const layout = flag.variant("layout", ["grid", "list"], "grid")
+
+    const values = await flags.getMany([theme, beta, layout])
+
+    expect(Array.isArray(values)).toBe(true)
+    expect(values).toEqual(["dark", true, "grid"])
+    const [first, second] = await flags.getMany([beta, theme])
+    expect([first, second]).toEqual([true, "dark"])
   })
+
+  test("a decideOne provider and a decide provider give the same results", async () => {
+    const beta = flag.boolean("beta", false)
+    const theme = flag.variant("theme", ["light", "dark"], "light")
+    const broken = flag.variant("broken", ["a", "b"], "a")
+    const one = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decideOne: decideOneFor, name: "one" }),
+    })
+    const many = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decide: (items) => Object.fromEntries(items.map((item) => [item.key, decideOneFor(item)])),
+        name: "many",
+      }),
+    })
+
+    const [fromOne, fromMany] = await Promise.all([
+      one.detailsMany([beta, theme, broken]),
+      many.detailsMany([beta, theme, broken]),
+    ])
+
+    expect(fromOne).toEqual(fromMany)
+    expect(fromOne.map((details) => details.value)).toEqual([true, "dark", "a"])
+    expect(fromOne[2].error).toBeInstanceOf(InvalidDecisionError)
+  })
+
+  test("two flags with one key share one provider request", async () => {
+    const decide = vi.fn(decideAll)
+    const decideOne = vi.fn(decideFor)
+    const short = flag.boolean("beta", false)
+    const long = flag.boolean("beta", true, { timeoutMs: 1000 })
+
+    const bulk = createFlags({
+      cache: { coalesce: false },
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
+    })
+    const single = createFlags({
+      cache: { coalesce: false },
+      identify: () => user,
+      provider: defineProvider({ decideOne, name: "single" }),
+    })
+
+    expect(await bulk.getMany([short, long, short])).toEqual([true, true, true])
+    expect(await single.getMany([short, long])).toEqual([true, true])
+    expect(decide).toHaveBeenCalledTimes(1)
+    expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["beta"])
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  test("validates a shared decision against each flag", async () => {
+    const asBoolean = flag.boolean("shared", false)
+    const asVariant = flag.variant("shared", ["on", "off"], "off")
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decide: () => ({ shared: decision.boolean(true) }),
+        name: "bulk",
+      }),
+    })
+
+    const [booleanDetails, variantDetails] = await flags.detailsMany([asBoolean, asVariant])
+
+    expect(booleanDetails).toEqual({ flagKey: "shared", source: "provider", value: true })
+    expect(variantDetails.value).toBe("off")
+    expect(variantDetails.error).toBeInstanceOf(InvalidDecisionError)
+  })
+
   test("runs error hooks for each batch entry that falls back", async () => {
     const reportedFlagKeys: string[] = []
-    const flag = createFlags({
-      decide: () => Promise.reject(new Error("Provider failed")),
-      decideMany: () => Promise.reject(new Error("Batch provider failed")),
+    const flags = createFlags({
       hooks: [
         {
           error: (context) => {
-            reportedFlagKeys.push(context.flagKey)
+            reportedFlagKeys.push(context.flag.key)
           },
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({
+        decide: () => Promise.reject(new Error("Batch provider failed")),
+        name: "bulk",
+      }),
     })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: true, key: "second" })
+    const first = flag.boolean("first", false)
+    const second = flag.boolean("second", true)
 
-    const batch = await flag.batch([first, second])
+    const [firstDetails, secondDetails] = await flags.detailsMany([first, second])
 
-    expect(batch.get(first)).toBe(false)
-    expect(batch.get(second)).toBe(true)
+    expect(firstDetails.value).toBe(false)
+    expect(secondDetails.value).toBe(true)
+    expect(firstDetails.error).toBeInstanceOf(ProviderFailedError)
+    expect(firstDetails.error).toHaveProperty("provider", "bulk")
     expect(reportedFlagKeys.toSorted()).toEqual(["first", "second"])
   })
 
   test("returns an empty batch without resolving identity", async () => {
-    const identify = vi.fn(() => ({ distinctId: "user123" }))
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
+    const identify = vi.fn(() => user)
+    const flags = createFlags({
       identify,
+      provider: defineProvider({ decide: decideAll, name: "bulk" }),
     })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
 
-    const batch = await flag.batch([])
-
+    expect(await flags.getMany([])).toEqual([])
+    expect(await flags.detailsMany([])).toEqual([])
     expect(identify).not.toHaveBeenCalled()
-    // @ts-expect-error -- An empty batch cannot contain this evaluator.
-    expect(() => batch.get(betaAccess)).toThrow(BatchFlagNotFoundError)
   })
 
-  test("returns partial fallback results when identity resolution fails", async () => {
+  test("returns fallback results when identity resolution fails", async () => {
     const identityError = new Error("identity unavailable")
-    const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
-    const decideMany = vi.fn(() => ({ first: { type: "boolean", value: true } as const }))
-    const flag = createFlags({
-      decide,
-      decideMany,
+    const decide = vi.fn(decideAll)
+    const flags = createFlags({
       identify: () => Promise.reject(identityError),
+      provider: defineProvider({ decide, name: "bulk" }),
     })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: true, key: "second" })
+    const first = flag.boolean("first", false)
+    const second = flag.boolean("second", true)
 
-    const batch = await flag.batch([first, second])
+    const [firstDetails, secondDetails] = await flags.detailsMany([first, second])
 
-    expect(batch.get(first)).toBe(false)
-    expect(batch.get(second)).toBe(true)
-    expect(batch.details(first).error).toBe(identityError)
-    expect(batch.details(second).error).toBe(identityError)
-    expect(decideMany).not.toHaveBeenCalled()
+    expect(firstDetails.value).toBe(false)
+    expect(secondDetails.value).toBe(true)
+    expect(firstDetails.error).toBeInstanceOf(IdentityNotFoundError)
+    expect(firstDetails.error?.cause).toBe(identityError)
+    expect(secondDetails.error).toBe(firstDetails.error)
     expect(decide).not.toHaveBeenCalled()
   })
 
-  test("commits a batch before detached after hooks settle", async () => {
+  test("resolves the batch before detached after hooks settle", async () => {
     let releaseAfter!: () => void
     const afterWork = new Promise<void>((resolve) => {
       releaseAfter = resolve
@@ -106,74 +188,55 @@ describe("flag batches", () => {
     const after = vi.fn(async () => {
       await afterWork
     })
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: true }),
-      decideMany: () => ({ "beta-access": { type: "boolean", value: true } }),
+    const flags = createFlags({
       hooks: [{ after }],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({ decide: decideAll, name: "bulk" }),
     })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
+    const betaAccess = flag.boolean("beta-access", false)
 
-    const batch = await Promise.race([
-      flag.batch([betaAccess]),
+    const values = await Promise.race([
+      flags.getMany([betaAccess]),
       delay(50).then(() => {
         throw new Error("Batch waited for an after hook")
       }),
     ])
 
-    expect(batch.get(betaAccess)).toBe(true)
+    expect(values).toEqual([true])
     expect(after).toHaveBeenCalledTimes(1)
     releaseAfter()
   })
 
-  test("resolves identity once and batches unresolved flags", async () => {
-    const identity = { distinctId: "user123" }
-    const identify = vi.fn(() => identity)
-    const decide = vi.fn(() => {
-      throw new Error("single decision should not run")
-    })
-    const decideMany = vi.fn(() => ({
-      "beta-access": { type: "boolean", value: true } as const,
-      theme: { type: "variant", variant: "dark" } as const,
-    }))
-    const flag = createFlags({ decide, decideMany, identify })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
+  test("resolves identity once and sends the unresolved flags in one request", async () => {
+    const identify = vi.fn(() => user)
+    const decide = vi.fn(decideAll)
+    const flags = createFlags({ identify, provider: defineProvider({ decide, name: "bulk" }) })
+    const betaAccess = flag.boolean("beta-access", false)
+    const theme = flag.variant("theme", ["light", "dark"], "light")
 
-    const batch = await flag.batch([betaAccess, theme] as const)
-    const booleanValue: boolean = batch.get(betaAccess)
-    const variantValue: "light" | "dark" = batch.get(theme)
-
-    expect(booleanValue).toBe(true)
-    expect(variantValue).toBe("dark")
+    expect(await flags.getMany([betaAccess, theme])).toEqual([true, "dark"])
     expect(identify).toHaveBeenCalledTimes(1)
-    expect(decideMany).toHaveBeenCalledWith(["beta-access", "theme"], identity, expect.any(Object))
-    expect(decide).not.toHaveBeenCalled()
+    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decide).toHaveBeenCalledWith([betaAccess, theme], user, {
+      signal: expect.any(AbortSignal),
+    })
   })
 
-  test("exposes typed evaluation details and variant payloads", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany: () => ({
-        broken: { type: "variant", variant: "invalid" },
-        theme: { payload: { campaign: "summer" }, type: "variant", variant: "dark" },
+  test("returns typed details with payloads", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decide: () => ({
+          broken: decision.variant("invalid"),
+          theme: decision.variant("dark", { campaign: "summer" }),
+        }),
+        name: "bulk",
       }),
-      identify: () => ({ distinctId: "user123" }),
     })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-    const broken = flag({ defaultValue: false, key: "broken" })
+    const theme = flag.variant("theme", ["light", "dark"], "light")
+    const broken = flag.boolean("broken", false)
 
-    const batch = await flag.batch([theme, broken] as const)
-    const themeDetails = batch.details(theme)
-    const brokenDetails = batch.details(broken)
+    const [themeDetails, brokenDetails] = await flags.detailsMany([theme, broken])
 
     expect(themeDetails).toEqual({
       flagKey: "theme",
@@ -183,53 +246,49 @@ describe("flag batches", () => {
     })
     expect(brokenDetails.source).toBe("default")
     expect(brokenDetails.value).toBe(false)
-    expect(brokenDetails.error).toBeInstanceOf(Error)
+    expect(brokenDetails.error).toBeInstanceOf(InvalidDecisionError)
   })
 
-  test("sends only cache misses to decideMany and runs every observer lifecycle", async () => {
+  test("sends only store misses to the provider and runs every hook phase", async () => {
     const phases: string[] = []
     const hook: Hook = {
       after: (context) => {
-        phases.push(`${context.flagKey}:after`)
+        phases.push(`${context.flag.key}:after`)
       },
       before: (context) => {
-        phases.push(`${context.flagKey}:before`)
+        phases.push(`${context.flag.key}:before`)
       },
       finally: (context) => {
-        phases.push(`${context.flagKey}:finally`)
+        phases.push(`${context.flag.key}:finally`)
       },
     }
     const stored = new Map<string, Decision>([
-      ['["beta-access","boolean",null,"string","user123"]', { type: "boolean", value: true }],
+      ['["beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
     ])
-    const decideMany = vi.fn(() => ({
-      theme: { type: "variant", variant: "dark" } as const,
-    }))
-    const flag = createFlags({
+    const decide = vi.fn(decideAll)
+    const flags = createFlags({
       cache: {
-        get: (key) => Promise.resolve(stored.get(key)),
-        set: (key, value) => {
-          stored.set(key, value)
-          return Promise.resolve()
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
         },
       },
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany,
       hooks: [hook],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
     })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
+    const betaAccess = flag.boolean("beta-access", false)
+    const theme = flag.variant("theme", ["light", "dark"], "light")
 
-    const batch = await flag.batch([betaAccess, theme])
+    const [betaDetails, themeDetails] = await flags.detailsMany([betaAccess, theme])
+    await delay(0)
 
-    expect(batch.get(betaAccess)).toBe(true)
-    expect(batch.get(theme)).toBe("dark")
-    expect(decideMany).toHaveBeenCalledWith(["theme"], expect.any(Object), expect.any(Object))
+    expect(betaDetails).toEqual({ flagKey: "beta-access", source: "cache", value: true })
+    expect(themeDetails.value).toBe("dark")
+    expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["theme"])
     expect(phases.filter((phase) => phase.startsWith("beta-access:"))).toEqual([
       "beta-access:before",
       "beta-access:after",
@@ -243,158 +302,138 @@ describe("flag batches", () => {
   })
 
   test("isolates an invalid decision to its flag", async () => {
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany: () => ({
-        "beta-access": { type: "boolean", value: true },
-        theme: { type: "variant", variant: "purple" },
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decide: () => ({
+          "beta-access": decision.boolean(true),
+          theme: decision.variant("purple"),
+        }),
+        name: "bulk",
       }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
     })
 
-    const batch = await flag.batch([betaAccess, theme])
-
-    expect(batch.get(betaAccess)).toBe(true)
-    expect(batch.get(theme)).toBe("light")
+    expect(
+      await flags.getMany([
+        flag.boolean("beta-access", false),
+        flag.variant("theme", ["light", "dark"], "light"),
+      ])
+    ).toEqual([true, "light"])
   })
 
-  test("isolates a rejected batch while preserving cached flags", async () => {
-    const flag = createFlags({
+  test("isolates a rejected request while keeping stored flags", async () => {
+    const flags = createFlags({
       cache: {
-        get: (key) =>
-          Promise.resolve(
-            key.includes("hooked") ? { type: "boolean" as const, value: true } : undefined
-          ),
-        set: () => Promise.resolve(),
-      },
-      decide: () => ({ type: "boolean", value: true }),
-      decideMany: () => Promise.reject(new Error("provider unavailable")),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const hooked = flag({ defaultValue: false, key: "hooked" })
-    const unresolved = flag({ defaultValue: false, key: "unresolved" })
-
-    const batch = await flag.batch([hooked, unresolved])
-
-    expect(batch.get(hooked)).toBe(true)
-    expect(batch.get(unresolved)).toBe(false)
-  })
-
-  test("falls back to one single decision for a missing batch key", async () => {
-    const decide = vi.fn((key: string) =>
-      key === "theme"
-        ? ({ type: "variant", variant: "dark" } as const)
-        : ({ type: "boolean", value: false } as const)
-    )
-    const flag = createFlags({
-      decide,
-      decideMany: () => ({ "beta-access": { type: "boolean", value: true } }),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-
-    const batch = await flag.batch([betaAccess, theme])
-
-    expect(batch.get(betaAccess)).toBe(true)
-    expect(batch.get(theme)).toBe("dark")
-    expect(decide).toHaveBeenCalledTimes(1)
-    expect(decide).toHaveBeenCalledWith("theme", expect.any(Object), expect.any(Object))
-  })
-
-  test("does not treat inherited record properties as batch decisions", async () => {
-    const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
-    const flag = createFlags({
-      decide,
-      decideMany: () => ({}),
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const inheritedKey = flag({ defaultValue: false, key: "toString" })
-
-    const batch = await flag.batch([inheritedKey])
-
-    expect(batch.get(inheritedKey)).toBe(true)
-    expect(decide).toHaveBeenCalledTimes(1)
-  })
-
-  test("uses parallel single decisions when decideMany is absent", async () => {
-    const decide = vi.fn((key: string): Decision =>
-      key === "theme" ? { type: "variant", variant: "dark" } : { type: "boolean", value: true }
-    )
-    const flag = createFlags({
-      decide,
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
-    })
-
-    const batch = await flag.batch([betaAccess, theme])
-
-    expect(batch.get(betaAccess)).toBe(true)
-    expect(batch.get(theme)).toBe("dark")
-    expect(decide).toHaveBeenCalledTimes(2)
-  })
-
-  test("integrates with cache and core coalescing without hanging", async () => {
-    const stored = new Map<string, Decision>([
-      [
-        '["beta-access","boolean",null,"string","user123"]',
-        {
-          type: "boolean",
-          value: true,
+        store: {
+          get: (key) =>
+            Promise.resolve(key.includes("hooked") ? decision.boolean(true) : undefined),
+          set: () => Promise.resolve(),
         },
-      ],
+      },
+      identify: () => user,
+      provider: defineProvider({
+        decide: () => Promise.reject(new Error("provider unavailable")),
+        name: "bulk",
+      }),
+    })
+
+    expect(
+      await flags.getMany([flag.boolean("hooked", false), flag.boolean("unresolved", false)])
+    ).toEqual([true, false])
+  })
+
+  test("falls back with InvalidDecisionError for a key missing from the result", async () => {
+    const decide = vi.fn(() => ({ "beta-access": decision.boolean(true) }))
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
+    })
+    const betaAccess = flag.boolean("beta-access", false)
+    const theme = flag.variant("theme", ["light", "dark"], "light")
+
+    const [betaDetails, themeDetails] = await flags.detailsMany([betaAccess, theme])
+
+    expect(betaDetails.value).toBe(true)
+    expect(themeDetails.value).toBe("light")
+    expect(themeDetails.error).toBeInstanceOf(InvalidDecisionError)
+    expect(decide).toHaveBeenCalledTimes(1)
+  })
+
+  test("does not treat inherited record properties as decisions", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decide: () => ({}), name: "bulk" }),
+    })
+
+    const [details] = await flags.detailsMany([flag.boolean("toString", false)])
+    expect(details.error).toBeInstanceOf(InvalidDecisionError)
+  })
+
+  test("calls decideOne for each flag of a decideOne provider", async () => {
+    const decideOne = vi.fn(decideFor)
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({ decideOne, name: "single" }),
+    })
+
+    expect(
+      await flags.getMany([
+        flag.boolean("beta-access", false),
+        flag.variant("theme", ["light", "dark"], "light"),
+      ])
+    ).toEqual([true, "dark"])
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("isolates a failing decideOne call to its flag", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: (item) => {
+          if (item.key === "bad") throw new Error("bad flag")
+          return decideFor(item)
+        },
+        name: "single",
+      }),
+    })
+
+    const [good, bad] = await flags.detailsMany([
+      flag.boolean("good", false),
+      flag.boolean("bad", false),
     ])
-    const cache = {
+    expect(good.value).toBe(true)
+    expect(bad.error).toBeInstanceOf(ProviderFailedError)
+  })
+
+  test("integrates with the store and coalescing without hanging", async () => {
+    const stored = new Map<string, Decision>([
+      ['["beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
+    ])
+    const store = {
       get: vi.fn((key: string) => Promise.resolve(stored.get(key))),
       set: vi.fn((key: string, value: Decision) => {
         stored.set(key, value)
         return Promise.resolve()
       }),
     }
-    const decide = vi.fn(() => ({ type: "variant", variant: "dark" }) as const)
-    const decideMany = vi.fn(() => ({
-      theme: { type: "variant", variant: "dark" } as const,
-    }))
-    const flag = createFlags({
-      cache,
-      coalesce: true,
-      decide,
-      decideMany,
-      identify: () => ({ distinctId: "user123" }),
-    })
-    const betaAccess = flag({ defaultValue: false, key: "beta-access" })
-    const theme = flag({
-      defaultValue: "light",
-      key: "theme",
-      variants: ["light", "dark"],
+    const decide = vi.fn(decideAll)
+    const flags = createFlags({
+      cache: { coalesce: true, store },
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
     })
 
-    const batch = await flag.batch([betaAccess, theme])
-
-    expect(batch.get(betaAccess)).toBe(true)
-    expect(batch.get(theme)).toBe("dark")
-    expect(decideMany).toHaveBeenCalledWith(["theme"], expect.any(Object), expect.any(Object))
-    expect(cache.set).toHaveBeenCalledWith(
+    expect(
+      await flags.getMany([
+        flag.boolean("beta-access", false),
+        flag.variant("theme", ["light", "dark"], "light"),
+      ])
+    ).toEqual([true, "dark"])
+    await delay(0)
+    expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["theme"])
+    expect(store.set).toHaveBeenCalledWith(
       '["theme","variant",["light","dark"],"string","user123"]',
-      {
-        type: "variant",
-        variant: "dark",
-      }
+      { type: "variant", variant: "dark" }
     )
   })
 
@@ -407,67 +446,51 @@ describe("flag batches", () => {
     })
     const skewedHook: Hook = {
       async before(context) {
-        const count = (invocationCount.get(context.flagKey) ?? 0) + 1
-        invocationCount.set(context.flagKey, count)
-        if (
-          (context.flagKey === "first" && count === 2)
-          || (context.flagKey === "second" && count === 1)
-        ) {
+        const key = context.flag.key
+        const count = (invocationCount.get(key) ?? 0) + 1
+        invocationCount.set(key, count)
+        if ((key === "first" && count === 2) || (key === "second" && count === 1)) {
           await delay(20)
         }
       },
     }
-    const decideMany = vi.fn(async (keys: readonly string[]) => {
-      for (const key of keys) {
-        dispatchedKeys.add(key)
+    const decide = vi.fn(async (items: readonly Flag[]) => {
+      for (const item of items) {
+        dispatchedKeys.add(item.key)
       }
       if (dispatchedKeys.size === 2) {
         releaseBatches()
       }
       await bothLeadersDispatched
       await delay(40)
-      return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
+      return decideAll(items)
     })
-    const flag = createFlags({
-      coalesce: true,
-      decide: () => ({ type: "boolean", value: true }),
-      decideMany,
+    const flags = createFlags({
+      cache: { coalesce: true },
       hooks: [skewedHook],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({ decide, name: "bulk" }),
       timeoutMs: 200,
     })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: false, key: "second" })
+    const first = flag.boolean("first", false)
+    const second = flag.boolean("second", false)
 
     const [firstBatch, secondBatch] = await Promise.all([
-      flag.batch([first, second]),
-      flag.batch([first, second]),
+      flags.getMany([first, second]),
+      flags.getMany([first, second]),
     ])
 
-    expect(firstBatch.get(first)).toBe(true)
-    expect(firstBatch.get(second)).toBe(true)
-    expect(secondBatch.get(first)).toBe(true)
-    expect(secondBatch.get(second)).toBe(true)
-    expect(decideMany).toHaveBeenCalledTimes(2)
+    expect(firstBatch).toEqual([true, true])
+    expect(secondBatch).toEqual([true, true])
+    expect(decide).toHaveBeenCalledTimes(2)
   })
 
-  test("shares one caller abort signal across hooks and cancels the batch on exit", async () => {
+  test("shares one caller signal across hooks and aborts the request signal on exit", async () => {
     const hookSignals: AbortSignal[] = []
-    let batchSignal: AbortSignal | undefined
-    let batchAbortedDuringCall: boolean | undefined
+    let requestSignal: AbortSignal | undefined
+    let abortedDuringCall: boolean | undefined
     const controller = new AbortController()
-    const flag = createFlags({
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany: (keys, identity, options) => {
-        void keys
-        void identity
-        batchSignal = options?.signal
-        batchAbortedDuringCall = options?.signal?.aborted
-        return {
-          first: { type: "boolean", value: true },
-          second: { type: "boolean", value: true },
-        }
-      },
+    const flags = createFlags({
       hooks: [
         {
           before: (context) => {
@@ -475,54 +498,88 @@ describe("flag batches", () => {
           },
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({
+        decide: (items, _identity, { signal }) => {
+          requestSignal = signal
+          abortedDuringCall = signal.aborted
+          return decideAll(items)
+        },
+        name: "bulk",
+      }),
     })
-    const first = flag({ defaultValue: false, key: "first" })
-    const second = flag({ defaultValue: false, key: "second" })
 
-    await flag.batch([first, second], { signal: controller.signal })
+    await flags.getMany([flag.boolean("first", false), flag.boolean("second", false)], {
+      signal: controller.signal,
+    })
 
     expect(hookSignals).toHaveLength(2)
     expect(hookSignals[0]).toBe(controller.signal)
     expect(hookSignals[1]).toBe(controller.signal)
-    expect(batchAbortedDuringCall).toBe(false)
-    expect(batchSignal?.aborted).toBe(true)
+    expect(abortedDuringCall).toBe(false)
+    expect(requestSignal?.aborted).toBe(true)
   })
 
-  test("preserves a per-flag timeout that is longer than the factory default", async () => {
-    const flag = createFlags({
-      decide: async () => {
-        await delay(40)
-        return { type: "boolean", value: true }
-      },
-      identify: () => ({ distinctId: "user123" }),
+  test("keeps a flag timeout that is longer than the reader default", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: async () => {
+          await delay(40)
+          return decision.boolean(true)
+        },
+        name: "slow",
+      }),
       timeoutMs: 10,
     })
-    const factoryTimed = flag({ defaultValue: false, key: "factory-timed" })
-    const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 100 })
+    const readerTimed = flag.boolean("reader-timed", false)
+    const slow = flag.boolean("slow", false, { timeoutMs: 100 })
 
-    const batch = await flag.batch([factoryTimed, slow])
+    const [readerDetails, slowDetails] = await flags.detailsMany([readerTimed, slow])
 
-    expect(batch.get(factoryTimed)).toBe(false)
-    expect(batch.details(factoryTimed).source).toBe("default")
-    expect(batch.get(slow)).toBe(true)
-    expect(batch.details(slow).source).toBe("provider")
+    expect(readerDetails.value).toBe(false)
+    expect(readerDetails.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(slowDetails).toEqual({ flagKey: "slow", source: "provider", value: true })
   })
 
-  test("gives the single-decision fallback the flag's own deadline", async () => {
-    const signals: Record<string, AbortSignal | undefined> = {}
-    const flag = createFlags({
-      decide: async (key, _identity, options) => {
-        signals[key] = options?.signal
-        await delay(200)
-        return { type: "boolean", value: true }
+  test("counts identity resolution against each flag's deadline", async () => {
+    const decideOne = vi.fn(() => decision.boolean(true))
+    const flags = createFlags({
+      identify: async () => {
+        await delay(40)
+        return user
       },
-      identify: () => ({ distinctId: "user123" }),
+      provider: defineProvider({ decideOne, name: "fast" }),
     })
-    const capped = flag({ defaultValue: false, key: "capped", timeoutMs: 20 })
-    const unbounded = flag({ defaultValue: false, key: "unbounded" })
 
-    await flag.batch([capped, unbounded])
+    const [capped, roomy] = await flags.detailsMany([
+      flag.boolean("capped", false, { timeoutMs: 10 }),
+      flag.boolean("roomy", false, { timeoutMs: 200 }),
+    ])
+
+    expect(capped.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(roomy).toEqual({ flagKey: "roomy", source: "provider", value: true })
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  test("gives each decideOne call the flag's own deadline", async () => {
+    const signals: Record<string, AbortSignal | undefined> = {}
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: async (item, _identity, { signal }) => {
+          signals[item.key] = signal
+          await delay(200)
+          return decision.boolean(true)
+        },
+        name: "slow",
+      }),
+    })
+
+    await flags.getMany([
+      flag.boolean("capped", false, { timeoutMs: 20 }),
+      flag.boolean("unbounded", false),
+    ])
 
     expect(signals.capped?.aborted).toBe(true)
     expect(signals.unbounded?.aborted).toBe(false)
@@ -530,112 +587,76 @@ describe("flag batches", () => {
 
   test("stops a flag's signal from aborting once that flag has settled", async () => {
     const signals: Record<string, AbortSignal> = {}
-    const flag = createFlags({
-      decide: async (key) => {
-        await delay(key === "fast" ? 5 : 150)
-        return { type: "boolean", value: true }
-      },
+    const flags = createFlags({
       hooks: [
         {
           before: (context) => {
-            signals[context.flagKey] = context.signal
+            signals[context.flag.key] = context.signal
           },
         },
       ],
-      identify: () => ({ distinctId: "user123" }),
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: async (item) => {
+          await delay(item.key === "fast" ? 5 : 150)
+          return decision.boolean(true)
+        },
+        name: "single",
+      }),
     })
-    const fast = flag({ defaultValue: false, key: "fast", timeoutMs: 50 })
-    const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 5000 })
 
-    const batch = await flag.batch([fast, slow])
+    const [fast] = await flags.getMany([
+      flag.boolean("fast", false, { timeoutMs: 50 }),
+      flag.boolean("slow", false, { timeoutMs: 5000 }),
+    ])
 
-    expect(batch.get(fast)).toBe(true)
+    expect(fast).toBe(true)
     expect(signals.fast?.aborted).toBe(false)
   })
 
-  test("passes null identity to anonymous batches without deduplicating batches", async () => {
-    const decideMany = vi.fn((keys: readonly string[], identity: Identity | null) => {
-      expect(identity).toBeNull()
-      return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
+  test("passes anonymous to concurrent batches without sharing their requests", async () => {
+    const decide = vi.fn((items: readonly Flag[], identity: Identity | typeof anonymous) => {
+      expect(identity).toBe(anonymous)
+      return decideAll(items)
     })
-    const flag = createFlags({
-      anonymous: "allow",
-      coalesce: true,
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany,
-      identify: () => null,
+    const flags = createFlags({
+      cache: { coalesce: true },
+      identify: () => anonymous,
+      provider: defineProvider({ decide, name: "anon" }),
     })
-    const anonymous = flag({ defaultValue: false, key: "anonymous" })
+    const anonymousFlag = flag.boolean("anonymous", false)
 
-    const [first, second] = await Promise.all([flag.batch([anonymous]), flag.batch([anonymous])])
+    const [first, second] = await Promise.all([
+      flags.getMany([anonymousFlag]),
+      flags.getMany([anonymousFlag]),
+    ])
 
-    expect(first.get(anonymous)).toBe(true)
-    expect(second.get(anonymous)).toBe(true)
-    expect(decideMany).toHaveBeenCalledTimes(2)
+    expect(first).toEqual([true])
+    expect(second).toEqual([true])
+    expect(decide).toHaveBeenCalledTimes(2)
   })
 
-  test("forces an anonymous identity for one batch", async () => {
-    const identify = vi.fn(() => ({ distinctId: "identified" }))
-    const decideMany = vi.fn((keys: readonly string[], identity: Identity | null) => {
-      expect(identity).toBeNull()
-      return Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
-    })
-    const flag = createFlags({
-      anonymous: "allow",
-      decide: () => ({ type: "boolean", value: false }),
-      decideMany,
-      identify,
-    })
-    const anonymous = flag({ defaultValue: false, key: "anonymous" })
-
-    const batch = await flag.batch([anonymous], { identity: null })
-
-    expect(batch.get(anonymous)).toBe(true)
-    expect(identify).not.toHaveBeenCalled()
-    expect(decideMany).toHaveBeenCalledWith(["anonymous"], null, expect.any(Object))
-  })
-
-  test("rejects duplicate keys before identity or provider work", async () => {
-    const identify = vi.fn(() => ({ distinctId: "user123" }))
-    const decide = vi.fn(() => ({ type: "boolean", value: true }) as const)
-    const flag = createFlags({ decide, identify })
-    const first = flag({ defaultValue: false, key: "duplicate" })
-    const second = flag({ defaultValue: true, key: "duplicate" })
-
-    await expectRejection(
-      flag.batch([first, second]),
-      "Batch requires unique flag keys; duplicate: duplicate"
+  test("evaluates one batch for anonymous through for()", async () => {
+    const identify = vi.fn((): Identity => ({ distinctId: "identified" }))
+    const decide = vi.fn((items: readonly Flag[], _identity: Identity | typeof anonymous) =>
+      decideAll(items)
     )
+    const flags = createFlags({ identify, provider: defineProvider({ decide, name: "anon" }) })
+    const anonymousFlag = flag.boolean("anonymous", false)
+
+    expect(await flags.for(anonymous).getMany([anonymousFlag])).toEqual([true])
     expect(identify).not.toHaveBeenCalled()
-    expect(decide).not.toHaveBeenCalled()
+    expect(decide).toHaveBeenCalledWith([anonymousFlag], anonymous, expect.any(Object))
   })
 
-  test("rejects evaluators from another factory built on the same config", async () => {
-    const config = {
-      decide: () => ({ type: "boolean", value: true }) as const,
-      identify: () => ({ distinctId: "user123" }),
-    }
-    const firstFlag = createFlags(config)
-    const secondFlag = createFlags(config)
-    const own = firstFlag({ defaultValue: false, key: "own" })
-    const foreign = secondFlag({ defaultValue: false, key: "foreign" })
-
-    await expectRejection(
-      firstFlag.batch([own, foreign]),
-      "Batch flags must be created by this flag factory"
-    )
-  })
-
-  test("does not join a flush round whose entries all timed out before the flush", async () => {
+  test("does not join a flush round whose evaluations all timed out before the flush", async () => {
     vi.useFakeTimers()
     try {
-      const decideMany = vi.fn((keys: readonly string[]) =>
-        Object.fromEntries(keys.map((key) => [key, { type: "boolean", value: true } as const]))
-      )
+      const decide = vi.fn(decideAll)
       // Fake timers that are due at one time run in creation order, with microtasks between them.
       // Every timer below is due at 1 ms, and they run in this order:
       // 1. `identified` resolves the identity. `slow` starts its wait, and `fast` opens round A.
-      // 2. The `fast` timeout aborts every entry of round A before round A flushes.
+      // 2. The `fast` timeout aborts every evaluation of round A before round A flushes.
       // 3. `slow` wakes and needs provider work while round A is still open.
       // 4. Round A flushes.
       // 5. `late` wakes and needs provider work. It must join the round that `slow` joined.
@@ -643,28 +664,28 @@ describe("flag batches", () => {
         setTimeout(resolve, 1)
       })
       const lateReady = Promise.withResolvers<null>()
-      const flag = createFlags({
-        decide: () => ({ type: "boolean", value: false }),
-        decideMany,
-        // The `slow` key read comes just before `slow` needs provider work, so this timer comes
-        // after the round A flush timer and before any timer that `slow` starts.
-        evaluationKey: (context) => {
-          if (context.flagKey === "slow") {
-            setTimeout(() => {
-              lateReady.resolve(null)
-            }, 0)
-          }
-          return context.flagKey
+      const flags = createFlags({
+        cache: {
+          // The `slow` key read comes just before `slow` needs provider work, so this timer comes
+          // after the round A flush timer and before any timer that `slow` starts.
+          key: (context) => {
+            if (context.flag.key === "slow") {
+              setTimeout(() => {
+                lateReady.resolve(null)
+              }, 0)
+            }
+            return context.flag.key
+          },
         },
         hooks: [
           {
             before: async (context) => {
-              if (context.flagKey === "slow") {
+              if (context.flag.key === "slow") {
                 await new Promise((resolve) => {
                   setTimeout(resolve, 0)
                 })
               }
-              if (context.flagKey === "late") {
+              if (context.flag.key === "late") {
                 await lateReady.promise
               }
             },
@@ -672,23 +693,24 @@ describe("flag batches", () => {
         ],
         identify: async () => {
           await identified
-          return { distinctId: "user123" }
+          return user
         },
+        provider: defineProvider({ decide, name: "bulk" }),
       })
-      const fast = flag({ defaultValue: false, key: "fast", timeoutMs: 1 })
-      const slow = flag({ defaultValue: false, key: "slow", timeoutMs: 1000 })
-      const late = flag({ defaultValue: false, key: "late", timeoutMs: 1000 })
+      const fast = flag.boolean("fast", false, { timeoutMs: 1 })
+      const slow = flag.boolean("slow", false, { timeoutMs: 1000 })
+      const late = flag.boolean("late", false, { timeoutMs: 1000 })
 
-      const pending = flag.batch([fast, slow, late])
+      const pending = flags.detailsMany([fast, slow, late])
       await vi.advanceTimersByTimeAsync(10)
-      const batch = await pending
+      const [fastDetails, slowDetails, lateDetails] = await pending
 
-      expect(batch.details(fast)).toMatchObject({ source: "default", value: false })
-      expect(batch.details(fast).error).toBeInstanceOf(FlagTimeoutError)
-      expect(batch.details(slow)).toEqual({ flagKey: "slow", source: "provider", value: true })
-      expect(batch.details(late)).toEqual({ flagKey: "late", source: "provider", value: true })
-      expect(decideMany).toHaveBeenCalledTimes(1)
-      expect(decideMany.mock.calls[0]?.[0]).toEqual(["slow", "late"])
+      expect(fastDetails).toMatchObject({ source: "default", value: false })
+      expect(fastDetails.error).toBeInstanceOf(EvaluationTimeoutError)
+      expect(slowDetails).toEqual({ flagKey: "slow", source: "provider", value: true })
+      expect(lateDetails).toEqual({ flagKey: "late", source: "provider", value: true })
+      expect(decide).toHaveBeenCalledTimes(1)
+      expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["slow", "late"])
     } finally {
       vi.useRealTimers()
     }
