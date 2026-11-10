@@ -12,11 +12,11 @@ The same rule makes the phrase and the expression agree. Each schedule maps to e
 
 ## How each limit follows from the rule
 
-Each limit on a schedule exists because cron cannot express the alternative exactly.
+Most limits on a schedule exist because cron cannot express the alternative exactly. The fixed phase is the exception: it is a choice of the schedule model.
 
 An interval must divide the next larger unit. A minute interval divides 60, and an hour interval divides 24. Any other interval leaves a short gap at the end of each hour or each day, as `*/7` does. An interval longer than the cycle, such as 90 minutes, has no single cron expression at all, because the minute field and the hour field select their values independently.
 
-An interval has a fixed phase. A minute interval starts at :00 of each hour, and an hour interval starts at 00:00 of each day. Cron counts a step from the start of its field, so `*/15` always means :00, :15, :30, and :45.
+An interval has a fixed phase. A minute interval starts at :00 of each hour, and an hour interval starts at 00:00 of each day, so `*/15` means :00, :15, :30, and :45. Cron can express another phase, such as `5,20,35,50 * * * *`, but a schedule has no key for one.
 
 A window is on whole hours, and its end is not included. A window limits the hour field, so `between 9:00 and 17:00` becomes the hours 9 to 16, and runs from 9:00 to 16:59. A start at 9:30 would need a different minute list for the first hour, and one expression has one minute list. An end of midnight is the end of the day.
 

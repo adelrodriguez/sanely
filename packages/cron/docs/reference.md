@@ -212,7 +212,7 @@ try {
 | `HOUR_INTERVALS`   | `[2, 3, 4, 6, 8, 12]`                                                            |
 | `WEEKDAYS`         | `["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]` |
 
-Each constant is an `as const` tuple, and the type of the same name derives from it.
+Each constant is an `as const` tuple. `MinuteInterval`, `HourInterval`, and `Weekday` are the types of their members.
 
 ## Types
 
