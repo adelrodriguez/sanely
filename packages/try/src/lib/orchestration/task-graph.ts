@@ -83,6 +83,10 @@ export interface CatchContext<V> {
    * It is a generic accessor, not an object of results, so that TypeScript can infer the task
    * results and the `catch` value together. An object typed by every task result makes that
    * inference circular when a task returns a value read through `this`.
+   *
+   * Reading a task that itself returns a value read through `this` is still circular, and
+   * TypeScript infers that task as `any`. Annotate the return type of such a task, such as `async
+   * total(): Promise<number>`, when `catch` reads it.
    */
   readonly result: <K extends keyof V & string>(task: K) => V[K] | undefined
   /**

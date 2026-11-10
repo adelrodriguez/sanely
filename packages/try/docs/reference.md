@@ -180,11 +180,11 @@ all<T, C>(tasks: T, options: { catch: (error: unknown, ctx) => C | Promise<C> })
 
 Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts. Without `catch`, the call resolves with an `UnhandledException` whose `cause` is the error. With `catch`, `catch` receives the error, and the call resolves with the value of `catch`.
 
-| `catch` context field | Description                                                              |
-| --------------------- | ------------------------------------------------------------------------ |
-| `failedTask`          | The name of the task that failed, or `undefined`.                        |
-| `result(task)`        | The result of `task` if it succeeded before the failure, or `undefined`. |
-| `signal`              | The signal of the orchestration.                                         |
+| `catch` context field | Description                                                                                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failedTask`          | The name of the task that failed, or `undefined`.                                                                                                                                                                |
+| `result(task)`        | The result of `task` if it succeeded before the failure, or `undefined`. A task that returns a value read through `this` needs a return type annotation when `catch` reads it, or TypeScript infers it as `any`. |
+| `signal`              | The signal of the orchestration.                                                                                                                                                                                 |
 
 `catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. The call resolves with its own policy failures and throws a `Panic`. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
 

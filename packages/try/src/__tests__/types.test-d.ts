@@ -901,6 +901,23 @@ class InternalError extends Error {
   expectTypeOf(flowResult).toEqualTypeOf<Promise<"done" | { a: number | undefined }>>()
 }
 
+// Keeps a dependent task's type in catch when the task's return type is annotated.
+{
+  const result = try$.all(
+    {
+      a() {
+        return 1
+      },
+      async b(): Promise<number> {
+        return (await this.$result.a) + 1
+      },
+    },
+    { catch: (_error, ctx) => ({ b: ctx.result("b") }) }
+  )
+
+  expectTypeOf(result).toEqualTypeOf<Promise<{ a: 1; b: number } | { b: number | undefined }>>()
+}
+
 // Infers only UnhandledException from flow() when no task calls $exit().
 {
   const result = try$.flow({
