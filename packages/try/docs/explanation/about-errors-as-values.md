@@ -96,7 +96,7 @@ The `catch` contract keeps these apart. `catch` maps only the errors that starte
 
 An aborted signal does not stop JavaScript code by itself. A deadline or a cancellation aborts `signal` in `run`, or `this.$signal` in a task. The work must pass that signal to `fetch` or another signal-aware API, check it between steps, or use `this.$race`.
 
-Orchestration waits for every running task to settle before it rejects with a `TimeoutError` or a `CancellationError`. Because of this, no task code still runs after the call returns, and a caller can retry safely after a `TimeoutError`. The cost is that a task that ignores its signal delays the rejection.
+Orchestration waits for every running task to settle before it resolves with a `TimeoutError` or a `CancellationError`. Because of this, no task code still runs after the call returns, and a caller can retry safely after a `TimeoutError`. The cost is that a task that ignores its signal delays the result. `run` does not wait: it owns no task cleanup, so it returns at the deadline and leaves the abandoned work running.
 
 ## Why `gen` checks `instanceof Error`
 
