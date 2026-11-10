@@ -30,7 +30,7 @@ Runs the work and resolves with a result union. It never rejects with an error f
 - `catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`.
 - A `catch` that throws or rejects throws a `Panic`.
 
-The context has these fields:
+The context is read-only. `try` and `shouldRetry` receive the same context, with these fields:
 
 | Field           | Type          | Present                     | Description                                                    |
 | --------------- | ------------- | --------------------------- | -------------------------------------------------------------- |
@@ -152,7 +152,7 @@ Adds a hook around the whole terminal call, retries included. `fn` must call `ne
 
 ### Tasks
 
-`all`, `allSettled`, and `flow` take an object of tasks. Each task is a method. Inside a task, `this` has these members:
+`all`, `allSettled`, and `flow` take an object of tasks. Each task is a method. Inside a task, `this` is read-only and has these members:
 
 | Member           | Type                     | Description                                                                                             |
 | ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |

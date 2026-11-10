@@ -36,25 +36,25 @@ export type ResultProxy<T extends TaskRecord> = {
 }
 
 export interface TaskContext<T extends TaskRecord> {
-  $result: ResultProxy<T>
-  $signal: AbortSignal
-  $disposer: AsyncDisposer
+  readonly $result: ResultProxy<T>
+  readonly $signal: AbortSignal
+  readonly $disposer: AsyncDisposer
   /**
    * Races a promise against `$signal`, rejecting with the abort reason if the signal fires first.
    * Wrap awaits on signal-unaware work so graph deadlines and cancellation bound wall-clock time.
    */
-  $race<V>(promise: PromiseLike<V>): Promise<V>
+  readonly $race: <V>(promise: PromiseLike<V>) => Promise<V>
 }
 
 export type InferredTaskContext<T extends TaskRecord> = {
-  $result: {
+  readonly $result: {
     readonly [K in keyof T]: ReturnType<T[K]> extends Promise<infer R>
       ? Promise<R>
       : Promise<ReturnType<T[K]>>
   }
-  $signal: AbortSignal
-  $disposer: AsyncDisposer
-  $race<V>(promise: PromiseLike<V>): Promise<V>
+  readonly $signal: AbortSignal
+  readonly $disposer: AsyncDisposer
+  readonly $race: <V>(promise: PromiseLike<V>) => Promise<V>
 }
 
 export type AllValue<T extends TaskRecord> = {
@@ -62,9 +62,9 @@ export type AllValue<T extends TaskRecord> = {
 }
 
 interface AllCatchContext<T extends TaskRecord> {
-  failedTask: (keyof T & string) | undefined
-  partial: Partial<AllValue<T>>
-  signal: AbortSignal
+  readonly failedTask: (keyof T & string) | undefined
+  readonly partial: Readonly<Partial<AllValue<T>>>
+  readonly signal: AbortSignal
 }
 
 type AllCatchFn<T extends TaskRecord, C> = (
@@ -385,12 +385,12 @@ abstract class TaskExecution<T extends TaskRecord> extends TaskGraphExecutionBas
   }
 
   protected override createTaskContext(resultProxy: ResultProxy<T>): TaskContext<T> {
-    return {
+    return Object.freeze({
       $disposer: this.disposer,
-      $race: (promise) => this.raceTaskSignal(promise),
+      $race: <V>(promise: PromiseLike<V>) => this.raceTaskSignal(promise),
       $result: resultProxy,
       $signal: this.taskSignal,
-    }
+    })
   }
 }
 

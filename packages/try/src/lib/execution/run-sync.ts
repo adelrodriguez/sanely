@@ -89,7 +89,7 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
         return controlBeforeAttempt
       }
 
-      this.ctx.retry.attempt = currentAttempt
+      this.startAttempt(currentAttempt)
 
       let result: NonPromise<T>
 

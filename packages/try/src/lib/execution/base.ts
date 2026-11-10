@@ -1,4 +1,4 @@
-import type { BuilderConfig, WrapCtx, TryCtx } from "#lib/policies/options.ts"
+import type { BuilderConfig, TryCtx } from "#lib/policies/options.ts"
 import { defineDisposeAlias } from "#lib/disposal/index.ts"
 import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
 import { SignalController } from "#lib/policies/signal.ts"
@@ -28,9 +28,12 @@ export class RetryDirective {
 
 export abstract class BaseExecution<TResult = unknown> implements Disposable {
   protected readonly config: BuilderConfig
+  /**
+   * The read-only view of the execution context that user code receives.
+   */
   protected readonly ctx: TryCtx
   protected readonly executionSignal: AbortSignal | undefined
-  #wrapCtxCache: WrapCtx | undefined
+  readonly #retryState: { attempt: number; readonly limit: number }
   readonly #signalController: SignalController | undefined
   readonly #timeoutController: TimeoutController | undefined
   declare [Symbol.dispose]: () => void
@@ -43,7 +46,8 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       this.#timeoutController?.signal
     )
     this.executionSignal = this.#signalController?.signal
-    this.ctx = BaseExecution.createContext(config, this.executionSignal)
+    this.#retryState = { attempt: 1, limit: config.retry?.limit ?? 1 }
+    this.ctx = BaseExecution.createContext(this.#retryState, this.executionSignal)
   }
 
   execute(): TResult {
@@ -59,7 +63,7 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
 
     for (const wrap of wraps.toReversed()) {
       const previous = next
-      next = () => wrap(this.#wrapCtx, previous)
+      next = () => wrap(this.ctx, previous)
     }
 
     return next() as TResult
@@ -71,14 +75,11 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
     this.#timeoutController?.dispose()
   }
 
-  protected static createContext(config: BuilderConfig, signal: AbortSignal | undefined): TryCtx {
-    return {
-      retry: {
-        attempt: 1,
-        limit: config.retry?.limit ?? 1,
-      },
-      signal,
-    }
+  /**
+   * Records the attempt that is about to run. Only the execution writes the attempt count.
+   */
+  protected startAttempt(attempt: number): void {
+    this.#retryState.attempt = attempt
   }
 
   protected static createTimeoutController(
@@ -98,12 +99,15 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       : undefined
   }
 
-  protected static createWrapContext(ctx: TryCtx): WrapCtx {
+  protected static createContext(
+    retryState: TryCtx["retry"],
+    signal: AbortSignal | undefined
+  ): TryCtx {
     // `ctx.retry.attempt` advances across retries, so the retry view must stay live
     // while still reporting read-only data descriptors; a Proxy is the only way to
     // do both. `ctx.signal` is set once at construction, so a frozen plain object
     // suffices for the rest.
-    const retry = new Proxy(ctx.retry, {
+    const retry = new Proxy(retryState, {
       defineProperty: () => false,
       deleteProperty: () => false,
       getOwnPropertyDescriptor(target, property) {
@@ -121,7 +125,7 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       set: () => false,
     })
 
-    return Object.freeze({ retry, signal: ctx.signal })
+    return Object.freeze({ retry, signal })
   }
 
   protected checkDidCancel(cause?: unknown): CancellationError | undefined {
@@ -243,11 +247,6 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       : new UnhandledException(undefined, { cause: error })
 
     return this.resolveOutcome(wrapped, error)
-  }
-
-  get #wrapCtx(): WrapCtx {
-    this.#wrapCtxCache ??= BaseExecution.createWrapContext(this.ctx)
-    return this.#wrapCtxCache
   }
 }
 defineDisposeAlias(BaseExecution.prototype)

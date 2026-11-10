@@ -24,14 +24,14 @@ class TestExecution extends BaseExecution<number> {
     return this.raceWithCancellation(promise, cause)
   }
 
-  static wrapContext() {
-    return TestExecution.createWrapContext(TestExecution.createContext({}, undefined))
+  get context() {
+    return this.ctx
   }
 }
 
 describe("guard branches", () => {
-  it("rejects writes, defines, and deletes through wrap-context proxies", () => {
-    const ctx = TestExecution.wrapContext()
+  it("rejects writes, defines, and deletes through the context view", () => {
+    const ctx = new TestExecution().context
 
     expect(Reflect.set(ctx, "signal", new AbortController().signal)).toBe(false)
     expect(Reflect.set(ctx.retry, "attempt", 99)).toBe(false)

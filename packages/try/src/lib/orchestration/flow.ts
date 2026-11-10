@@ -22,11 +22,11 @@ type FlowExitValue<T extends TaskRecord> = {
 }[keyof T]
 
 interface FlowTaskContext<T extends TaskRecord> extends TaskContext<T> {
-  $exit<V>(value: V): FlowExit<V>
+  readonly $exit: <V>(value: V) => FlowExit<V>
 }
 
 export type InferredFlowTaskContext<T extends TaskRecord> = InferredTaskContext<T> & {
-  $exit<V>(value: V): FlowExit<V>
+  readonly $exit: <V>(value: V) => FlowExit<V>
 }
 
 export type FlowResult<T extends TaskRecord> = FlowExitValue<T>
@@ -86,15 +86,15 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
   }
 
   protected override createTaskContext(resultProxy: ResultProxy<T>): FlowTaskContext<T> {
-    return {
+    return Object.freeze({
       $disposer: this.disposer,
-      $exit: (value) => {
+      $exit: <V>(value: V): FlowExit<V> => {
         throw new FlowExitSignalError(value)
       },
-      $race: (promise) => this.raceTaskSignal(promise),
+      $race: <V>(promise: PromiseLike<V>) => this.raceTaskSignal(promise),
       $result: resultProxy,
       $signal: this.taskSignal,
-    }
+    })
   }
 
   protected override mapStoredError(error: unknown): Error {

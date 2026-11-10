@@ -48,12 +48,12 @@ class AllExecution<T extends TaskRecord, C> extends OrchestrationExecution<AllVa
       return { thrown: error }
     }
 
-    const context = {
+    const context = Object.freeze({
       failedTask: execution.failedTask,
       // Siblings keep settling while an async catch runs, so pass a snapshot.
-      partial: { ...execution.returnValue } as Partial<AllValue<T>>,
+      partial: Object.freeze({ ...execution.returnValue }) as Partial<AllValue<T>>,
       signal: execution.signal,
-    }
+    })
 
     try {
       const mapped = catchFn(error, context)

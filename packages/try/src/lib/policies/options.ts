@@ -1,14 +1,18 @@
 interface RetryInfo {
-  attempt: number
-  limit: number
+  readonly attempt: number
+  readonly limit: number
 }
 
+/**
+ * The execution context. It is a read-only view: the execution owns the attempt count, and code
+ * that receives the context can read it but not change it.
+ */
 export interface BaseTryCtx {
-  signal?: AbortSignal
+  readonly signal?: AbortSignal
 }
 
 export type TryCtxFor<HasRetry extends boolean> = HasRetry extends true
-  ? BaseTryCtx & { retry: RetryInfo }
+  ? BaseTryCtx & { readonly retry: RetryInfo }
   : BaseTryCtx
 
 export type TryCtx = TryCtxFor<true>
@@ -17,9 +21,7 @@ export type TryCtx = TryCtxFor<true>
  * Wraps are observational hooks: they can inspect execution context and surround execution, but
  * they must not mutate context or replace it.
  */
-export type WrapCtx = Readonly<Omit<TryCtx, "retry">> & {
-  readonly retry: Readonly<TryCtx["retry"]>
-}
+export type WrapCtx = TryCtx
 
 export type WrapFn = (ctx: WrapCtx, next: () => unknown) => unknown
 

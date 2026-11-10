@@ -329,11 +329,54 @@ class InternalError extends Error {
   void try$.retry(3).run((ctx) => {
     const { retry, signal } = ctx
 
-    expectTypeOf(retry).toEqualTypeOf<{ attempt: number; limit: number }>()
+    expectTypeOf(retry).toEqualTypeOf<{ readonly attempt: number; readonly limit: number }>()
     expectTypeOf(signal).toEqualTypeOf<AbortSignal | undefined>()
 
     return retry.attempt
   })
+}
+
+// Makes the try, shouldRetry, task, and all() catch contexts read-only.
+{
+  void try$
+    .retry({
+      backoff: "constant",
+      limit: 3,
+      shouldRetry: (_error, ctx) => {
+        const retryCtx = ctx
+        // @ts-expect-error -- shouldRetry ctx is read-only
+        retryCtx.retry.attempt = 2
+        return true
+      },
+    })
+    .run((ctx) => {
+      const tryCtx = ctx
+      // @ts-expect-error -- try ctx is read-only
+      tryCtx.retry.attempt = 2
+      // @ts-expect-error -- try ctx is read-only
+      tryCtx.signal = undefined
+      return 1
+    })
+
+  void try$.all(
+    {
+      a() {
+        // @ts-expect-error -- task ctx is read-only
+        this.$signal = new AbortController().signal
+        return 1
+      },
+    },
+    {
+      catch: (_error, ctx) => {
+        const catchCtx = ctx
+        // @ts-expect-error -- catch ctx is read-only
+        catchCtx.failedTask = undefined
+        // @ts-expect-error -- catch ctx partial results are read-only
+        catchCtx.partial.a = 1
+        return 0
+      },
+    }
+  )
 }
 
 // Returns a Promise union from retry() + timeout() run().

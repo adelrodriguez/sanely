@@ -333,6 +333,29 @@ describe("all", () => {
     expect((dependencyError as Error).cause).toBe("a boom")
   })
 
+  it("gives tasks and catch a read-only context", async () => {
+    const writes: boolean[] = []
+    const replacement = new AbortController().signal
+
+    const result = await try$.all(
+      {
+        a() {
+          writes.push(Reflect.set(this, "$signal", replacement), Reflect.set(this, "$result", {}))
+          throw new Error("fail")
+        },
+      },
+      {
+        catch: (_error, ctx) => {
+          writes.push(Reflect.set(ctx, "failedTask", "b"), Reflect.set(ctx.partial, "a", 1))
+          return ctx.failedTask
+        },
+      }
+    )
+
+    expect(result).toBe("a")
+    expect(writes).toEqual([false, false, false, false])
+  })
+
   it("maps the failure through catch with the failed task, partial results, and aborted signal", async () => {
     const boom = new Error("boom")
     const catchErrors: unknown[] = []

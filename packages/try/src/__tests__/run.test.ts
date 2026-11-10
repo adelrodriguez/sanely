@@ -308,6 +308,33 @@ describe("retry behavior", () => {
     expect(result).toBe(limit)
   })
 
+  it("keeps the attempt count when try or shouldRetry writes to its context", async () => {
+    const seen: number[] = []
+    const writes: boolean[] = []
+
+    const result = await try$
+      .retry({
+        backoff: "constant",
+        limit: 3,
+        shouldRetry: (_error, ctx) => {
+          writes.push(Reflect.set(ctx.retry, "attempt", 99))
+          return true
+        },
+      })
+      .run((ctx) => {
+        seen.push(ctx.retry.attempt)
+        writes.push(
+          Reflect.set(ctx.retry, "attempt", 99),
+          Reflect.set(ctx, "signal", new AbortController().signal)
+        )
+        throw new Error("fail")
+      })
+
+    expect(seen).toEqual([1, 2, 3])
+    expect(writes.every((write) => !write)).toBe(true)
+    expect(result).toBeInstanceOf(RetryExhaustedError)
+  })
+
   it("runs no more than the numeric retry limit", () => {
     fc.assert(
       fc.property(

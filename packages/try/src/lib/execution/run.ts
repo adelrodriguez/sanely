@@ -99,7 +99,7 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
         }
       }
 
-      this.ctx.retry.attempt = currentAttempt
+      this.startAttempt(currentAttempt)
 
       try {
         const result = this.#tryFn(this.ctx as unknown as Ctx)
