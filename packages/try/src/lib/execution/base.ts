@@ -88,10 +88,6 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
 
     const next = (): TResult => {
       if (call.status !== "pending") {
-        if (call.status === "returned" && checkIsPromiseLike(call.result)) {
-          discardOutcome(call.result)
-        }
-
         const panic = new Panic("WRAP_NEXT_CALLED_TWICE")
         call = { error: panic, status: "threw" }
         throw panic
@@ -100,6 +96,13 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       try {
         const result = inner()
         call = { result, status: "returned" }
+
+        // Observe an inner rejection at once. The wrap may not await `next()` before it settles,
+        // or may throw first. `settle()` still hands the same promise, and its Panic, to the caller.
+        if (checkIsPromiseLike(result)) {
+          discardOutcome(result)
+        }
+
         return result
       } catch (error) {
         call = { error, status: "threw" }

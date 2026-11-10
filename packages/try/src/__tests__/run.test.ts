@@ -1226,6 +1226,54 @@ describe("wrap behavior", () => {
     expect(events).toEqual(["inner-cleanup", "resolved"])
   })
 
+  it("observes the work's Panic while an async wrap has not awaited next() yet", async () => {
+    const unhandled = await collectUnhandledRejections(async () => {
+      const error = await try$
+        .wrap(async (_, next) => {
+          void next()
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10)
+          })
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+        .catch((error: unknown) => error)
+
+      expectPanic(error, "CATCH_HANDLER_THROW")
+    })
+
+    expect(unhandled).toEqual([])
+  })
+
+  it("observes the work's Panic when a wrap throws after next()", async () => {
+    const unhandled = await collectUnhandledRejections(async () => {
+      const error = await try$
+        .wrap((_, next) => {
+          void next()
+          throw new Error("wrap failed")
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+        .catch((error: unknown) => error)
+
+      expectPanic(error, "WRAP_THROW")
+    })
+
+    expect(unhandled).toEqual([])
+  })
+
   it("throws an inner wrap's WRAP_THROW even when an outer wrap catches it", async () => {
     const failure = new Error("inner wrap failed")
     const fail = () => {
