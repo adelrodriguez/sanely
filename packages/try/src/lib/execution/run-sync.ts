@@ -69,7 +69,7 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
     try {
       mapped = catchFn(error)
     } catch (catchError) {
-      throw new Panic("RUN_SYNC_CATCH_HANDLER_THROW", { cause: catchError })
+      throw new Panic("CATCH_HANDLER_THROW", { cause: catchError })
     }
 
     assertNotPromiseLike(mapped, "RUN_SYNC_CATCH_PROMISE")

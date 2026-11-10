@@ -63,14 +63,14 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
     try {
       mapped = catchFn(error)
     } catch (catchError) {
-      throw new Panic("RUN_CATCH_HANDLER_THROW", { cause: catchError })
+      throw new Panic("CATCH_HANDLER_THROW", { cause: catchError })
     }
 
     if (checkIsPromiseLike(mapped)) {
       try {
         return await this.race(mapped, error)
       } catch (catchError) {
-        throw new Panic("RUN_CATCH_HANDLER_REJECT", { cause: catchError })
+        throw new Panic("CATCH_HANDLER_REJECT", { cause: catchError })
       }
     }
 

@@ -255,15 +255,12 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 
 | Code                               | Cause                                                     |
 | ---------------------------------- | --------------------------------------------------------- |
-| `ALL_CATCH_HANDLER_REJECT`         | The `catch` of `all` rejected.                            |
-| `ALL_CATCH_HANDLER_THROW`          | The `catch` of `all` threw.                               |
+| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.             |
+| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                |
 | `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                       |
 | `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                 |
 | `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                |
-| `RUN_CATCH_HANDLER_REJECT`         | The `catch` of `run` rejected.                            |
-| `RUN_CATCH_HANDLER_THROW`          | The `catch` of `run` threw.                               |
 | `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay or jitter. |
-| `RUN_SYNC_CATCH_HANDLER_THROW`     | The `catch` of `runSync` threw.                           |
 | `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.              |
 | `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                |
 | `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                   |

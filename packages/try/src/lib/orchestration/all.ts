@@ -68,7 +68,7 @@ class AllExecution<T extends TaskRecord, C> extends OrchestrationExecution<AllVa
       try {
         const raced = (await this.raceWithCancellation(
           Promise.resolve(mapped).catch((catchError: unknown) => {
-            throw new Panic("ALL_CATCH_HANDLER_REJECT", { cause: catchError })
+            throw new Panic("CATCH_HANDLER_REJECT", { cause: catchError })
           }),
           error
         )) as C
@@ -78,7 +78,7 @@ class AllExecution<T extends TaskRecord, C> extends OrchestrationExecution<AllVa
         return { thrown: mappedError }
       }
     } catch (catchError) {
-      return { thrown: new Panic("ALL_CATCH_HANDLER_THROW", { cause: catchError }) }
+      return { thrown: new Panic("CATCH_HANDLER_THROW", { cause: catchError }) }
     }
   }
 }

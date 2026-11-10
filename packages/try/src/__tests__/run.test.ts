@@ -161,7 +161,7 @@ describe("runSync", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_SYNC_CATCH_HANDLER_THROW")
+        expectPanic(error, "CATCH_HANDLER_THROW")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -269,7 +269,7 @@ describe("run", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_CATCH_HANDLER_THROW")
+        expectPanic(error, "CATCH_HANDLER_THROW")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -290,7 +290,7 @@ describe("run", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_CATCH_HANDLER_REJECT")
+        expectPanic(error, "CATCH_HANDLER_REJECT")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -1197,6 +1197,6 @@ describe("wrap behavior", () => {
             throw new Error("boom")
           },
         })
-    ).rejects.toMatchObject({ code: "RUN_CATCH_HANDLER_THROW" })
+    ).rejects.toMatchObject({ code: "CATCH_HANDLER_THROW" })
   })
 })

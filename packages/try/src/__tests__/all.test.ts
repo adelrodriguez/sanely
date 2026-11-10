@@ -570,7 +570,7 @@ describe("all", () => {
       )
       expect.unreachable("should have thrown")
     } catch (error) {
-      expectPanic(error, "ALL_CATCH_HANDLER_THROW")
+      expectPanic(error, "CATCH_HANDLER_THROW")
       expect((error as Error).cause).toBe(catchFailure)
     }
   })
@@ -594,7 +594,7 @@ describe("all", () => {
       )
       expect.unreachable("should have thrown")
     } catch (error) {
-      expectPanic(error, "ALL_CATCH_HANDLER_REJECT")
+      expectPanic(error, "CATCH_HANDLER_REJECT")
       expect((error as Error).cause).toBe(catchFailure)
     }
   })
@@ -615,7 +615,7 @@ describe("all", () => {
       )
       expect.unreachable("should have thrown")
     } catch (error) {
-      expectPanic(error, "ALL_CATCH_HANDLER_REJECT")
+      expectPanic(error, "CATCH_HANDLER_REJECT")
       expect((error as Error).cause).toBe(cancellation)
     }
   })
