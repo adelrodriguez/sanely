@@ -221,6 +221,55 @@ describe("registry", () => {
     expect(constructorCalls).toBe(0)
   })
 
+  it("keeps a wire value that a subclass field initializer would reset", () => {
+    class RetryError extends Tagged("RetryError")() {
+      attempts = 0
+    }
+
+    const Faults = registry({ RetryError })
+    const error = new RetryError()
+    error.attempts = 3
+
+    const restored = Faults.fromSerializable(error.toSerializable())
+
+    expect(restored).toBeInstanceOf(RetryError)
+    expect((restored as RetryError).attempts).toBe(3)
+  })
+
+  it("keeps a wire value for a field that the subclass redeclares", () => {
+    class LookupError extends Tagged("LookupError")<{ id: string }>() {
+      override readonly id!: string
+    }
+
+    const Faults = registry({ LookupError })
+    const restored = Faults.fromSerializable({
+      __fault: true,
+      _tag: "LookupError",
+      id: "42",
+      name: "LookupError",
+    })
+
+    expect((restored as LookupError).id).toBe("42")
+  })
+
+  it("keeps what a Tagged subclass normalizes before calling super", () => {
+    class AmountError extends Tagged("AmountError")<{ cents: number }>() {
+      constructor(fields: { cents: number }) {
+        super({ cents: Math.round(fields.cents) })
+      }
+    }
+
+    const Faults = registry({ AmountError })
+    const restored = Faults.fromSerializable({
+      __fault: true,
+      _tag: "AmountError",
+      cents: 10.4,
+      name: "AmountError",
+    })
+
+    expect((restored as AmountError).cents).toBe(10)
+  })
+
   it("preserves constructor normalization during registry deserialization", () => {
     class NormalizedError extends Fault {
       static readonly _tag = "NormalizedError"

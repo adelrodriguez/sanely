@@ -71,3 +71,18 @@ UserNotFound.forId("7").message // "User 7 not found"
 ```
 
 `registry()` refuses a class with another constructor signature at compile time. [Why registered constructors take only their fields](../explanation/about-faults.md#why-registered-constructors-take-only-their-fields) explains the rule.
+
+## Redeclare a field
+
+The fields are already properties of the class, so you rarely need to declare them again. To add a doc comment, redeclare a field with `declare`:
+
+```ts
+class LookupError extends Fault.Tagged("LookupError")<{ id: string }>() {
+  /**
+   * The ID that the lookup did not find.
+   */
+  declare readonly id: string
+}
+```
+
+Do not redeclare a field with `override readonly id!: string`, and do not give a field a default value. JavaScript defines those fields after the `Tagged` constructor runs, so the field holds `undefined` or the default instead of the value you passed. With `override readonly id!: string`, `new LookupError({ id: "42" }).id` is `undefined`. A registry restores the fields when it reads a serialized fault, but `new` cannot.

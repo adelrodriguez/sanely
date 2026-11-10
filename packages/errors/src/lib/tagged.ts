@@ -1,6 +1,10 @@
-import type { EnvelopeKey, SerializableValue } from "./wire"
 import { ReservedFieldError } from "./errors"
 import { Fault, isReservedKey } from "./fault"
+import { definePayloadField, type EnvelopeKey, type SerializableValue } from "./wire"
+
+// The fields each Tagged constructor assigned. Subclass field definitions run after
+// the base constructor and can overwrite them, so registry revival restores them.
+const assignedFields = new WeakMap<Fault, Record<string, SerializableValue>>()
 
 type TaggedArgs<Fields extends Record<string, SerializableValue>> = keyof Fields extends never
   ? [fields?: Record<string, never>]
@@ -55,9 +59,22 @@ export function Tagged<const Tag extends string>(tag: Tag) {
         }
 
         Object.assign(this, fields)
+        assignedFields.set(this, fields)
       }
     }
 
     return TaggedFault as unknown as TaggedClass<Tag, Fields>
+  }
+}
+
+// Re-applies the fields that a Tagged constructor assigned to `fault`, after subclass
+// field initializers or redeclared fields replaced them. Other faults are unchanged.
+export function restoreTaggedFields(fault: Fault): void {
+  const fields = assignedFields.get(fault)
+  if (fields === undefined) return
+
+  const target = fault as unknown as Record<string, unknown>
+  for (const [key, value] of Object.entries(fields)) {
+    definePayloadField(target, key, value)
   }
 }

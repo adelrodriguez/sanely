@@ -9,6 +9,7 @@ import {
 import { Fault, toSerializable } from "./fault"
 import { dispatchTag, dispatchTags, type HandlerResult } from "./match"
 import { deserializeFault } from "./reviver"
+import { restoreTaggedFields } from "./tagged"
 
 type AnyFaultCtor = new (...args: never[]) => Fault
 
@@ -209,7 +210,11 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
     fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault {
       return deserializeFault(value, (tag, payload) => {
         const ctor = tagToCtor.get(tag)
-        return ctor ? constructFault(tag, ctor, [payload]) : undefined
+        if (!ctor) return
+
+        const fault = constructFault(tag, ctor, [payload])
+        restoreTaggedFields(fault)
+        return fault
       })
     },
   }
