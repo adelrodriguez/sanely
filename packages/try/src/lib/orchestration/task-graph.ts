@@ -88,7 +88,7 @@ export interface CatchContext<V> {
    * TypeScript infers that task as `any`. Annotate the return type of such a task, such as `async
    * total(): Promise<number>`, when `catch` reads it.
    */
-  readonly result: <K extends keyof V & string>(task: K) => V[K] | undefined
+  readonly result: <K extends keyof V>(task: K) => V[K] | undefined
   /**
    * The task signal, already aborted by the failure.
    */

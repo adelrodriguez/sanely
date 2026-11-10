@@ -260,6 +260,23 @@ describe("all", () => {
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
   })
 
+  it("passes catch the result of a task with a numeric key", async () => {
+    const result = await try$.all(
+      {
+        0() {
+          return 42
+        },
+        async failing() {
+          await this.$result[0]
+          throw new Error("boom")
+        },
+      },
+      { catch: (_error, ctx) => ctx.result(0) }
+    )
+
+    expect(result).toBe(42)
+  })
+
   it("passes catch a result named __proto__", async () => {
     const value = { answer: 42 }
     const boom = new Error("boom")

@@ -901,6 +901,23 @@ class InternalError extends Error {
   expectTypeOf(flowResult).toEqualTypeOf<Promise<"done" | { a: number | undefined }>>()
 }
 
+// Reads a numeric task key in catch, as the task map accepts it.
+{
+  const result = try$.all(
+    {
+      0() {
+        return 42 as const
+      },
+      failing() {
+        throw new Error("boom")
+      },
+    },
+    { catch: (_error, ctx) => ctx.result(0) }
+  )
+
+  expectTypeOf(result).toEqualTypeOf<Promise<{ 0: 42; failing: never } | 42 | undefined>>()
+}
+
 // Keeps a dependent task's type in catch when the task's return type is annotated.
 {
   const result = try$.all(
