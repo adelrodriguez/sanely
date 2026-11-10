@@ -6,7 +6,7 @@ Grammar and validation tables use `index.table.ts`. Schedule generators for prop
 
 Public export checks and type assertions live in `src/__tests__/`.
 The workspace `check` command checks type assertions. Vitest does not run them.
-The architecture suite checks test ownership and coverage. Import direction is checked by lint.
+The architecture suite checks test ownership and coverage. Lint checks import direction.
 
 Property tests check exact run times, canonical phrase round trips, and JSON schedule round trips.
 Keep the grammar table shared between runtime tests and public type assertions.
