@@ -538,7 +538,7 @@ describe("flow", () => {
     expect(catchErrors).toEqual([boom])
   })
 
-  it("does not call catch for an exit, a Panic, or the graph deadline", async () => {
+  it("does not call catch for an exit, a Panic, a missing exit, or the graph deadline", async () => {
     const catchErrors: unknown[] = []
     const mapError = (error: unknown) => {
       catchErrors.push(error)
@@ -573,9 +573,21 @@ describe("flow", () => {
       )
       .catch((error: unknown) => error)
 
+    const noExit = await try$
+      .flow(
+        {
+          a() {
+            return 1
+          },
+        },
+        { catch: mapError }
+      )
+      .catch((error: unknown) => error)
+
     expect(exited).toBe("done")
     expect(timedOut).toBeInstanceOf(TimeoutError)
     expectPanic(panicked, "TASK_SELF_REFERENCE")
+    expectPanic(noExit, "FLOW_NO_EXIT")
     expect(catchErrors).toEqual([])
   })
 

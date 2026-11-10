@@ -226,9 +226,9 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<
       return { thrown: controlAfterFailure }
     }
 
-    // Defects never pass through catch, the same as in run().
-    // Check the recorded Panic, not `error`: `error` may already wrap a cross-realm Panic.
-    if (!catchFn || graph.panic) {
+    // Defects never pass through catch, the same as in run(). A task Panic is recorded on the graph,
+    // and a Panic from the graph itself, such as FLOW_NO_EXIT, arrives as `error`.
+    if (!catchFn || graph.panic || isPanic(error)) {
       return { thrown: error }
     }
 
