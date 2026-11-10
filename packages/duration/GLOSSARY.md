@@ -16,6 +16,16 @@ _Avoid_: Complex expression, duration string
 One numeric value and unit within a compound time expression.
 _Avoid_: Part, token
 
+**Bare number**:
+A time expression with no unit, such as `"500"`. A bare number means milliseconds, so only `ms`,
+`parse`, and `safeParse` accept one.
+_Avoid_: Unitless number
+
+**Duration**:
+A number in a known unit, typed `Duration<U>`, such as the result of `seconds("1h")`. `format`
+takes a plain number or a duration in milliseconds.
+_Avoid_: Branded number, tagged number
+
 **Unit function**:
 A public conversion function named for its output unit, such as `seconds` or `days`. Unit
 functions wrap `convert`.
@@ -27,13 +37,14 @@ format option.
 _Avoid_: Unit key, unit id
 
 **Strict form**:
-The grammar that the `isTimeExpression` guard accepts: at most one space, and lowercase,
-Capitalized, or UPPERCASE units. The `TimeExpression` type is a best-effort compile-time check of
-this grammar and accepts some extra strings, such as `"0x10h"`.
+The grammar that the `isTimeExpression` guard and the unit functions accept: at most one space,
+and lowercase, Capitalized, or UPPERCASE units, except `M`. The `TimeExpression` type alone accepts
+some extra strings, such as `"0x10h"`. The unit functions check the exact grammar of a literal.
 _Avoid_: Canonical form
 
 **Lenient form**:
-The superset grammar that `parse` accepts: case-insensitive units and flexible whitespace.
+The superset grammar that `parse` accepts: case-insensitive units, except `M`, and flexible
+whitespace.
 _Avoid_: Loose form
 
 **Short form**:
