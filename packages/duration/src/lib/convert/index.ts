@@ -1,5 +1,5 @@
 import { getUnitByName, type UnitName } from "@sanely/core/time"
-import type { TimeExpression, TimeExpressionWithUnit } from "#lib/expression/types.ts"
+import type { ValidateTimeExpression } from "#lib/expression/types.ts"
 import { InvalidTimeExpressionError } from "#lib/expression/errors.ts"
 import { parseExpression } from "#lib/expression/parse.ts"
 import { type Duration, toDuration } from "#lib/shared/duration.ts"
@@ -58,7 +58,9 @@ export function convert<U extends UnitName>(value: string, unit: U): Duration<U>
  *
  * @returns The value in milliseconds
  */
-export function ms(value: TimeExpression): Duration<"milliseconds"> {
+export function ms<const T extends string>(
+  value: ValidateTimeExpression<T>
+): Duration<"milliseconds"> {
   return convert(value, "milliseconds")
 }
 
@@ -74,7 +76,9 @@ export function ms(value: TimeExpression): Duration<"milliseconds"> {
  *
  * @returns The value in seconds
  */
-export function seconds(value: TimeExpressionWithUnit): Duration<"seconds"> {
+export function seconds<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"seconds"> {
   return convert(value, "seconds")
 }
 
@@ -90,7 +94,9 @@ export function seconds(value: TimeExpressionWithUnit): Duration<"seconds"> {
  *
  * @returns The value in minutes
  */
-export function minutes(value: TimeExpressionWithUnit): Duration<"minutes"> {
+export function minutes<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"minutes"> {
   return convert(value, "minutes")
 }
 
@@ -106,7 +112,9 @@ export function minutes(value: TimeExpressionWithUnit): Duration<"minutes"> {
  *
  * @returns The value in hours
  */
-export function hours(value: TimeExpressionWithUnit): Duration<"hours"> {
+export function hours<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"hours"> {
   return convert(value, "hours")
 }
 
@@ -122,7 +130,9 @@ export function hours(value: TimeExpressionWithUnit): Duration<"hours"> {
  *
  * @returns The value in days
  */
-export function days(value: TimeExpressionWithUnit): Duration<"days"> {
+export function days<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"days"> {
   return convert(value, "days")
 }
 
@@ -138,7 +148,9 @@ export function days(value: TimeExpressionWithUnit): Duration<"days"> {
  *
  * @returns The value in weeks
  */
-export function weeks(value: TimeExpressionWithUnit): Duration<"weeks"> {
+export function weeks<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"weeks"> {
   return convert(value, "weeks")
 }
 
@@ -154,7 +166,9 @@ export function weeks(value: TimeExpressionWithUnit): Duration<"weeks"> {
  *
  * @returns The value in months
  */
-export function months(value: TimeExpressionWithUnit): Duration<"months"> {
+export function months<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"months"> {
   return convert(value, "months")
 }
 
@@ -170,6 +184,8 @@ export function months(value: TimeExpressionWithUnit): Duration<"months"> {
  *
  * @returns The value in years
  */
-export function years(value: TimeExpressionWithUnit): Duration<"years"> {
+export function years<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"years"> {
   return convert(value, "years")
 }

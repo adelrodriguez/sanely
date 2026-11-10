@@ -42,6 +42,7 @@ import {
 // ── Test fixtures ────────────────────────────────────────────────────────────
 declare const userInput: string
 declare const start: number
+declare const choice: "1h" | "30m"
 
 // ── Positive type-level tests ────────────────────────────────────────────────
 // Derives each unit alias type from the UNITS table.
@@ -99,7 +100,8 @@ declare const start: number
   void [bare, compact, spaced, long, signed, positive, fractional, exponent, capitalized, uppercase]
 }
 
-// Documents known limitation: `${number}` lets some strings the runtime rejects through.
+// The TimeExpression type alone still lets some strings the runtime rejects through, because it is
+// built on `${number}`. The unit functions check the grammar of a literal, so these fail there.
 {
   expectTypeOf<"0x10h">().toExtend<TimeExpression>()
   expectTypeOf<"0b1s">().toExtend<TimeExpression>()
@@ -161,6 +163,29 @@ declare const start: number
 
   expectTypeOf(total).toEqualTypeOf<number>()
   void timeoutMs
+}
+
+// Accepts every number form of the strict grammar in a literal.
+{
+  ms("500")
+  ms(".5h")
+  ms("-1.5d")
+  ms("+1h")
+  ms("1e3ms")
+  ms("2.5E-1 hours")
+  seconds("1 Hour")
+  minutes("1HOUR")
+  days("1d")
+}
+
+// Accepts a TimeExpression that isTimeExpression narrowed, and a union of valid literals.
+{
+  ms(choice)
+  seconds(choice)
+
+  if (isTimeExpression(userInput)) {
+    ms(userInput)
+  }
 }
 
 // Accepts a bare number only where the result is milliseconds.
@@ -256,6 +281,21 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- a bare number means milliseconds, so years() needs a unit
   years("1")
+
+  // @ts-expect-error -- a decimal point needs a digit after it
+  ms("1.h")
+
+  // @ts-expect-error -- leading whitespace is not part of the strict form
+  ms(" 1h")
+
+  // @ts-expect-error -- hexadecimal is not part of the number grammar
+  seconds("0x10h")
+
+  // @ts-expect-error -- binary is not part of the number grammar
+  minutes("0b1s")
+
+  // @ts-expect-error -- a value outside the finite range is not a TimeExpression
+  hours("1e400h")
 
   // @ts-expect-error -- unit helpers take a string, not a number
   ms(1000)

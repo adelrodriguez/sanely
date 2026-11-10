@@ -60,6 +60,11 @@ export type UnitName = UnitRow["longPlural"]
 export type AmbiguousUnit = keyof typeof AMBIGUOUS_UNITS
 
 /**
+ * What to write instead of an ambiguous unit, such as `"M"`.
+ */
+export type AmbiguousUnitHint<T extends AmbiguousUnit> = (typeof AMBIGUOUS_UNITS)[T]
+
+/**
  * Any casing variant of a time unit (lowercase, Capitalized, UPPERCASE), except an `AmbiguousUnit`.
  */
 export type UnitAnyCase = Exclude<Unit | Capitalize<Unit> | Uppercase<Unit>, AmbiguousUnit>

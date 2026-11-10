@@ -19,6 +19,7 @@ export {
 export type { UnitDefinition } from "#lib/time/table.ts"
 export type {
   AmbiguousUnit,
+  AmbiguousUnitHint,
   Days,
   Hours,
   Milliseconds,
