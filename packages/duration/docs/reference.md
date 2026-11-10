@@ -23,7 +23,7 @@ function years<const T extends string>(value: ValidateTimeExpression<T, "unit">)
 
 Each unit function takes one time expression and returns its value in the unit of the function name, as a `Duration` in that unit. The type checker checks the grammar of a literal and gives the reason for an invalid one. A compound time expression is a type error. Use `convert` or `parse` for it.
 
-A bare number means milliseconds. `ms` accepts one, and the other unit functions need a unit, so `seconds("30")` is a type error. A `TimeExpression` that `isTimeExpression` narrowed works with `ms`. For another unit, use `convert` on a string at run time.
+A bare number means milliseconds. `ms` accepts one, and the other unit functions need a unit, so `seconds("30")` is a type error. A `TimeExpression` that `isTimeExpression` narrowed works with `ms`. The other unit functions reject it, because it can be a bare number. See [How to validate a time expression from user input](how-to/validate-user-input.md).
 
 ```ts
 import { days, hours, minutes, months, ms, seconds, weeks, years } from "@sanely/duration"
@@ -102,13 +102,12 @@ safeParse("hello") // null
 ## `format(milliseconds, options?)`
 
 ```ts
-function format<const T extends number>(
-  milliseconds: MillisecondsOnly<T>,
-  options?: FormatOptions
-): string
+function format(milliseconds: number | Duration<"milliseconds">, options?: FormatOptions): string
 ```
 
 Writes milliseconds as a time expression. `parse` accepts every value that `format` returns. `format` takes a plain number or a `Duration` in milliseconds. A `Duration` in another unit is a type error, so `format(seconds("1h"))` fails to compile instead of giving `"4s"`.
+
+The declared signature is generic, so that the type checker can reject a `Duration` in another unit.
 
 | Option      | Type         | Default   | Description                            |
 | ----------- | ------------ | --------- | -------------------------------------- |
@@ -288,6 +287,7 @@ try {
 | `TimeExpression`                                                                  | One time expression in the strict form, as a template literal type. Some strings, such as `"0x10h"`, satisfy the type. The unit functions reject them. |
 | `TimeExpressionWithUnit`                                                          | A `TimeExpression` with a unit.                                                                                                                        |
 | `ValidateTimeExpression<T, Rule>`                                                 | Checks a literal against the strict form, and gives the reason when it is invalid. `Rule` is `"bare"` or `"unit"`.                                     |
+| `UnitRule`                                                                        | The `Rule` of `ValidateTimeExpression`: `"bare"` when a bare number is valid, and `"unit"` when the expression needs a unit.                           |
 | `Duration<U>`                                                                     | A number of the unit `U`, such as the result of `seconds()`. It is a `number`, and arithmetic on it gives a plain `number`.                            |
 | `FormatOptions`                                                                   | The `long`, `precision`, and `units` options of `format`.                                                                                              |
 | `Unit`                                                                            | Every unit alias, such as `"hours"`, `"h"`, and `"hr"`.                                                                                                |
