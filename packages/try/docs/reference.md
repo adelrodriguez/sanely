@@ -54,6 +54,8 @@ const url = try$.runSync(() => new URL(link))
 
 ### Result union rules
 
+In the signatures on this page, `PolicyErrors` stands for the policy failures that the chain adds: `TimeoutError` after `timeout`, and `CancellationError` after `signal`.
+
 | Chain                            | Result type                       |
 | -------------------------------- | --------------------------------- |
 | `run(fn)`                        | `T \| UnhandledException`         |
@@ -243,13 +245,13 @@ Returns an `AsyncDisposer`:
 
 The errors come from `@sanely/try/errors`.
 
-| Error                 | `name`                  | When                                                                                          |
-| --------------------- | ----------------------- | --------------------------------------------------------------------------------------------- |
-| `UnhandledException`  | `"UnhandledException"`  | The work threw, and the call has no `catch` and no retry policy. Returned.                    |
-| `RetryExhaustedError` | `"RetryExhaustedError"` | A retry policy gave up, and the call has no `catch`. Returned. The last error is the `cause`. |
-| `TimeoutError`        | `"TimeoutError"`        | The deadline expired. Returned by `run`, thrown by orchestration.                             |
-| `CancellationError`   | `"CancellationError"`   | An external signal aborted. Returned by `run`, thrown by orchestration.                       |
-| `Panic`               | `"Panic"`               | The API was used incorrectly. Always thrown. It has a `code` of type `PanicCode`.             |
+| Error                 | `name`                  | When                                                                                                                        |
+| --------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `UnhandledException`  | `"UnhandledException"`  | The work or a task threw, and the call has no `catch` and no retry policy. Returned. The error is the `cause`.              |
+| `RetryExhaustedError` | `"RetryExhaustedError"` | A retry policy gave up, and the call has no `catch`. Returned. The last error is the `cause`.                               |
+| `TimeoutError`        | `"TimeoutError"`        | The call's own deadline expired. Returned.                                                                                  |
+| `CancellationError`   | `"CancellationError"`   | The call's own signal aborted. Returned. The `cause` is the abort reason, or the error that the work threw after the abort. |
+| `Panic`               | `"Panic"`               | The API was used incorrectly. Always thrown. It has a `code` of type `PanicCode`.                                           |
 
 Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `isTimeoutError`, `isCancellationError`, and `isPanic`. A guard matches an instance of the class, or an `Error` with the same `name`, so it also works across realms and across two copies of the package.
 
