@@ -89,7 +89,12 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
     return Object.freeze({
       $disposer: this.disposer,
       $exit: <V>(value: V): FlowExit<V> => {
-        throw new FlowExitSignalError(value)
+        // Record the exit before throwing, so a task that catches the throw, or a nested run()
+        // that maps it, still ends the flow. The throw only stops the rest of the task.
+        const exit = new FlowExitSignalError(value)
+        this.setFirstRejection(exit)
+        this.abortInternal(exit)
+        throw exit
       },
       $race: <V>(promise: PromiseLike<V>) => this.raceTaskSignal(promise),
       $result: resultProxy,

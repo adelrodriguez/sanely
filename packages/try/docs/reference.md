@@ -194,7 +194,7 @@ Resolves with an object of settled outcomes, in the format of `Promise.allSettle
 flow<T>(tasks: T): Promise<FlowResult<T>>
 ```
 
-Resolves with the value of the first `this.$exit(value)`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
+Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
 
 ## Composition and cleanup
 

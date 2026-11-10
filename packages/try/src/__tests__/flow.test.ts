@@ -435,6 +435,51 @@ describe("flow", () => {
     }
   })
 
+  it("exits even when the task catches the $exit throw", async () => {
+    let continued = false
+
+    const result = await try$.flow({
+      a() {
+        try {
+          return this.$exit("exit-a")
+        } catch {
+          continued = true
+        }
+
+        return null
+      },
+    })
+
+    expect(result).toBe("exit-a")
+    expect(continued).toBe(true)
+  })
+
+  it("exits when $exit runs inside a nested run()", async () => {
+    const result = await try$.flow({
+      async a() {
+        return await try$.run(() => this.$exit("exit-a"))
+      },
+    })
+
+    expect(result).toBe("exit-a")
+  })
+
+  it("keeps the first $exit when a task exits twice", async () => {
+    const result = await try$.flow({
+      a() {
+        try {
+          this.$exit("first")
+        } catch {
+          // A swallowed exit still counts as the first one.
+        }
+
+        return this.$exit("second")
+      },
+    })
+
+    expect(result).toBe("first")
+  })
+
   it("returns the exit value and ignores a sibling error thrown after $exit", async () => {
     let siblingThrew = false
 
