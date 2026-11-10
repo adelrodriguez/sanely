@@ -67,7 +67,7 @@ export type Implementer<Tree, Context = void, Prefix extends string = ""> = {
  * has the required shape.
  */
 export function implement<Tree extends ContractTree>(contract: Tree): Implementer<Tree> {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- `build` mirrors the contract at runtime; only the contract's type knows the shape
+  // `build` mirrors the contract at runtime; only the contract's type knows the shape
   return build(contract, "") as Implementer<Tree>
 }
 

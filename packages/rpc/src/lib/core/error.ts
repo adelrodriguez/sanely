@@ -71,7 +71,6 @@ export type ChannelError = ChannelBaseError & ChannelErrorDetail
 
 // The base class assigns the detail's fields onto the instance; this cast is what lets the type
 // system see them, making `code` narrow the per-code fields after an `instanceof` check.
-// oxlint-disable-next-line typescript/consistent-type-assertions -- see above
 export const ChannelError = ChannelBaseError as unknown as new (
   detail: ChannelErrorDetail,
   options?: ErrorOptions

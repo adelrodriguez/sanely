@@ -51,11 +51,11 @@ export function createClient<Tree extends ContractTree, Options = never>(
 
       // Calls always return a promise: validation and misuse failures reject
       // instead of throwing synchronously.
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- Proxy call arguments are untyped; the `InferClient` signature is what constrains them
+      // Proxy call arguments are untyped; the `InferClient` signature is what constrains them
       return send(path.join("."), args[0], mergeOptions(bound, args[1] as Options | undefined))
     }, basePath)
 
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- the Proxy answers every path at runtime; only the contract's type knows the shape
+  // The Proxy answers every path at runtime; only the contract's type knows the shape
   return make(undefined, []) as InferClient<Tree, Options>
 
   async function send(

@@ -176,7 +176,7 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<Prom
     }
 
     if (threw) {
-      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Preserve raw task failures for callers/tests.
+      // Preserve raw task failures for callers/tests.
       throw thrownError
     }
 
