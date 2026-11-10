@@ -152,6 +152,7 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
    * Waits for an async wrap to settle, then reports the result of the work. Sync executions
    * override this, because they cannot wait.
    */
+  // oxlint-disable-next-line class-methods-use-this -- polymorphic default
   protected settleAsyncWrap(
     returned: PromiseLike<unknown>,
     settle: () => TResult,
