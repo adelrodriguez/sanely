@@ -1,5 +1,5 @@
 ---
-"@sanely/try": patch
+"@sanely/try": minor
 ---
 
 Read earlier task results in an orchestration `catch` with `ctx.result(task)`
