@@ -1,6 +1,6 @@
 /**
- * Request headers, either as a Fetch `Headers` object or as a Node.js-style record with lowercase
- * names, such as `IncomingMessage.headers`.
+ * Request headers, either as a Fetch `Headers` object or as a record, such as Node.js's
+ * `IncomingMessage.headers`. Record names match in any case.
  */
 export type HeadersLike = Headers | Readonly<Record<string, string | readonly string[] | undefined>>
 
@@ -36,13 +36,23 @@ function isHeaders(headers: HeadersLike): headers is Headers {
   return typeof headers.get === "function"
 }
 
+// Node.js lowercases header names, but some sources keep the case the client sent, such as an AWS
+// API Gateway REST event. Header names are case-insensitive, so match them that way.
+function readRecord(headers: Exclude<HeadersLike, Headers>, name: string) {
+  const key = Object.hasOwn(headers, name)
+    ? name
+    : Object.keys(headers).find((key) => key.toLowerCase() === name)
+
+  return key === undefined ? undefined : headers[key]
+}
+
 /**
  * Reads one header by its lowercase name, trimmed. Repeated values in a record are joined with
  * commas, as `Headers` joins them. An empty value reads as missing.
  */
 export function readHeader(request: RequestLike, name: string): string | undefined {
   const { headers } = request
-  const value = isHeaders(headers) ? headers.get(name) : headers[name]
+  const value = isHeaders(headers) ? headers.get(name) : readRecord(headers, name)
   const text = typeof value === "object" && value !== null ? value.join(",") : value
 
   const trimmed = text?.trim()

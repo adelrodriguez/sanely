@@ -109,7 +109,7 @@ geo(request, { platform: "vercel" })
 type HeadersLike = Headers | Readonly<Record<string, string | readonly string[] | undefined>>
 ```
 
-Request headers, either as a Fetch `Headers` object or as a Node.js-style record with lowercase names, such as `IncomingMessage.headers`. A record joins repeated values with commas.
+Request headers, either as a Fetch `Headers` object or as a record, such as Node.js's `IncomingMessage.headers`. Record names match in any case, because some sources, such as an AWS API Gateway REST event, keep the case the client sent. A record joins repeated values with commas.
 
 ```ts
 interface RequestLike {

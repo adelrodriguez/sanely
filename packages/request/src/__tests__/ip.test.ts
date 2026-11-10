@@ -165,6 +165,10 @@ describe("ip", () => {
     )
   })
 
+  it("reads a header record whose names keep their original case, as API Gateway sends", () => {
+    expect(find({ headers: { "X-Forwarded-For": "1.1.1.1" } })).toBe("1.1.1.1")
+  })
+
   it("throws a TypeError for a proxy that is not an address or a range", () => {
     for (const proxy of ["", "proxy", "1.1.1.1/33", "::/129", "1.1.1.1/8/8", "1.1.1.1/a"]) {
       expect(() => find(headers({}), { proxies: [proxy] })).toThrow(TypeError)

@@ -125,6 +125,12 @@ describe("geo", () => {
     expect(geo(headers({}), { platform: "vercel" })).toEqual(UNKNOWN)
   })
 
+  it("reads a header record whose names keep their original case, as API Gateway sends", () => {
+    const event = { headers: { "CloudFront-Viewer-Country": "US" } }
+
+    expect(geo(event, { platform: "cloudfront" }).country).toBe("US")
+  })
+
   it("reads a Node.js header record", () => {
     expect(geo({ headers: { "cf-ipcountry": "PT" } }, { platform: "cloudflare" }).country).toBe(
       "PT"
