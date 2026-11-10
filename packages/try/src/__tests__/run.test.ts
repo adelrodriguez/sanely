@@ -32,6 +32,14 @@ function captureScheduledDelays() {
   }
 }
 
+function swallowNext(_: unknown, next: () => unknown) {
+  try {
+    next()
+  } catch {
+    // Swallowing the inner layer's Panic does not hide it.
+  }
+}
+
 function skipNext() {
   return "skipped"
 }
@@ -1177,6 +1185,74 @@ describe("wrap behavior", () => {
       expectPanic(error, "WRAP_THROW")
       expect((error as Panic).cause).toBe(failure)
     }
+  })
+
+  it("waits for an inner async wrap that calls next() late when the outer wrap does not return it", async () => {
+    const result = await try$
+      .wrap((_, next) => {
+        void next()
+      })
+      .wrap(async (_, next) => {
+        await Promise.resolve()
+        await next()
+      })
+      .run(() => 42)
+
+    expect(result).toBe(42)
+  })
+
+  it("resolves only after an inner async wrap's cleanup when the outer wrap does not return it", async () => {
+    const events: string[] = []
+
+    const result = await try$
+      .wrap((_, next) => {
+        void next()
+      })
+      .wrap(async (_, next) => {
+        try {
+          await next()
+        } finally {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 1)
+          })
+          events.push("inner-cleanup")
+        }
+      })
+      .run(() => 42)
+
+    events.push("resolved")
+
+    expect(result).toBe(42)
+    expect(events).toEqual(["inner-cleanup", "resolved"])
+  })
+
+  it("throws an inner wrap's WRAP_THROW even when an outer wrap catches it", async () => {
+    const failure = new Error("inner wrap failed")
+    const fail = () => {
+      throw failure
+    }
+
+    const asyncError = await try$
+      .wrap(swallowNext)
+      .wrap(fail)
+      .run(() => 1)
+      .catch((error: unknown) => error)
+
+    let syncError: unknown
+
+    try {
+      try$
+        .wrap(swallowNext)
+        .wrap(fail)
+        .runSync(() => 1)
+    } catch (error) {
+      syncError = error
+    }
+
+    expectPanic(asyncError, "WRAP_THROW")
+    expect((asyncError as Error).cause).toBe(failure)
+    expectPanic(syncError, "WRAP_THROW")
+    expect((syncError as Error).cause).toBe(failure)
   })
 
   it("throws a Panic from the work even when a wrap swallows it", async () => {

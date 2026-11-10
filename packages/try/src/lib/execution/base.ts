@@ -1,4 +1,4 @@
-import type { BuilderConfig, TryCtx } from "#lib/policies/options.ts"
+import type { BuilderConfig, TryCtx, WrapFn } from "#lib/policies/options.ts"
 import { defineDisposeAlias } from "#lib/disposal/index.ts"
 import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
 import { SignalController } from "#lib/policies/signal.ts"
@@ -20,9 +20,9 @@ export type RunnerError =
   | UnhandledException
 
 /**
- * What the work inside the wraps has done so far.
+ * What one wrap's `next()` call has done so far.
  */
-type WorkState<TResult> =
+type NextCall<TResult> =
   | { status: "pending" }
   | { status: "returned"; result: TResult }
   | { status: "threw"; error: unknown }
@@ -68,90 +68,81 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
    * rejects is a defect.
    */
   execute(): TResult {
-    const wraps = this.config.wraps ?? []
+    let run = (): TResult => this.executeCore()
 
-    if (wraps.length === 0) {
-      return this.executeCore()
+    for (const wrap of (this.config.wraps ?? []).toReversed()) {
+      const inner = run
+      run = () => this.#runWrap(wrap, inner)
     }
 
-    let work: WorkState<TResult> = { status: "pending" }
-    // The work's own rejection, so a wrap that rethrows it is not reported as a wrap failure.
-    let workRejection: { error: unknown } | undefined
+    return run()
+  }
 
-    const runWork = (): TResult => {
-      if (work.status !== "pending") {
-        if (work.status === "returned" && checkIsPromiseLike(work.result)) {
-          discardOutcome(work.result)
+  /**
+   * Runs one wrap around `inner`, the next wrap or the work. Each wrap records its own `next()`
+   * call, so the layer reports what its inner layer did even when the wrap ignores it: an inner
+   * async wrap's completion, its result, and its Panics.
+   */
+  #runWrap(wrap: WrapFn, inner: () => TResult): TResult {
+    let call: NextCall<TResult> = { status: "pending" }
+
+    const next = (): TResult => {
+      if (call.status !== "pending") {
+        if (call.status === "returned" && checkIsPromiseLike(call.result)) {
+          discardOutcome(call.result)
         }
 
         const panic = new Panic("WRAP_NEXT_CALLED_TWICE")
-        work = { error: panic, status: "threw" }
+        call = { error: panic, status: "threw" }
         throw panic
       }
 
       try {
-        const result = this.executeCore()
-        work = { result, status: "returned" }
-
-        if (checkIsPromiseLike(result)) {
-          Promise.resolve(result).catch((error: unknown) => {
-            workRejection = { error }
-          })
-        }
-
+        const result = inner()
+        call = { result, status: "returned" }
         return result
       } catch (error) {
-        work = { error, status: "threw" }
+        call = { error, status: "threw" }
         throw error
       }
     }
 
-    const resolveWork = (): TResult => {
-      switch (work.status) {
+    const settle = (): TResult => {
+      switch (call.status) {
         case "pending":
           throw new Panic("WRAP_NEXT_NOT_CALLED")
         case "threw":
-          throw work.error
+          throw call.error
         case "returned":
-          return work.result
+          return call.result
         default:
-          return assertUnreachable(work, "UNREACHABLE_WORK_STATE")
+          return assertUnreachable(call, "UNREACHABLE_WORK_STATE")
       }
     }
 
-    const failWrap = (error: unknown): never => {
-      if (work.status === "threw") {
-        throw work.error
+    const fail = (error: unknown): never => {
+      if (call.status === "threw") {
+        throw call.error
       }
 
-      if (isPanic(error) || (workRejection !== undefined && workRejection.error === error)) {
+      // Every terminal call rejects only with a Panic, so an inner layer's rejection that the wrap
+      // rethrows is a Panic.
+      if (isPanic(error)) {
         throw error
       }
 
       throw new Panic("WRAP_THROW", { cause: error })
     }
 
-    let next = runWork
+    let returned: unknown
 
-    for (const wrap of wraps.toReversed()) {
-      const inner = next
-
-      next = () => {
-        let returned: unknown
-
-        try {
-          returned = wrap(this.ctx, inner)
-        } catch (error) {
-          return failWrap(error)
-        }
-
-        return checkIsPromiseLike(returned)
-          ? this.settleAsyncWrap(returned, resolveWork, failWrap)
-          : resolveWork()
-      }
+    try {
+      returned = wrap(this.ctx, next)
+    } catch (error) {
+      return fail(error)
     }
 
-    return next()
+    return checkIsPromiseLike(returned) ? this.settleAsyncWrap(returned, settle, fail) : settle()
   }
 
   /**
@@ -160,10 +151,10 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
    */
   protected settleAsyncWrap(
     returned: PromiseLike<unknown>,
-    resolveWork: () => TResult,
-    failWrap: (error: unknown) => never
+    settle: () => TResult,
+    fail: (error: unknown) => never
   ): TResult {
-    return Promise.resolve(returned).then(resolveWork, failWrap) as TResult
+    return Promise.resolve(returned).then(settle, fail) as TResult
   }
 
   protected abstract executeCore(): TResult

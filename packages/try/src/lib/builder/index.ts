@@ -113,7 +113,7 @@ export class RunBuilder<
     policy: P & ValidateRetryOptions<P>
   ): AsyncExecutionBuilderSurface<E, true>
   retry(policy: RetryOptions): ExecutionBuilderSurface<E, true> {
-    return new RunBuilder({
+    return new RunBuilder<E, true, false>({
       ...this.config,
       retry: retryOptions(policy),
     })
