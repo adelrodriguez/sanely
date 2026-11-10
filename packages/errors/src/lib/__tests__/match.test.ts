@@ -19,7 +19,7 @@ describe("matchTag", () => {
   it("calls handler when tag matches", () => {
     const error = new NotFoundError({ id: "123" })
 
-    const result = matchTag(error, "NotFoundError", (e) => e.id)
+    const result = matchTag(error, "NotFoundError", (e) => e.fields.id)
 
     expect(result).toBe("123")
   })
@@ -27,7 +27,7 @@ describe("matchTag", () => {
   it("returns undefined when tag does not match without fallback", () => {
     const error = asAppError(new TimeoutError())
 
-    const result = matchTag(error, "NotFoundError", (e) => e.id)
+    const result = matchTag(error, "NotFoundError", (e) => e.fields.id)
 
     expect(result).toBeUndefined()
   })
@@ -39,7 +39,7 @@ describe("matchTag", () => {
     const result = matchTag(
       error,
       "NotFoundError",
-      (e) => e.id,
+      (e) => e.fields.id,
       (fallbackError) => {
         fallbackInput = fallbackError
         return "fallback"

@@ -6,7 +6,7 @@ This page explains the ideas behind `@sanely/errors`: what a fault carries, why 
 
 A plain `Error` has one message, and that message often goes to two readers. The user needs a short statement, such as "User not found". The developer who debugs the failure needs to know what happened, such as "DB query returned 0 rows". A fault keeps these apart: `message` is for the user, and `description` describes the error and what happened, for debugging.
 
-A fault also carries two kinds of data. Its fields, such as `id`, belong to the kind of failure, and the type of the class declares them. Its `meta`, such as `{ traceId }`, belongs to the place where the failure happened, and any code can add it with `withMeta`. `getContext()` merges the `meta` of every fault in a cause chain. The head wins a conflict, because the newest fault knows the most about the current request.
+A fault also carries two kinds of data. Its fields, such as `id`, belong to the kind of failure, and the type of the class declares them. They live in `fault.fields`. Its `meta`, such as `{ traceId }`, belongs to the place where the failure happened, and any code can add it with `withMeta`. `getContext()` merges the `meta` of every fault in a cause chain. The head wins a conflict, because the newest fault knows the most about the current request.
 
 ## Why `Tagged` takes two calls
 
@@ -24,13 +24,13 @@ For the same reason, `merge` refuses one tag for two different classes, and `mer
 
 A registry reads a serialized fault and builds an instance of the class again with `new Class(fields)`. It has only the fields object from the wire, so the constructor must accept that object as its only parameter. `registry()` checks this signature at compile time.
 
-The check covers the signature, not the behavior. After deserialization, an instance holds only what its constructor builds from the payload fields. State that the constructor does not receive is lost, such as a field stored under another name, or a value that a constructor with no parameters computes itself. A constructor that sets a default message, or normalizes its fields, runs again on deserialization, and gives the same result. To give callers a shorter form, add a static factory and keep the constructor as it is.
+The check covers the signature, not the behavior. After deserialization, an instance holds only what its constructor builds from the wire fields. State that the constructor does not receive is lost, such as a field stored under another name, or a value that a constructor with no parameters computes itself. A constructor that sets a default message, or normalizes its fields, runs again on deserialization, and gives the same result. To give callers a shorter form, add a static factory and keep the constructor as it is.
 
-## One rule for reserved keys, with two policies
+## Why fields live in their own object
 
-Fields become own properties of the fault, and serialized fields sit next to the envelope keys. A field called `message` or `withMeta` would hide a real property or method. So one predicate decides which keys are reserved, and every part of the package uses it.
+A fault has methods, such as `withMeta` and `flatten`, and envelope properties, such as `message` and `cause`. If fields were properties of the fault itself, a field called `message` or `flatten` would hide a real property or method. Every new method would also take a name away from fields, and wire data from another service could replace a method.
 
-The rule has two policies. Construction rejects a reserved field, because your own code can choose another name. The type checker rejects the class declaration, and the constructor throws `ReservedFieldError` for a key the types cannot see. Deserialization cannot reject wire data that another service sent, and it must not drop the data either. So it renames a colliding key with the prefix `__payload_`, and repeats the prefix until the name is unique.
+So fields live in `fault.fields`, and in a `fields` object on the wire. Any name works as a field, including `message`, `flatten`, and `__proto__`. Adding a method to `Fault` never changes which field names work, and never changes the wire format. The one name that a subclass must not redeclare is `fields` itself.
 
 ## Why chains stop at 100 causes
 

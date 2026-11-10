@@ -2,21 +2,14 @@ import { isDeepStrictEqual } from "node:util"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
+import type { Fault } from "#index.ts"
 import type { SerializableFault, SerializableValue } from "#types.ts"
 import { InvalidPayloadError } from "#errors.ts"
-import { Fault, fromSerializable, isSerializableFault, Tagged, toSerializable } from "#index.ts"
-import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
-
-// Test-side mirror of the internal isReservedKey rule: wire envelope keys
-// plus anything reachable through Fault's prototype chain. The envelope keys
-// come from their one definition, which the type checker ties to SerializableFault.
-function isReservedMirror(key: string): boolean {
-  return RESERVED_FAULT_KEYS.has(key) || key in Fault.prototype
-}
+import { fromSerializable, isFault, isSerializableFault, Tagged, toSerializable } from "#index.ts"
 
 // Canonicalized through one JSON round trip because the wire itself is JSON:
 // fc.jsonValue() can generate -0, which JSON.stringify canonicalizes to 0 and
-// deep equality distinguishes from 0. Payload and meta values are passed
+// deep equality distinguishes from 0. Field and meta values are passed
 // through verbatim by design — deep serializability is the consumer's
 // documented contract — so unlike thrown causes (which normalizeThrown
 // canonicalizes), a -0 here is expected to change across transport.
@@ -25,13 +18,18 @@ const jsonValueArb = fc
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- structuredClone preserves -0; the point is JSON's canonicalization.
   .map((value) => JSON.parse(JSON.stringify(value)) as SerializableValue)
 
-const payloadKeyArb = fc
-  .string({ maxLength: 25, minLength: 1 })
-  .filter((key) => !isReservedMirror(key))
+// Any name works as a field, so mix in names that collide with Fault methods,
+// envelope keys, and Object.prototype.
+const fieldKeyArb = fc.oneof(
+  fc.string({ maxLength: 25, minLength: 1 }),
+  fc.constantFrom("message", "_tag", "fields", "withMeta", "flatten", "toString", "__proto__")
+)
 
-const payloadArb = fc.dictionary(payloadKeyArb, jsonValueArb, { maxKeys: 5 })
+const fieldsArb = fc.dictionary(fieldKeyArb, jsonValueArb, { maxKeys: 5 })
 
-const metaArb = fc.dictionary(payloadKeyArb, jsonValueArb, { maxKeys: 3 })
+const metaArb = fc.dictionary(fc.string({ maxLength: 25, minLength: 1 }), jsonValueArb, {
+  maxKeys: 3,
+})
 
 const tagArb = fc.string({ maxLength: 30, minLength: 1 })
 
@@ -40,7 +38,7 @@ type FaultSpec = {
   message: string | undefined
   description: string | undefined
   meta: Record<string, SerializableValue> | undefined
-  payload: Record<string, SerializableValue>
+  fields: Record<string, SerializableValue>
   cause: CauseSpec | undefined
 }
 
@@ -59,16 +57,16 @@ const { faultSpecArb } = fc.letrec<{ faultSpecArb: FaultSpec; causeSpecArb: Caus
   faultSpecArb: fc.record({
     cause: fc.option(tie("causeSpecArb"), { nil: undefined }),
     description: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
+    fields: fieldsArb,
     message: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
     meta: fc.option(metaArb, { nil: undefined }),
-    payload: payloadArb,
     tag: tagArb,
   }),
 }))
 
 function buildFault(spec: FaultSpec): Fault {
   class GeneratedFault extends Tagged(spec.tag)<Record<string, SerializableValue>>() {}
-  const fault = new GeneratedFault(spec.payload)
+  const fault = new GeneratedFault(spec.fields)
 
   if (spec.message !== undefined) fault.withMessage(spec.message)
   if (spec.description !== undefined) fault.withDescription(spec.description)
@@ -88,7 +86,7 @@ function buildFault(spec: FaultSpec): Fault {
 function faultChain(head: Fault): Fault[] {
   const chain = [head]
   let node: unknown = head.cause
-  while (node instanceof Fault) {
+  while (isFault(node)) {
     chain.push(node)
     node = node.cause
   }
@@ -103,7 +101,7 @@ function transport(value: Fault | SerializableFault): SerializableFault {
 }
 
 describe("toSerializable", () => {
-  it("serializes own payload fields alongside reserved fields", () => {
+  it("serializes fields in their own object next to the envelope", () => {
     class NotFoundError extends Tagged("NotFoundError")<{ id: string; resource: string }>() {}
 
     const fault = new NotFoundError({ id: "123", resource: "user" })
@@ -115,11 +113,10 @@ describe("toSerializable", () => {
       __fault: true,
       _tag: "NotFoundError",
       description: "lookup failed",
-      id: "123",
+      fields: { id: "123", resource: "user" },
       message: "User not found",
       meta: { requestId: "req-1" },
       name: "NotFoundError",
-      resource: "user",
       stack: fault.stack,
     })
   })
@@ -365,52 +362,22 @@ describe("fromSerializable", () => {
     )
   })
 
-  it("rewrites payload keys that collide with reserved names", () => {
-    const deserialized = fromSerializable({
-      __fault: true,
-      _tag: "CollisionError",
-      name: "CollisionError",
-      withCause: "payload-value",
-    })
-
-    const value = deserialized as unknown as Record<string, unknown>
-
-    expect(typeof deserialized.withCause).toBe("function")
-    expect(Object.hasOwn(deserialized, "withCause")).toBe(false)
-    expect(value.__payload_withCause).toBe("payload-value")
+  it("rejects fields that are not an object", () => {
+    expect(() => fromSerializable({ __fault: true, _tag: "X", fields: "id", name: "X" })).toThrow(
+      new InvalidPayloadError({ reason: "fields must be an object" })
+    )
   })
 
-  it("preserves existing keys that use the collision prefix", () => {
-    const deserialized = fromSerializable({
-      __fault: true,
-      __payload_withCause: "existing-value",
-      _tag: "CollisionError",
-      name: "CollisionError",
-      withCause: "reserved-value",
-    })
+  it("keeps a __proto__ field as an own data key without changing any prototype", () => {
+    const wire: unknown = JSON.parse(
+      '{"__fault":true,"_tag":"PrototypeError","name":"PrototypeError","fields":{"__proto__":"value"}}'
+    )
 
-    const value = deserialized as unknown as Record<string, unknown>
+    const revived = fromSerializable(wire)
 
-    expect(value.__payload_withCause).toBe("existing-value")
-    expect(value.__payload___payload_withCause).toBe("reserved-value")
-  })
-
-  it("preserves prototype-sensitive payload keys without changing the prototype", () => {
-    const payload = JSON.parse(
-      '{"__fault":true,"_tag":"PrototypeError","name":"PrototypeError","__proto__":"payload-value"}'
-    ) as SerializableFault
-
-    const deserialized = fromSerializable(payload)
-    const baseline = fromSerializable({
-      __fault: true,
-      _tag: "PrototypeError",
-      name: "PrototypeError",
-    })
-    const value = deserialized as unknown as Record<string, unknown>
-
-    expect(Object.getPrototypeOf(deserialized)).toBe(Object.getPrototypeOf(baseline))
-    expect(value.__payload___proto__).toBe("payload-value")
-    expect(Object.hasOwn(deserialized, "__proto__")).toBe(false)
+    expect(Object.getOwnPropertyDescriptor(revived.fields, "__proto__")?.value).toBe("value")
+    expect(Object.getPrototypeOf(revived.fields)).toBe(Object.prototype)
+    expect(Object.hasOwn(revived, "__proto__")).toBe(false)
   })
 
   it("rejects a hand-built chain deeper than the depth limit without overflowing the stack", () => {
@@ -450,7 +417,7 @@ describe("fromSerializable", () => {
     ).toThrow("meta must be an object")
   })
 
-  it("preserves tag, message, description, meta, and payload across any JSON transport round trip", () => {
+  it("preserves tag, message, description, meta, and fields across any JSON transport round trip", () => {
     fc.assert(
       fc.property(faultSpecArb, (spec) => {
         const fault = buildFault(spec)
@@ -461,9 +428,9 @@ describe("fromSerializable", () => {
         expect(revived.description).toEqual(fault.description)
         expect(revived.meta).toEqual(fault.meta)
 
-        const revivedRecord = revived as unknown as Record<string, unknown>
-        for (const [key, value] of Object.entries(spec.payload)) {
-          expect(revivedRecord[key]).toEqual(value)
+        expect(Object.keys(revived.fields)).toEqual(Object.keys(spec.fields))
+        for (const [key, value] of Object.entries(spec.fields)) {
+          expect(isDeepStrictEqual(revived.fields[key], value)).toBe(true)
         }
       })
     )
@@ -513,46 +480,13 @@ describe("fromSerializable", () => {
           const keptEdges = Math.min(edges, 100)
 
           // The outermost fault is kept and the innermost links are dropped.
-          expect(chain.map((link) => (link as LinkError).index)).toStrictEqual(
+          expect(chain.map((link) => (link as LinkError).fields.index)).toStrictEqual(
             Array.from({ length: keptEdges + 1 }, (_, offset) => edges - offset)
           )
           expect(chain.at(-1)?.cause).toBeUndefined()
         }
       ),
       { numRuns: 30 }
-    )
-  })
-
-  it("renames hostile wire keys instead of dropping their values", () => {
-    const hostileKeyArb = fc
-      .oneof(
-        fc.string({ maxLength: 25, minLength: 1 }),
-        fc.constantFrom("toString", "unwrap", "withMeta", "__proto__", "constructor"),
-        fc.string({ maxLength: 15, minLength: 1 }).map((key) => `__payload_${key}`)
-      )
-      .filter((key) => !RESERVED_FAULT_KEYS.has(key))
-
-    fc.assert(
-      fc.property(hostileKeyArb, jsonValueArb, (key, value) => {
-        const wire = {
-          __fault: true,
-          _tag: "HostileError",
-          message: "hostile payload",
-          name: "HostileError",
-        } as SerializableFault
-        Object.defineProperty(wire, key, { enumerable: true, value })
-
-        const revived = fromSerializable(transport(wire))
-        const restored = Object.entries(revived).filter(
-          ([revivedKey]) => revivedKey === key || /^(?:__payload_)+/.test(revivedKey)
-        )
-
-        // The value must be reachable under the original key or a
-        // __payload_-prefixed rename — never silently dropped.
-        expect(restored.some(([, restoredValue]) => isDeepStrictEqual(restoredValue, value))).toBe(
-          true
-        )
-      })
     )
   })
 })

@@ -2,11 +2,11 @@
 
 The package has three entry points:
 
-| Entry point             | Exports                                                                                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@sanely/errors`        | `Fault`, `Tagged`, `registry`, `merge`, `matchTag`, `matchTags`, `isFault`, `findCause`, `toSerializable`, `fromSerializable`, `isSerializableFault` |
-| `@sanely/errors/errors` | `ReservedFieldError`, `RegistryTagMismatchError`, `RegistryMergeConflictError`, `InvalidPayloadError`                                                |
-| `@sanely/errors/types`  | The types `FaultRegistry`, `FlattenOptions`, `FlattenField`, `TagOf`, `ByTag`, `SerializableValue`, `SerializableFault`, and `SerializableCause`     |
+| Entry point             | Exports                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@sanely/errors`        | `Fault`, `Tagged`, `registry`, `merge`, `matchTag`, `matchTags`, `isFault`, `findCause`, `toSerializable`, `fromSerializable`, `isSerializableFault`                 |
+| `@sanely/errors/errors` | `RegistryTagMismatchError`, `RegistryMergeConflictError`, `RegistryNotRecognizedError`, `RegistryUnknownTagError`, `RegistryConstructorError`, `InvalidPayloadError` |
+| `@sanely/errors/types`  | The types `FaultRegistry`, `FlattenOptions`, `FlattenField`, `TagOf`, `ByTag`, `SerializableValue`, `SerializableFault`, and `SerializableCause`                     |
 
 ## `Fault`
 
@@ -17,6 +17,7 @@ The abstract base class of every fault. It extends `Error`. Create subclasses wi
 | Property      | Type                                             | Description                                       |
 | ------------- | ------------------------------------------------ | ------------------------------------------------- |
 | `_tag`        | `string`                                         | The tag. Also the value of `name`.                |
+| `fields`      | `Readonly<Record<string, SerializableValue>>`    | The typed fields. Empty when the fault has none.  |
 | `message`     | `string`                                         | The message for the user. The default is the tag. |
 | `description` | `string \| undefined`                            | What happened, for debugging.                     |
 | `meta`        | `Record<string, SerializableValue> \| undefined` | Structured metadata, such as `{ traceId }`.       |
@@ -74,15 +75,13 @@ function Tagged<const Tag extends string>(
 >
 ```
 
-Returns a fault class to extend. Its constructor takes `Fields` as its only argument, or no argument when `Fields` is empty. Each field becomes a read-only property. The class has a static `_tag`.
+Returns a fault class to extend. Its constructor takes `Fields` as its only argument, or no argument when `Fields` is empty. The fault keeps a copy of the fields in its read-only `fields` object. The class has a static `_tag`.
 
 ```ts
 class NotFoundError extends Fault.Tagged("NotFoundError")<{ id: string }>() {}
 
-new NotFoundError({ id: "123" }).id // "123"
+new NotFoundError({ id: "123" }).fields.id // "123"
 ```
-
-The constructor throws `ReservedFieldError` for a [reserved key](#reserved-keys).
 
 ## Registry
 
@@ -151,7 +150,7 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 ## Wire format
 
-`SerializableFault` is a plain object with these fields, and one field for each payload field of the fault:
+`SerializableFault` is a plain object with these properties:
 
 | Field         | Type                                | Required | Description                                             |
 | ------------- | ----------------------------------- | -------- | ------------------------------------------------------- |
@@ -163,6 +162,7 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 | `meta`        | `Record<string, SerializableValue>` | No       | The metadata.                                           |
 | `stack`       | `string`                            | No       | The stack.                                              |
 | `cause`       | `SerializableCause`                 | No       | The cause.                                              |
+| `fields`      | `Record<string, SerializableValue>` | No       | The fields. The package writes it when a fault has any. |
 
 `SerializableCause` is one of these objects:
 
@@ -174,28 +174,22 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 Serialization and chain traversal stop after 100 nested causes. Deserialization throws `InvalidPayloadError` for a deeper chain.
 
-## Reserved keys
+## Field names
 
-A key is reserved when it is one of these:
-
-- A wire format key: `__fault`, `_tag`, `name`, `message`, `description`, `meta`, `stack`, or `cause`.
-- A name on the prototype chain of `Fault`: the methods of `Fault`, such as `withMeta` and `unwrap`, and the inherited names `constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and `__lookupSetter__`.
-
-A `Tagged` class declaration with a reserved field name fails to compile. When the fields have an index signature, the constructor throws `ReservedFieldError` for a reserved field name instead. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
+Fields live in the `fields` object of a fault, and in the `fields` object of the wire format. Any name works as a field, including `message`, `withMeta`, `toString`, and `__proto__`. A subclass must not redeclare `fields`.
 
 ## Errors
 
-The errors of the package are faults, and come from `@sanely/errors/errors`:
+The errors of the package are tagged faults, and come from `@sanely/errors/errors`. Their data is in `fields`:
 
-| Error                        | Fields                   | Thrown when                                            |
-| ---------------------------- | ------------------------ | ------------------------------------------------------ |
-| `ReservedFieldError`         | `field`                  | A `Tagged` constructor receives a reserved field name. |
-| `RegistryTagMismatchError`   | `registryKey`, `ctorTag` | A `registry` key is not the tag of its class.          |
-| `RegistryMergeConflictError` | `conflictingTag`         | `merge` finds one tag for two different classes.       |
-| `RegistryNotRecognizedError` |                          | `merge` receives a value that is not a registry.       |
-| `RegistryUnknownTagError`    | `tag`                    | `create` or `wrap().as` receives an unknown tag.       |
-| `RegistryConstructorError`   | `tag`                    | A registered constructor does not create a fault.      |
-| `InvalidPayloadError`        | `reason`                 | `fromSerializable` receives a malformed value.         |
+| Error                        | Fields                   | Thrown when                                       |
+| ---------------------------- | ------------------------ | ------------------------------------------------- |
+| `RegistryTagMismatchError`   | `registryKey`, `ctorTag` | A `registry` key is not the tag of its class.     |
+| `RegistryMergeConflictError` | `conflictingTag`         | `merge` finds one tag for two different classes.  |
+| `RegistryNotRecognizedError` |                          | `merge` receives a value that is not a registry.  |
+| `RegistryUnknownTagError`    | `tag`                    | `create` or `wrap().as` receives an unknown tag.  |
+| `RegistryConstructorError`   | `tag`                    | A registered constructor does not create a fault. |
+| `InvalidPayloadError`        | `reason`                 | `fromSerializable` receives a malformed value.    |
 
 ## Types
 

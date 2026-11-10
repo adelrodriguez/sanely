@@ -19,7 +19,7 @@ This guide shows you how to send a fault from a server to a client, or between p
    fault instanceof NotFoundError // true, when the tag is NotFoundError
    ```
 
-   `fromSerializable` accepts any value and checks it before it builds the fault. A tag that the registry does not have becomes a generic `Fault`. A malformed value throws `InvalidPayloadError` from `@sanely/errors/errors`, and its `reason` names the check that failed.
+   `fromSerializable` accepts any value and checks it before it builds the fault. A tag that the registry does not have becomes a generic `Fault`. A malformed value throws `InvalidPayloadError` from `@sanely/errors/errors`, and its `fields.reason` names the check that failed.
 
    To check a value without throwing, call `Fault.isSerializableFault(value)`. It returns `true` exactly when `fromSerializable` accepts the value.
 

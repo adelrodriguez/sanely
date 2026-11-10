@@ -29,8 +29,7 @@ describe("registry", () => {
     ).toThrow(
       expect.objectContaining({
         constructor: RegistryTagMismatchError,
-        ctorTag: "TimeoutError",
-        registryKey: "WrongTagName",
+        fields: { ctorTag: "TimeoutError", registryKey: "WrongTagName" },
       })
     )
   })
@@ -41,7 +40,7 @@ describe("registry", () => {
     const fault = Faults.create("NotFoundError", { id: "123" })
 
     expect(fault).toBeInstanceOf(NotFoundError)
-    expect(fault.id).toBe("123")
+    expect(fault.fields.id).toBe("123")
   })
 
   it("exposes registered tags without internal state", () => {
@@ -69,7 +68,7 @@ describe("registry", () => {
     const value = matchTag(
       fault,
       "NotFoundError",
-      (e) => e.id,
+      (e) => e.fields.id,
       () => "fallback"
     )
 
@@ -126,7 +125,7 @@ describe("registry", () => {
     const restored = Faults.fromSerializable(serialized)
 
     expect(restored).toBeInstanceOf(NotFoundError)
-    expect((restored as NotFoundError).id).toBe("123")
+    expect((restored as NotFoundError).fields.id).toBe("123")
     expect(restored.message).toBe("Missing user")
   })
 
@@ -168,23 +167,24 @@ describe("registry", () => {
     expect(restored.cause).toBeInstanceOf(TimeoutError)
   })
 
-  it("preserves reserved payload collisions during registry deserialization", () => {
-    const Faults = registry({ NotFoundError, TimeoutError })
+  it("revives any field name under fields, including Fault methods and __proto__", () => {
+    class ProbeError extends Tagged("ProbeError")<Record<string, string>>() {}
+    const Faults = registry({ ProbeError })
+    const fields = JSON.parse(
+      '{"withCause": "a", "flatten": "b", "message": "c", "__proto__": "d"}'
+    ) as Record<string, string>
 
-    const restored = Faults.fromSerializable({
-      __fault: true,
-      __payload_withCause: "existing-value",
-      _tag: "TimeoutError",
-      name: "TimeoutError",
-      withCause: "reserved-value",
-    })
+    // Intentionally a JSON round trip: the test covers transport over a real wire.
+    // oxlint-disable-next-line unicorn/prefer-structured-clone
+    const wire = JSON.parse(JSON.stringify(new ProbeError(fields))) as unknown
+    const restored = Faults.fromSerializable(wire)
 
-    const value = restored as unknown as Record<string, unknown>
-
-    expect(restored).toBeInstanceOf(TimeoutError)
-    expect(Object.hasOwn(restored, "withCause")).toBe(false)
-    expect(value.__payload_withCause).toBe("existing-value")
-    expect(value.__payload___payload_withCause).toBe("reserved-value")
+    expect(restored).toBeInstanceOf(ProbeError)
+    expect(Object.keys(restored.fields)).toEqual(["withCause", "flatten", "message", "__proto__"])
+    expect(Object.getOwnPropertyDescriptor(restored.fields, "__proto__")?.value).toBe("d")
+    expect(Object.getPrototypeOf(restored.fields)).toBe(Object.prototype)
+    expect(typeof restored.withCause).toBe("function")
+    expect(restored.message).toBe("ProbeError")
   })
 
   it("validates registered payloads before reconstruction", () => {
@@ -218,16 +218,43 @@ describe("registry", () => {
       })
     ).toThrow("meta must be an object")
 
+    expect(() =>
+      Faults.fromSerializable({
+        __fault: true,
+        _tag: "ValidatedError",
+        fields: ["not", "an", "object"],
+        name: "ValidatedError",
+      })
+    ).toThrow(new InvalidPayloadError({ reason: "fields must be an object" }))
+
     expect(constructorCalls).toBe(0)
+  })
+
+  it("serializes only fields, so a subclass property revives with its initializer value", () => {
+    class RetryError extends Tagged("RetryError")() {
+      attempts = 0
+    }
+
+    const Faults = registry({ RetryError })
+    const error = new RetryError()
+    error.attempts = 3
+
+    const wire = error.toSerializable()
+    const restored = Faults.fromSerializable(wire)
+
+    expect(Object.hasOwn(wire, "attempts")).toBe(false)
+    expect(wire.fields).toBeUndefined()
+    expect(restored).toBeInstanceOf(RetryError)
+    expect((restored as RetryError).attempts).toBe(0)
   })
 
   it("keeps what a Tagged subclass constructor assigns after super during revival", () => {
     class AmountError extends Tagged("AmountError")<{ cents: number }>() {
-      override readonly cents: number
+      readonly roundedCents: number
 
       constructor(fields: { cents: number }) {
         super(fields)
-        this.cents = Math.round(fields.cents)
+        this.roundedCents = Math.round(fields.cents)
       }
     }
 
@@ -235,12 +262,30 @@ describe("registry", () => {
     const restored = Faults.fromSerializable({
       __fault: true,
       _tag: "AmountError",
-      cents: 10.4,
+      fields: { cents: 10.4 },
       name: "AmountError",
     })
 
-    expect(new AmountError({ cents: 10.4 }).cents).toBe(10)
-    expect((restored as AmountError).cents).toBe(10)
+    expect(new AmountError({ cents: 10.4 }).roundedCents).toBe(10)
+    expect((restored as AmountError).roundedCents).toBe(10)
+  })
+
+  it("keeps what a Tagged subclass normalizes before calling super", () => {
+    class AmountError extends Tagged("AmountError")<{ cents: number }>() {
+      constructor(fields: { cents: number }) {
+        super({ cents: Math.round(fields.cents) })
+      }
+    }
+
+    const Faults = registry({ AmountError })
+    const restored = Faults.fromSerializable({
+      __fault: true,
+      _tag: "AmountError",
+      fields: { cents: 10.4 },
+      name: "AmountError",
+    })
+
+    expect((restored as AmountError).fields.cents).toBe(10)
   })
 
   it("preserves constructor normalization during registry deserialization", () => {
@@ -258,8 +303,8 @@ describe("registry", () => {
     const restored = Faults.fromSerializable({
       __fault: true,
       _tag: "NormalizedError",
+      fields: { value: "42" },
       name: "NormalizedError",
-      value: "42",
     })
 
     expect(restored).toBeInstanceOf(NormalizedError)
@@ -367,7 +412,7 @@ describe("registry", () => {
     expect(() => Faults.create("Nope")).toThrow(new RegistryUnknownTagError({ tag: "Nope" }))
     // @ts-expect-error -- an inherited Object.prototype key is not a registered tag
     expect(() => Faults.create("toString")).toThrow(
-      expect.objectContaining({ _tag: "RegistryUnknownTagError", tag: "toString" })
+      expect.objectContaining({ _tag: "RegistryUnknownTagError", fields: { tag: "toString" } })
     )
   })
 
@@ -455,7 +500,7 @@ describe("registry", () => {
         __fault: true,
         _tag: "NotFoundError",
         cause: { kind: "fault", value: current },
-        id: `${i}`,
+        fields: { id: `${i}` },
         name: "NotFoundError",
       }
     }
@@ -477,7 +522,9 @@ describe("registry", () => {
 
     expect(() =>
       (Faults as never as { create: (tag: string) => unknown }).create("NotAFault")
-    ).toThrow(expect.objectContaining({ _tag: "RegistryConstructorError", tag: "NotAFault" }))
+    ).toThrow(
+      expect.objectContaining({ _tag: "RegistryConstructorError", fields: { tag: "NotAFault" } })
+    )
     expect(() =>
       Faults.fromSerializable({ __fault: true, _tag: "NotAFault", name: "NotAFault" })
     ).toThrow(RegistryConstructorError)
@@ -547,12 +594,12 @@ describe("merge", () => {
     const MergedFault = merge(AppFault, DbFault)
 
     const created = MergedFault.create("DatabaseError", { query: "SELECT 1" })
-    expect(created.query).toBe("SELECT 1")
+    expect(created.fields.query).toBe("SELECT 1")
 
     const wrapped = MergedFault.wrap(new Error("root")).as("TimeoutError")
     expect(wrapped._tag).toBe("TimeoutError")
 
-    const matched = MergedFault.matchTag(created, "DatabaseError", (fault) => fault.query)
+    const matched = MergedFault.matchTag(created, "DatabaseError", (fault) => fault.fields.query)
     expect(matched).toBe("SELECT 1")
 
     const serialized = MergedFault.toSerializable(created)

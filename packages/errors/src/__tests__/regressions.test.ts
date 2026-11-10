@@ -127,7 +127,7 @@ describe("#66 registered constructors revive from their own fields object", () =
     const restored = AppFault.fromSerializable(UserNotFound.forId("42").toSerializable())
 
     expect(restored).toBeInstanceOf(UserNotFound)
-    expect(restored).toMatchObject({ id: "42", message: "User 42 not found" })
+    expect(restored).toMatchObject({ fields: { id: "42" }, message: "User 42 not found" })
   })
 
   it("keeps a message set after construction over the derived default", () => {

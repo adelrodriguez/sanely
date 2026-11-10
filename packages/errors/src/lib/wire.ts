@@ -25,7 +25,7 @@ export type SerializableFault = {
   meta?: Record<string, SerializableValue>
   stack?: string
   cause?: SerializableCause
-  [key: string]: SerializableValue | SerializableCause | undefined
+  fields?: Record<string, SerializableValue>
 }
 
 function stringifyFallback(value: object): string {
@@ -71,60 +71,3 @@ export function normalizeThrown(value: unknown): SerializableValue {
 }
 
 export const MAX_CAUSE_DEPTH = 100
-
-// The named fields of SerializableFault, without its payload index signature.
-export type EnvelopeKey = keyof {
-  [Key in keyof SerializableFault as string extends Key ? never : Key]: SerializableFault[Key]
-}
-
-// One entry per EnvelopeKey. The Record type fails the type check when an entry
-// is missing or extra, so this list cannot drift from SerializableFault.
-const envelopeKeys: Record<EnvelopeKey, true> = {
-  __fault: true,
-  _tag: true,
-  cause: true,
-  description: true,
-  message: true,
-  meta: true,
-  name: true,
-  stack: true,
-}
-
-// The canonical wire envelope keys. Everything else on a SerializableFault
-// is user payload. Fault methods are not listed here: they live on the
-// prototype, so isReservedKey (fault.ts) covers them via a prototype check.
-export const RESERVED_FAULT_KEYS: ReadonlySet<string> = new Set(Object.keys(envelopeKeys))
-
-// defineProperty (not assignment) so a "__proto__" key becomes an own data
-// property instead of triggering the Object.prototype.__proto__ setter.
-export function definePayloadField(
-  target: Record<string, unknown>,
-  key: string,
-  value: unknown
-): void {
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  })
-}
-
-// Collects own payload fields, skipping excluded keys and function values.
-export function collectPayloadFields(
-  source: Record<string, unknown>,
-  isExcluded: (key: string) => boolean
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = {}
-
-  for (const key of Object.keys(source)) {
-    if (isExcluded(key)) continue
-
-    const value = source[key]
-    if (typeof value === "function") continue
-
-    definePayloadField(payload, key, value)
-  }
-
-  return payload
-}

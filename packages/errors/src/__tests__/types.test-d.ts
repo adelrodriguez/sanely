@@ -17,7 +17,7 @@ import type {
   SerializableValue,
   TagOf,
 } from "#types.ts"
-import { InvalidPayloadError, ReservedFieldError } from "#errors.ts"
+import { InvalidPayloadError } from "#errors.ts"
 
 import {
   type Fault,
@@ -61,11 +61,34 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf(fault._tag).toEqualTypeOf<"NotFoundError">()
 }
 
-// Exposes Tagged fields as readonly properties.
+// Exposes Tagged fields as a readonly fields object.
 {
   const fault = new NotFoundError({ id: "123" })
 
-  expectTypeOf(fault.id).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields.id).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields).toEqualTypeOf<Readonly<{ id: string }>>()
+  // @ts-expect-error -- fields are readonly
+  fault.fields.id = "456"
+  // @ts-expect-error -- fields are not instance properties
+  void fault.id
+}
+
+// Accepts any field name, including envelope keys, Fault methods, and Object.prototype names.
+{
+  class AnyNameError extends Tagged("AnyNameError")<{
+    name: string
+    withMeta: string
+    toString: string
+    fields: number
+  }>() {}
+
+  const fault = new AnyNameError({ fields: 1, name: "n", toString: "t", withMeta: "w" })
+
+  expectTypeOf(fault.fields.name).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields.withMeta).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields.fields).toEqualTypeOf<number>()
+  expectTypeOf<AnyNameError["withMeta"]>().toBeFunction()
+  expectTypeOf(fault.name).toEqualTypeOf<string>()
 }
 
 // Makes Tagged instances extend Fault.
@@ -103,7 +126,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   const fault = AppFault.create("NotFoundError", { id: "123" })
 
   expectTypeOf(fault).toEqualTypeOf<NotFoundError>()
-  expectTypeOf(fault.id).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields.id).toEqualTypeOf<string>()
 }
 
 // Infers the correct registry.wrap().as instance type.
@@ -111,7 +134,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   const fault = AppFault.wrap(new Error("root")).as("NotFoundError", { id: "123" })
 
   expectTypeOf(fault).toEqualTypeOf<NotFoundError>()
-  expectTypeOf(fault.id).toEqualTypeOf<string>()
+  expectTypeOf(fault.fields.id).toEqualTypeOf<string>()
 }
 
 // Types registry guards, tags, and serialization contracts.
@@ -169,8 +192,8 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   AppFault.matchTag(fault, "NotFoundError", (e) => {
     expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-    expectTypeOf(e.id).toEqualTypeOf<string>()
-    return e.id
+    expectTypeOf(e.fields.id).toEqualTypeOf<string>()
+    return e.fields.id
   })
 }
 
@@ -181,8 +204,8 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   AppFault.matchTags(fault, {
     NotFoundError: (e) => {
       expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-      expectTypeOf(e.id).toEqualTypeOf<string>()
-      return e.id
+      expectTypeOf(e.fields.id).toEqualTypeOf<string>()
+      return e.fields.id
     },
     TimeoutError: (e) => {
       expectTypeOf(e).toEqualTypeOf<TimeoutError>()
@@ -201,7 +224,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   matchTag(err, "InvalidPayloadError", (e) => {
     expectTypeOf(e).toEqualTypeOf<InvalidPayloadError>()
-    expectTypeOf(e.reason).toEqualTypeOf<string>()
+    expectTypeOf(e.fields.reason).toEqualTypeOf<string>()
   })
 
   matchTags(err, {
@@ -227,14 +250,13 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
 // Narrows every library error by its tag in standalone matchers.
 {
-  const err = new ReservedFieldError({ field: "_tag" }) as
+  const err = new InvalidPayloadError({ reason: "x" }) as
     | InvalidPayloadError
     | RegistryConstructorError
     | RegistryMergeConflictError
     | RegistryNotRecognizedError
     | RegistryTagMismatchError
     | RegistryUnknownTagError
-    | ReservedFieldError
 
   expectTypeOf(err._tag).toEqualTypeOf<
     | "InvalidPayloadError"
@@ -243,32 +265,26 @@ type AppError = NotFoundError | TimeoutError | PaymentError
     | "RegistryNotRecognizedError"
     | "RegistryTagMismatchError"
     | "RegistryUnknownTagError"
-    | "ReservedFieldError"
   >()
 
   matchTag(err, "RegistryUnknownTagError", (e) => {
     expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>()
-    expectTypeOf(e.tag).toEqualTypeOf<string>()
+    expectTypeOf(e.fields.tag).toEqualTypeOf<string>()
   })
 
   matchTag(err, "RegistryConstructorError", (e) => {
     expectTypeOf(e).toEqualTypeOf<RegistryConstructorError>()
-    expectTypeOf(e.tag).toEqualTypeOf<string>()
-  })
-
-  matchTag(err, "ReservedFieldError", (e) => {
-    expectTypeOf(e).toEqualTypeOf<ReservedFieldError>()
-    expectTypeOf(e.field).toEqualTypeOf<string>()
+    expectTypeOf(e.fields.tag).toEqualTypeOf<string>()
   })
 
   matchTag(err, "RegistryTagMismatchError", (e) => {
     expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>()
-    expectTypeOf(e.registryKey).toEqualTypeOf<string>()
+    expectTypeOf(e.fields.registryKey).toEqualTypeOf<string>()
   })
 
   matchTag(err, "RegistryMergeConflictError", (e) => {
     expectTypeOf(e).toEqualTypeOf<RegistryMergeConflictError>()
-    expectTypeOf(e.conflictingTag).toEqualTypeOf<string>()
+    expectTypeOf(e.fields.conflictingTag).toEqualTypeOf<string>()
   })
 
   matchTags(err, {
@@ -278,7 +294,6 @@ type AppError = NotFoundError | TimeoutError | PaymentError
     RegistryNotRecognizedError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryNotRecognizedError>(),
     RegistryTagMismatchError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>(),
     RegistryUnknownTagError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>(),
-    ReservedFieldError: (e) => expectTypeOf(e).toEqualTypeOf<ReservedFieldError>(),
   })
 }
 
@@ -288,7 +303,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   const withoutFallback = matchTag(err, "NotFoundError", (e) => {
     expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-    return e.id
+    return e.fields.id
   })
 
   const withFallback = matchTag(
@@ -296,7 +311,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
     "NotFoundError",
     (e) => {
       expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-      return e.id
+      return e.fields.id
     },
     (e) => {
       expectTypeOf(e).toEqualTypeOf<TimeoutError | PaymentError>()
@@ -323,7 +338,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   const withoutFallback = matchTags(err, {
     NotFoundError: (e) => {
       expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-      return e.id
+      return e.fields.id
     },
     TimeoutError: (e) => {
       expectTypeOf(e).toEqualTypeOf<TimeoutError>()
@@ -336,7 +351,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
     {
       NotFoundError: (e) => {
         expectTypeOf(e).toEqualTypeOf<NotFoundError>()
-        return e.id
+        return e.fields.id
       },
     },
     (e) => {
@@ -411,7 +426,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 {
   const fault = AppFault.create("NotFoundError", { id: "123" })
 
-  const withoutFallback = AppFault.matchTag(fault, "NotFoundError", (e) => e.id)
+  const withoutFallback = AppFault.matchTag(fault, "NotFoundError", (e) => e.fields.id)
   const withFallback = AppFault.matchTag(
     fault,
     "NotFoundError",
@@ -460,9 +475,9 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf(nf).toEqualTypeOf<NotFoundError>()
   expectTypeOf(db).toEqualTypeOf<DatabaseError>()
   expectTypeOf(pay).toEqualTypeOf<PaymentError>()
-  expectTypeOf(nf.id).toEqualTypeOf<string>()
-  expectTypeOf(db.query).toEqualTypeOf<string>()
-  expectTypeOf(pay.invoiceId).toEqualTypeOf<string>()
+  expectTypeOf(nf.fields.id).toEqualTypeOf<string>()
+  expectTypeOf(db.fields.query).toEqualTypeOf<string>()
+  expectTypeOf(pay.fields.invoiceId).toEqualTypeOf<string>()
 }
 
 // Preserves subclass type through fluent methods.
@@ -480,27 +495,8 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 // These verify that invalid usage produces compile-time errors.
 // The function bodies never execute — only the type checker matters.
 
-// ── Reserved Tagged field names ──────────────────────────────────────────────
-// A Tagged constructor throws ReservedFieldError for these keys, so the class
-// declaration fails to compile instead.
-{
-  // @ts-expect-error -- `name` is a wire envelope key
-  class NameField extends Tagged("NameField")<{ id: string; name: string }>() {}
-  // @ts-expect-error -- `withMeta` is a Fault method
-  class MethodField extends Tagged("MethodField")<{ withMeta: string }>() {}
-  // @ts-expect-error -- `toString` is inherited from Object
-  class ObjectField extends Tagged("ObjectField")<{ toString: string }>() {}
-  // @ts-expect-error -- `__proto__` would replace the prototype
-  class ProtoField extends Tagged("ProtoField")<{ __proto__: string }>() {}
-
-  // Fields with an index signature have no known keys, so the runtime check covers them.
-  class OpenFields extends Tagged("OpenFields")<Record<string, string>>() {}
-
-  void [NameField, MethodField, ObjectField, ProtoField, OpenFields]
-}
-
 // ── Registered constructor contract (#66) ────────────────────────────────────
-// registry.fromSerializable revives through `new Class(payloadFields)`, so a
+// registry.fromSerializable revives through `new Class(fields)`, so a
 // registered constructor must take the fields object as its only parameter.
 
 class PositionalError extends Tagged("PositionalError")<{ id: string }>() {

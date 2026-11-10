@@ -1,8 +1,6 @@
 import {
-  collectPayloadFields,
   MAX_CAUSE_DEPTH,
   normalizeThrown,
-  RESERVED_FAULT_KEYS,
   type SerializableCause,
   type SerializableFault,
   type SerializableValue,
@@ -18,8 +16,7 @@ export type FlattenOptions = {
 
 // A WeakMap rather than a #private field: the declaration emitter turns
 // native private fields into a bare `private;` member that breaks consumer
-// typechecking (see scripts/verify-package.ts). Side benefit: invisible to
-// Object.keys, so it needs no reserved-key entry.
+// typechecking (see scripts/verify-package.ts).
 const originalStacks = new WeakMap<Fault, string | undefined>()
 
 function defaultTrimFormatter(value: string): string {
@@ -27,7 +24,7 @@ function defaultTrimFormatter(value: string): string {
 }
 
 export function toCause(cause: unknown, depth: number): SerializableCause {
-  if (cause instanceof Fault) {
+  if (isFault(cause)) {
     return { kind: "fault", value: serializeFault(cause, depth + 1) }
   }
 
@@ -51,19 +48,15 @@ export function toCause(cause: unknown, depth: number): SerializableCause {
 }
 
 function serializeFault(fault: Fault, depth: number): SerializableFault {
-  const payload = collectPayloadFields(fault as unknown as Record<string, unknown>, isReservedKey)
-  // Guaranteed by the Tagged Fields constraint; function values are stripped above.
-  // Deep serializability is a documented contract, not runtime-validated.
-  const serializablePayload = payload as Record<string, SerializableValue>
-
   const serialized: SerializableFault = {
     __fault: true,
-    ...serializablePayload,
     _tag: fault._tag,
     message: fault.message,
     name: fault.name,
   }
 
+  // Deep serializability of field values is a typed contract, not runtime-validated.
+  if (Object.keys(fault.fields).length > 0) serialized.fields = { ...fault.fields }
   if (fault.description !== undefined) serialized.description = fault.description
   if (fault.meta !== undefined) serialized.meta = fault.meta
   if (fault.stack !== undefined) serialized.stack = fault.stack
@@ -100,16 +93,27 @@ function valueToMessage(value: unknown): string {
   return ""
 }
 
-export abstract class Fault extends Error {
+// Generic over its fields, so a tagged fault types `fields` exactly while every fault
+// still extends the default `Fault`.
+export abstract class Fault<
+  Fields extends Record<string, SerializableValue> = Record<string, SerializableValue>,
+> extends Error {
   readonly _tag: string
+  // The typed fields live in their own object, so no field name can collide with a
+  // Fault method or an envelope key.
+  readonly fields: Readonly<Fields>
   override cause?: unknown
   meta?: Record<string, SerializableValue>
   description?: string
 
-  protected constructor(tag: string, message?: string) {
-    super(message ?? tag)
+  protected constructor(tag: string, fields?: Fields) {
+    super(tag)
     this._tag = tag
     this.name = tag
+    // Spread copies an own "__proto__" key as data instead of calling its setter. A subclass
+    // that omits fields gets an empty object, which only the default Fields type describes.
+    // Tagged constructors always pass their fields, so their types stay exact.
+    this.fields = { ...fields } as Readonly<Fields>
     originalStacks.set(this, this.stack)
   }
 
@@ -236,8 +240,6 @@ export function isFault(value: unknown): value is Fault {
   return value instanceof Fault
 }
 
-// Standalone rather than a Fault method, so "findCause" stays usable as a
-// payload field name instead of becoming a reserved key.
 export function findCause<T>(
   err: unknown,
   ctor: abstract new (...args: never[]) => T
@@ -270,14 +272,4 @@ export function toSerializable(value: unknown): SerializableFault {
     message: "UnknownThrown",
     name: "UnknownThrown",
   }
-}
-
-/**
- * The single reserved-key rule, shared by construction (reject), serialization (exclude), and
- * deserialization (rename): a key is reserved when it is a wire envelope key or would shadow
- * anything reachable through Fault's prototype chain (Fault methods, Error/Object built-ins like
- * toString, and the `__proto__` accessor).
- */
-export function isReservedKey(key: string): boolean {
-  return RESERVED_FAULT_KEYS.has(key) || key in Fault.prototype
 }

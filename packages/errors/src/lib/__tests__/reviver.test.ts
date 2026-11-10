@@ -3,47 +3,36 @@ import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 import { InvalidPayloadError } from "#lib/errors.ts"
-import { Fault, isReservedKey, toSerializable } from "#lib/fault.ts"
+import { Fault, toSerializable } from "#lib/fault.ts"
 import { fromSerializable, isSerializableFault } from "#lib/reviver.ts"
-import { MAX_CAUSE_DEPTH, RESERVED_FAULT_KEYS, type SerializableFault } from "#lib/wire.ts"
+import { MAX_CAUSE_DEPTH, type SerializableFault } from "#lib/wire.ts"
 
-const PAYLOAD_PREFIX_PATTERN = /^(?:__payload_)+$/
-
-const wireKeyArb = fc
-  .oneof(
-    fc.string({ maxLength: 20, minLength: 1 }),
-    fc.constantFrom(
-      "toString",
-      "constructor",
-      "hasOwnProperty",
-      "unwrap",
-      "withMeta",
-      "flatten",
-      "__proto__"
-    ),
-    fc.string({ maxLength: 10, minLength: 1 }).map((key) => `__payload_${key}`)
+// Field names that matter elsewhere: Fault methods, envelope keys, and Object.prototype names.
+const fieldKeyArb = fc.oneof(
+  fc.string({ maxLength: 20, minLength: 1 }),
+  fc.constantFrom(
+    "toString",
+    "constructor",
+    "hasOwnProperty",
+    "unwrap",
+    "withMeta",
+    "flatten",
+    "message",
+    "_tag",
+    "fields",
+    "__proto__"
   )
-  .filter((key) => !RESERVED_FAULT_KEYS.has(key))
+)
 
-// A reserved key together with its own __payload_-prefixed twin forces two
-// wire keys to rename onto the same target, exercising the collision-dedup
-// guard in preparePayload (a random dictionary almost never produces this).
-const collisionPairArb = fc
-  .constantFrom("toString", "unwrap", "withMeta", "flatten", "__proto__")
-  .map((key) => ({ [key]: "reserved-value", [`__payload_${key}`]: "prefixed-value" }))
+const wireFieldsArb = fc
+  .array(fc.tuple(fieldKeyArb, fc.jsonValue({ maxDepth: 2 })), { maxLength: 6 })
+  .map((entries) => {
+    const fields: Record<string, unknown> = {}
 
-const wirePayloadArb = fc
-  .tuple(
-    fc.dictionary(wireKeyArb, fc.jsonValue({ maxDepth: 2 }), { maxKeys: 6 }),
-    fc.option(collisionPairArb, { nil: undefined })
-  )
-  .map(([payload, collisionPair]) => {
-    if (collisionPair === undefined) return payload
-
-    // defineProperty (not assignment or Object.assign) so a "__proto__" key
-    // lands as an own data property instead of triggering the setter.
-    for (const [key, value] of Object.entries(collisionPair)) {
-      Object.defineProperty(payload, key, {
+    // defineProperty (not assignment) so a "__proto__" key lands as an own
+    // data property instead of triggering the setter.
+    for (const [key, value] of entries) {
+      Object.defineProperty(fields, key, {
         configurable: true,
         enumerable: true,
         value,
@@ -51,27 +40,11 @@ const wirePayloadArb = fc
       })
     }
 
-    return payload
+    return fields
   })
 
-function buildWire(payload: Record<string, unknown>): SerializableFault {
-  const wire = {
-    __fault: true,
-    _tag: "HostileError",
-    message: "hostile payload",
-    name: "HostileError",
-  } as SerializableFault
-
-  for (const [key, value] of Object.entries(payload)) {
-    Object.defineProperty(wire, key, {
-      configurable: true,
-      enumerable: true,
-      value,
-      writable: true,
-    })
-  }
-
-  return wire
+function buildWire(fields: Record<string, unknown>): unknown {
+  return { __fault: true, _tag: "HostileError", fields, message: "hostile", name: "HostileError" }
 }
 
 // Test-side mirror of the envelope validation order, so each input has
@@ -92,6 +65,12 @@ function expectedRejection(input: unknown): string | undefined {
   ) {
     return "meta must be an object"
   }
+  if (
+    record.fields !== undefined
+    && (typeof record.fields !== "object" || record.fields === null || Array.isArray(record.fields))
+  ) {
+    return "fields must be an object"
+  }
 
   return undefined
 }
@@ -109,11 +88,12 @@ const anythingArb = fc.anything({
 
 // Arbitrary values almost never carry `__fault: true`, so mix in
 // envelope-shaped objects to exercise the revive branch and each
-// validation guard (marker, _tag, name, meta) in every run.
+// validation guard (marker, _tag, name, meta, fields) in every run.
 const envelopeArb = fc.record(
   {
     __fault: fc.oneof(fc.constant(true), anythingArb),
     _tag: fc.oneof(fc.string(), anythingArb),
+    fields: fc.oneof(fc.dictionary(fc.string(), fc.jsonValue()), anythingArb),
     meta: fc.oneof(fc.dictionary(fc.string(), fc.jsonValue()), anythingArb),
     name: fc.oneof(fc.string(), anythingArb),
   },
@@ -123,43 +103,20 @@ const envelopeArb = fc.record(
 const payloadCandidateArb = fc.oneof(anythingArb, envelopeArb)
 
 describe("fromSerializable", () => {
-  it("restores every non-envelope wire key without loss or prototype shadowing", () => {
+  it("restores every wire field under fields without loss or prototype changes", () => {
     fc.assert(
-      fc.property(wirePayloadArb, (payload) => {
-        const revived = fromSerializable(buildWire(payload))
-        const revivedRecord = revived as unknown as Record<string, unknown>
-        const ownKeys = Object.keys(revived)
+      fc.property(wireFieldsArb, (fields) => {
+        const revived = fromSerializable(buildWire(fields))
 
-        // No own key may shadow anything reachable through the prototype
-        // chain; only envelope fields (name, message, ...) may be reserved.
-        for (const key of ownKeys) {
-          expect(RESERVED_FAULT_KEYS.has(key) || !isReservedKey(key)).toBe(true)
+        expect(Object.keys(revived.fields)).toEqual(Object.keys(fields))
+        for (const [key, value] of Object.entries(fields)) {
+          expect(Object.hasOwn(revived.fields, key)).toBe(true)
+          expect(isDeepStrictEqual(revived.fields[key], value)).toBe(true)
         }
-        expect(typeof revivedRecord.unwrap).toBe("function")
-
-        // No data loss: exactly one restored key per wire payload key.
-        const payloadOwnKeys = ownKeys.filter((key) => !RESERVED_FAULT_KEYS.has(key))
-        expect(payloadOwnKeys.length).toBe(Object.keys(payload).length)
-
-        for (const [key, value] of Object.entries(payload)) {
-          // Renamed keys never land on a raw wire key, so a non-reserved key
-          // is always restored under its exact original name.
-          if (!isReservedKey(key)) {
-            expect(Object.hasOwn(revived, key)).toBe(true)
-            expect(isDeepStrictEqual(revivedRecord[key], value)).toBe(true)
-            continue
-          }
-
-          // Reserved keys are reachable under a __payload_-prefixed rename.
-          const matches = payloadOwnKeys.filter(
-            (candidate) =>
-              candidate.endsWith(key)
-              && PAYLOAD_PREFIX_PATTERN.test(candidate.slice(0, -key.length))
-              && isDeepStrictEqual(revivedRecord[candidate], value)
-          )
-
-          expect(matches.length).toBeGreaterThan(0)
-        }
+        expect(Object.getPrototypeOf(revived.fields)).toBe(Object.prototype)
+        expect(typeof revived.unwrap).toBe("function")
+        expect(revived._tag).toBe("HostileError")
+        expect(revived.message).toBe("hostile")
       })
     )
   })
@@ -177,7 +134,7 @@ describe("fromSerializable", () => {
           expect(revived._tag).toBe((input as SerializableFault)._tag)
         } else {
           expect(revive).toThrow(InvalidPayloadError)
-          expect(revive).toThrow(expect.objectContaining({ reason: rejection }))
+          expect(revive).toThrow(expect.objectContaining({ fields: { reason: rejection } }))
         }
       })
     )

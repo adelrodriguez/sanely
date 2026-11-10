@@ -1,10 +1,8 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import { ReservedFieldError } from "#lib/errors.ts"
 import { Fault } from "#lib/fault.ts"
 import { Tagged } from "#lib/tagged.ts"
-import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
 
 describe("Tagged", () => {
   it("creates class with matching _tag and name", () => {
@@ -17,56 +15,59 @@ describe("Tagged", () => {
     expect(fault.name).toBe("NotFoundError")
   })
 
-  it("assigns constructor fields to instance", () => {
+  it("keeps constructor fields in fields, not on the instance", () => {
     class NotFoundError extends Tagged("NotFoundError")<{ id: string; resource: string }>() {}
 
     const fault = new NotFoundError({ id: "123", resource: "user" })
 
-    expect(fault.id).toBe("123")
-    expect(fault.resource).toBe("user")
+    expect(fault.fields).toEqual({ id: "123", resource: "user" })
+    expect(Object.hasOwn(fault, "id")).toBe(false)
   })
 
-  it("throws ReservedFieldError for reserved field keys", () => {
-    // An index signature skips the compile-time check, so the runtime guard runs.
-    class InvalidFieldError extends Tagged("InvalidFieldError")<Record<string, string>>() {}
+  it("gives a fault without fields an empty fields object", () => {
+    class TimeoutError extends Tagged("TimeoutError")() {}
 
-    expect(() => new InvalidFieldError({ message: "nope" })).toThrow(ReservedFieldError)
-    expect(() => new InvalidFieldError({ message: "nope" })).toThrow("Reserved field key: message")
+    expect(new TimeoutError().fields).toEqual({})
   })
 
-  it("rejects a field key exactly when it collides with the wire envelope or Fault prototype", () => {
-    // Test-side mirror of the internal isReservedKey rule. The envelope keys
-    // come from their one definition, which the type checker ties to SerializableFault.
-    const wireEnvelopeKeys = RESERVED_FAULT_KEYS
+  it("accepts any field name, including Fault methods and envelope keys", () => {
     class ProbeError extends Tagged("ProbeError")<Record<string, string>>() {}
 
-    // Random strings almost never land on a reserved key, so mix them in
-    // explicitly to make the rejection branch reliable in every run.
     const keyArb = fc.oneof(
       fc.string({ maxLength: 30, minLength: 1 }),
       fc.constantFrom(
-        ...wireEnvelopeKeys,
+        "message",
+        "_tag",
+        "cause",
+        "fields",
         "toString",
         "valueOf",
         "constructor",
-        "__proto__",
         "unwrap",
-        "withMeta"
+        "withMeta",
+        "flatten"
       )
     )
 
     fc.assert(
       fc.property(keyArb, (key) => {
-        const construct = () => new ProbeError({ [key]: "value" })
+        const fault = new ProbeError({ [key]: "value" })
 
-        if (wireEnvelopeKeys.has(key) || key in Fault.prototype) {
-          expect(construct).toThrow(ReservedFieldError)
-          expect(construct).toThrow(`Reserved field key: ${key}`)
-        } else {
-          const fault = construct() as unknown as Record<string, unknown>
-          expect(fault[key]).toBe("value")
-        }
+        expect(fault.fields[key]).toBe("value")
+        expect(fault._tag).toBe("ProbeError")
+        expect(typeof fault.withMeta).toBe("function")
       })
     )
+  })
+
+  it("keeps a __proto__ field as an own data key without changing any prototype", () => {
+    class ProbeError extends Tagged("ProbeError")<Record<string, string>>() {}
+    const fields = JSON.parse('{"__proto__": "value"}') as Record<string, string>
+
+    const fault = new ProbeError(fields)
+
+    expect(Object.getOwnPropertyDescriptor(fault.fields, "__proto__")?.value).toBe("value")
+    expect(Object.getPrototypeOf(fault.fields)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(fault)).toBe(ProbeError.prototype)
   })
 })

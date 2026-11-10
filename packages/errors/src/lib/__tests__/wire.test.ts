@@ -1,7 +1,7 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import { collectPayloadFields, normalizeThrown } from "#lib/wire.ts"
+import { normalizeThrown } from "#lib/wire.ts"
 
 const anythingArb = fc.anything({
   withBigInt: true,
@@ -58,60 +58,5 @@ describe("normalizeThrown", () => {
 
   it("canonicalizes -0 to 0 like JSON.stringify", () => {
     expect(Object.is(normalizeThrown(-0), 0)).toBe(true)
-  })
-})
-
-describe("collectPayloadFields", () => {
-  it("keeps exactly the non-excluded fields in source order with identical values", () => {
-    const sourceArb = fc.dictionary(fc.string({ maxLength: 20 }), anythingArb, { maxKeys: 8 })
-
-    fc.assert(
-      fc.property(
-        sourceArb.chain((source) =>
-          fc.record({
-            excluded: fc.subarray(Object.keys(source)),
-            source: fc.constant(source),
-          })
-        ),
-        ({ excluded, source }) => {
-          const excludedSet = new Set(excluded)
-          const payload = collectPayloadFields(source, (key) => excludedSet.has(key))
-
-          const expectedKeys = Object.keys(source).filter(
-            (key) => !excludedSet.has(key) && typeof source[key] !== "function"
-          )
-
-          expect(Object.keys(payload)).toEqual(expectedKeys)
-          for (const key of expectedKeys) {
-            expect(Object.is(payload[key], source[key])).toBe(true)
-          }
-        }
-      )
-    )
-  })
-
-  it("skips function values", () => {
-    const payload = collectPayloadFields({ fn: () => 1, keep: "x" }, () => false)
-
-    expect(payload).toEqual({ keep: "x" })
-  })
-
-  it("keeps a __proto__ key as an own data property without changing the prototype", () => {
-    const source = JSON.parse('{"__proto__": {"polluted": true}, "safe": 1}') as Record<
-      string,
-      unknown
-    >
-
-    const payload = collectPayloadFields(source, () => false)
-
-    expect(Object.getPrototypeOf(payload)).toBe(Object.prototype)
-    expect(Object.keys(payload)).toEqual(["__proto__", "safe"])
-    expect(Object.getOwnPropertyDescriptor(payload, "__proto__")?.value).toEqual({
-      polluted: true,
-    })
-    expect(payload.safe).toBe(1)
-    // Pollution would land on Object.prototype, so check inherited lookup
-    // rather than own properties of a fresh object.
-    expect("polluted" in {}).toBe(false)
   })
 })

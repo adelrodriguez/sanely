@@ -6,7 +6,7 @@ import {
   RegistryTagMismatchError,
   RegistryUnknownTagError,
 } from "./errors"
-import { Fault, toSerializable } from "./fault"
+import { Fault, isFault, toSerializable } from "./fault"
 import { dispatchTag, dispatchTags, type HandlerResult } from "./match"
 import { deserializeFault } from "./reviver"
 
@@ -35,7 +35,7 @@ type RegistryMatchHandlers<M extends Record<string, AnyFaultCtor>> = Partial<{
 function constructFault(tag: string, ctor: AnyFaultCtor, args: unknown[]): Fault {
   const value: unknown = Reflect.construct(ctor, args)
 
-  if (!(value instanceof Fault)) {
+  if (!isFault(value)) {
     throw new RegistryConstructorError({ tag })
   }
 
@@ -92,7 +92,7 @@ export type FaultRegistry<M extends Record<string, AnyFaultCtor>> = {
   fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault
 }
 
-// fromSerializable revives a registered fault with `new Ctor(payloadFields)`,
+// fromSerializable revives a registered fault with `new Ctor(fields)`,
 // so a registered constructor must take the fields object as its only
 // parameter. Anything else fails here instead of corrupting fields on revive.
 // The check is signature-only on purpose. Looking at instance keys to catch
@@ -207,9 +207,9 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
     toSerializable,
 
     fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault {
-      return deserializeFault(value, (tag, payload) => {
+      return deserializeFault(value, (tag, fields) => {
         const ctor = tagToCtor.get(tag)
-        return ctor ? constructFault(tag, ctor, [payload]) : undefined
+        return ctor ? constructFault(tag, ctor, [fields]) : undefined
       })
     },
   }
