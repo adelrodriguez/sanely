@@ -336,9 +336,10 @@ function parseDayOfMonth(cursor: Cursor): Schedule {
     fail(`"${token}" has the wrong suffix. Use "${day}${getOrdinalSuffix(day)}"`)
   }
 
-  cursor.expect("of")
-  cursor.expect("every")
-  cursor.expect("month")
+  // The three words name the cycle together, so a missing word names all three.
+  for (const word of ["of", "every", "month"]) {
+    if (cursor.next() !== word) fail(`expected "of every month" after "on the ${token}"`)
+  }
   return { at: parseAt(cursor), day, every: "month" }
 }
 

@@ -1160,4 +1160,28 @@ export const GRAMMAR = [
     phrase: "on the",
     strict: false,
   },
+  {
+    error: 'expected "of every month" after "on the 1st"',
+    lenient: false,
+    phrase: "on the 1st",
+    strict: false,
+  },
+  {
+    error: 'expected "of every month" after "on the 1st"',
+    lenient: false,
+    phrase: "on the 1st of",
+    strict: false,
+  },
+  {
+    error: 'expected "of every month" after "on the 1st"',
+    lenient: false,
+    phrase: "on the 1st of every",
+    strict: false,
+  },
+  {
+    error: 'expected "of every month" after "on the 1st"',
+    lenient: false,
+    phrase: "on the 1st of every monthly at 9:00",
+    strict: false,
+  },
 ] as const satisfies readonly GrammarRow[]
