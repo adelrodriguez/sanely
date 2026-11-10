@@ -142,7 +142,7 @@ export function days<const T extends string>(
  *
  * @example
  *   weeks("14d") // 2
- *   weeks("1y") // 52.1775
+ *   weeks("1y") // 52.17857142857143
  *
  * @param value - A time expression string
  *

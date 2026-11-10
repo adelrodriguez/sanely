@@ -143,7 +143,7 @@ describe("days", () => {
 describe("weeks", () => {
   it("should convert to weeks", () => {
     expect(weeks("14d")).toBe(2)
-    expect(weeks("1y")).toBeCloseTo(52.1775)
+    expect(weeks("1y")).toBeCloseTo(365.25 / 7, 12)
   })
 })
 
