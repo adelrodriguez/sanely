@@ -5,24 +5,13 @@ import { describe, expect, it } from "vitest"
 import type { SerializableFault, SerializableValue } from "#types.ts"
 import { InvalidPayloadError } from "#errors.ts"
 import { Fault, fromSerializable, isSerializableFault, Tagged, toSerializable } from "#index.ts"
+import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
 
 // Test-side mirror of the internal isReservedKey rule: wire envelope keys
-// (documented in GLOSSARY.md) plus anything reachable through Fault's
-// prototype chain. The reserved-key properties below keep this mirror honest —
-// if the library's rule drifts, they fail.
-const WIRE_ENVELOPE_KEYS = new Set([
-  "__fault",
-  "_tag",
-  "cause",
-  "name",
-  "message",
-  "stack",
-  "meta",
-  "description",
-])
-
+// plus anything reachable through Fault's prototype chain. The envelope keys
+// come from their one definition, which the type checker ties to SerializableFault.
 function isReservedMirror(key: string): boolean {
-  return WIRE_ENVELOPE_KEYS.has(key) || key in Fault.prototype
+  return RESERVED_FAULT_KEYS.has(key) || key in Fault.prototype
 }
 
 // Canonicalized through one JSON round trip because the wire itself is JSON:
@@ -541,7 +530,7 @@ describe("fromSerializable", () => {
         fc.constantFrom("toString", "unwrap", "withMeta", "__proto__", "constructor"),
         fc.string({ maxLength: 15, minLength: 1 }).map((key) => `__payload_${key}`)
       )
-      .filter((key) => !WIRE_ENVELOPE_KEYS.has(key))
+      .filter((key) => !RESERVED_FAULT_KEYS.has(key))
 
     fc.assert(
       fc.property(hostileKeyArb, jsonValueArb, (key, value) => {

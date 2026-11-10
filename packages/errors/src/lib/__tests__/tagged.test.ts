@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import { ReservedFieldError } from "#lib/errors.ts"
 import { Fault } from "#lib/fault.ts"
 import { Tagged } from "#lib/tagged.ts"
+import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
 
 describe("Tagged", () => {
   it("creates class with matching _tag and name", () => {
@@ -33,18 +34,9 @@ describe("Tagged", () => {
   })
 
   it("rejects a field key exactly when it collides with the wire envelope or Fault prototype", () => {
-    // Test-side mirror of the internal isReservedKey rule; if the library's
-    // rule ever drifts from this, the property fails.
-    const wireEnvelopeKeys = new Set([
-      "__fault",
-      "_tag",
-      "cause",
-      "name",
-      "message",
-      "stack",
-      "meta",
-      "description",
-    ])
+    // Test-side mirror of the internal isReservedKey rule. The envelope keys
+    // come from their one definition, which the type checker ties to SerializableFault.
+    const wireEnvelopeKeys = RESERVED_FAULT_KEYS
     class ProbeError extends Tagged("ProbeError")<Record<string, string>>() {}
 
     // Random strings almost never land on a reserved key, so mix them in
