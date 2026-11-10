@@ -1151,6 +1151,17 @@ function _negativeTypeTests() {
     })
   }
 
+  // Rejects non-function flow() task entries.
+  {
+    void try$.flow({
+      // @ts-expect-error -- flow() tasks must be functions
+      a: 1,
+      b() {
+        return this.$exit(2)
+      },
+    })
+  }
+
   // Rejects catch options in allSettled().
   {
     // @ts-expect-error -- catch is only available for fail-fast all()

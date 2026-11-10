@@ -224,14 +224,14 @@ export class RunBuilder<
    * typed in the result union.
    */
   flow<T extends TaskRecord>(
-    tasks: T & ThisType<InferredFlowTaskContext<T>>
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>
   ): Promise<FlowResult<T> | UnhandledException | E>
   flow<T extends TaskRecord, C>(
-    tasks: T & ThisType<InferredFlowTaskContext<T>>,
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
     options: CatchOptions<FlowValue<T>, C>
   ): Promise<FlowResult<T> | C | E>
   flow<T extends TaskRecord, C>(
-    tasks: T & ThisType<InferredFlowTaskContext<T>>,
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
     options?: CatchOptions<FlowValue<T>, C>
   ) {
     return executeFlow(this.config, tasks, options)

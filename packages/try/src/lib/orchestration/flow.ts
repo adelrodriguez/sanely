@@ -8,6 +8,7 @@ import type {
   TaskContext,
   TaskRecord,
   TaskResult,
+  TaskValidation,
 } from "./task-graph"
 import { OrchestrationExecution, TaskGraphExecutionBase } from "./task-graph"
 
@@ -161,7 +162,7 @@ class FlowRunnerExecution<T extends TaskRecord, C> extends OrchestrationExecutio
 
 export async function executeFlow<T extends TaskRecord, C = never>(
   config: BuilderConfig,
-  tasks: T & ThisType<InferredFlowTaskContext<T>>,
+  tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
   options?: CatchOptions<FlowValue<T>, C>
 ): Promise<FlowResult<T> | C | UnhandledException | ControlFailure> {
   using execution = new FlowRunnerExecution(config, tasks, options)
