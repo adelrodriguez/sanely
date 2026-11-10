@@ -77,9 +77,18 @@ export interface CatchContext<V> {
    */
   readonly failedTask: (keyof V & string) | undefined
   /**
-   * A snapshot of the tasks that resolved before the failure.
+   * Reads the result of a task that resolved before the failure, or `undefined`. The results are a
+   * snapshot from when `catch` started.
+   *
+   * It is a generic accessor, not an object of results, so that TypeScript can infer the task
+   * results and the `catch` value together. An object typed by every task result makes that
+   * inference circular when a task returns a value read through `this`.
+   *
+   * Reading a task that itself returns a value read through `this` is still circular, and
+   * TypeScript infers that task as `any`. Annotate the return type of such a task, such as `async
+   * total(): Promise<number>`, when `catch` reads it.
    */
-  readonly partial: Readonly<Partial<V>>
+  readonly result: <K extends keyof V>(task: K) => V[K] | undefined
   /**
    * The task signal, already aborted by the failure.
    */
@@ -307,10 +316,12 @@ export abstract class TaskGraphExecutionBase<
   }
 
   createCatchContext(): CatchContext<Record<string, unknown>> {
+    // Siblings keep settling while an async catch runs, so read from a snapshot.
+    const snapshot = { ...this.#results }
+
     return Object.freeze({
       failedTask: this.firstFailure?.taskName,
-      // Siblings keep settling while an async catch runs, so pass a snapshot.
-      partial: Object.freeze({ ...this.#results }),
+      result: (task: string) => (Object.hasOwn(snapshot, task) ? snapshot[task] : undefined),
       signal: this.taskSignal,
     })
   }

@@ -260,11 +260,28 @@ describe("all", () => {
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
   })
 
-  it("passes catch a partial result named __proto__ as an own property", async () => {
+  it("passes catch the result of a task with a numeric key", async () => {
+    const result = await try$.all(
+      {
+        0() {
+          return 42
+        },
+        async failing() {
+          await this.$result[0]
+          throw new Error("boom")
+        },
+      },
+      { catch: (_error, ctx) => ctx.result(0) }
+    )
+
+    expect(result).toBe(42)
+  })
+
+  it("passes catch a result named __proto__", async () => {
     const value = { answer: 42 }
     const boom = new Error("boom")
 
-    const partial = await try$.all(
+    const result = await try$.all(
       {
         ["__proto__"]() {
           return value
@@ -276,13 +293,12 @@ describe("all", () => {
       },
       {
         catch(_error, ctx) {
-          return ctx.partial
+          return ctx.result("__proto__")
         },
       }
     )
 
-    expect(Object.hasOwn(partial, "__proto__")).toBe(true)
-    expect(Object.getOwnPropertyDescriptor(partial, "__proto__")?.value).toBe(value)
+    expect(result).toBe(value)
   })
 
   it("maps non-Error task failures before rejecting dependent tasks", async () => {
@@ -325,7 +341,10 @@ describe("all", () => {
       },
       {
         catch: (_error, ctx) => {
-          writes.push(Reflect.set(ctx, "failedTask", "b"), Reflect.set(ctx.partial, "a", 1))
+          writes.push(
+            Reflect.set(ctx, "failedTask", "b"),
+            Reflect.set(ctx, "result", () => 1)
+          )
           return ctx.failedTask
         },
       }
@@ -360,7 +379,7 @@ describe("all", () => {
           return {
             aborted: ctx.signal.aborted,
             failedTask: ctx.failedTask,
-            partial: { ...ctx.partial },
+            partial: { a: ctx.result("a") },
             reason: ctx.signal.reason as unknown,
           }
         },
@@ -498,7 +517,7 @@ describe("all", () => {
     }
   })
 
-  it("passes catch a partial snapshot that does not change when siblings settle later", async () => {
+  it("passes catch a result snapshot that does not change when siblings settle later", async () => {
     const boom = new Error("boom")
     const release = Promise.withResolvers<boolean>()
     const lateSettled = Promise.withResolvers<boolean>()
@@ -523,12 +542,12 @@ describe("all", () => {
           release.resolve(true)
           await lateSettled.promise
           await Promise.resolve()
-          return ctx.partial
+          return { a: ctx.result("a"), c: ctx.result("c") }
         },
       }
     )
 
-    expect(result).toEqual({ a: 1 })
+    expect(result).toEqual({ a: 1, c: undefined })
   })
 
   it("awaits an async catch and returns its mapped value", async () => {

@@ -522,7 +522,7 @@ describe("flow", () => {
           return {
             aborted: ctx.signal.aborted,
             failedTask: ctx.failedTask,
-            partial: { ...ctx.partial },
+            partial: { a: ctx.result("a") },
             reason: ctx.signal.reason as unknown,
           }
         },
