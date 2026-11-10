@@ -183,22 +183,47 @@ export class RunBuilder<
     return executeRunSync(this.config, input)
   }
 
-  all<T extends TaskRecord, C = never>(
+  /**
+   * Runs a task graph and resolves with every task result. Like `run`, it never rejects except with
+   * a `Panic`. Without `catch`, a task failure resolves as {@link UnhandledException} with the
+   * failure as `cause`. This call's own policy outcomes surface typed in the result union.
+   */
+  all<T extends TaskRecord>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
+  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | UnhandledException | E>
+  all<T extends TaskRecord, C>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
+    options: AllOptions<T, C>
+  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C | E>
+  all<T extends TaskRecord, C>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
     options?: AllOptions<T, C>
-  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C> {
+  ) {
     return executeAll(this.config, tasks, options)
   }
 
+  /**
+   * Runs a task graph and resolves with every settled outcome. It never rejects except with a
+   * `Panic`, and this call's own policy outcomes surface typed in the result union.
+   */
   allSettled<T extends TaskRecord>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
-  ): Promise<AllSettledResult<T>> {
+  ): Promise<AllSettledResult<T> | E>
+  allSettled<T extends TaskRecord>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
+  ) {
     return executeAllSettled(this.config, tasks)
   }
 
+  /**
+   * Runs a task graph until a task calls `$exit`, and resolves with the exit value. Like `run`, it
+   * never rejects except with a `Panic`. A task failure resolves as {@link UnhandledException} with
+   * the failure as `cause`, and this call's own policy outcomes surface typed in the union.
+   */
   flow<T extends TaskRecord>(
     tasks: T & ThisType<InferredFlowTaskContext<T>>
-  ): Promise<FlowResult<T>> {
+  ): Promise<FlowResult<T> | UnhandledException | E>
+  flow<T extends TaskRecord>(tasks: T & ThisType<InferredFlowTaskContext<T>>) {
     return executeFlow(this.config, tasks)
   }
 }

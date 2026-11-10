@@ -54,14 +54,18 @@ const url = try$.runSync(() => new URL(link))
 
 ### Result union rules
 
-| Chain                            | Result type                |
-| -------------------------------- | -------------------------- |
-| `run(fn)`                        | `T \| UnhandledException`  |
-| `run({ try, catch })`            | `T \| C`                   |
-| `retry(...).run(fn)`             | `T \| RetryExhaustedError` |
-| `retry(...).run({ try, catch })` | `T \| C`                   |
-| `timeout(...)` in the chain      | Adds `TimeoutError`.       |
-| `signal(...)` in the chain       | Adds `CancellationError`.  |
+| Chain                            | Result type                       |
+| -------------------------------- | --------------------------------- |
+| `run(fn)`                        | `T \| UnhandledException`         |
+| `run({ try, catch })`            | `T \| C`                          |
+| `retry(...).run(fn)`             | `T \| RetryExhaustedError`        |
+| `retry(...).run({ try, catch })` | `T \| C`                          |
+| `all(tasks)`                     | `Results \| UnhandledException`   |
+| `all(tasks, { catch })`          | `Results \| C`                    |
+| `allSettled(tasks)`              | `SettledResults`                  |
+| `flow(tasks)`                    | `ExitValue \| UnhandledException` |
+| `timeout(...)` in the chain      | Adds `TimeoutError`.              |
+| `signal(...)` in the chain       | Adds `CancellationError`.         |
 
 ## Policy builders
 
@@ -162,15 +166,18 @@ Adds a hook around the whole terminal call, retries included. `fn` must call `ne
 | `this.$race(p)`  | `Promise<V>`             | Resolves with `p`, or rejects with the abort reason when `this.$signal` aborts first.                   |
 | `this.$exit(v)`  | `FlowExit<V>`            | Only in `flow`. Ends the flow with `v`.                                                                 |
 
-All tasks start together. Every orchestration call waits for every running task to settle before it resolves or rejects. When the deadline and cancellation both fire, the call rejects with `CancellationError`. A `Panic` wins over both.
+All tasks start together. Every orchestration call waits for every running task to settle before it resolves.
+
+Like `run`, an orchestration call resolves with a result union and never rejects with an error from the work. A task failure that `catch` does not map becomes an `UnhandledException`, with the original error as the `cause`. The `TimeoutError` of this call's own deadline and the `CancellationError` of its own signal are part of the result. When the deadline and cancellation both fire, the call resolves with `CancellationError`. A `Panic` throws, and wins over every other outcome.
 
 ### `all(tasks, options?)`
 
 ```ts
-all<T, C = never>(tasks: T, options?: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | C>
+all<T>(tasks: T): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | UnhandledException | PolicyErrors>
+all<T, C>(tasks: T, options: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | C | PolicyErrors>
 ```
 
-Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts, and the call rejects with the error. With `catch`, it resolves with the value of `catch` in place of the rejection.
+Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts. Without `catch`, the call resolves with an `UnhandledException` whose `cause` is the error. With `catch`, `catch` receives the error, and the call resolves with the value of `catch`.
 
 | `catch` context field | Description                                                 |
 | --------------------- | ----------------------------------------------------------- |
@@ -178,23 +185,23 @@ Resolves with an object of the task results. When a task fails, every other `thi
 | `partial`             | The results of the tasks that succeeded before the failure. |
 | `signal`              | The signal of the orchestration.                            |
 
-`catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. Those reject the call instead. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
+`catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. The call resolves with its own policy failures and throws a `Panic`. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
 
 ### `allSettled(tasks)`
 
 ```ts
-allSettled<T>(tasks: T): Promise<AllSettledResult<T>>
+allSettled<T>(tasks: T): Promise<AllSettledResult<T> | PolicyErrors>
 ```
 
-Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. A `Panic` is never an outcome. The call throws it after every task settles.
+Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. When this call's own deadline or signal fires, it resolves with the `TimeoutError` or `CancellationError` instead. A `Panic` is never an outcome. The call throws it after every task settles.
 
 ### `flow(tasks)`
 
 ```ts
-flow<T>(tasks: T): Promise<FlowResult<T>>
+flow<T>(tasks: T): Promise<FlowResult<T> | UnhandledException | PolicyErrors>
 ```
 
-Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
+Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. A task failure before the first exit resolves the call with an `UnhandledException` whose `cause` is the error. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
 
 ## Composition and cleanup
 

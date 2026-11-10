@@ -1,6 +1,7 @@
 import type { BuilderConfig } from "#lib/policies/options.ts"
-import { Panic } from "#lib/shared/errors.ts"
+import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
 import type {
+  ControlFailure,
   InferredTaskContext,
   ResultProxy,
   TaskContext,
@@ -42,7 +43,7 @@ class FlowExitSignalError extends Error {
 }
 
 class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, FlowTaskContext<T>> {
-  #firstRejectionWaiters: Array<() => void> = []
+  #firstFailureWaiters: Array<() => void> = []
   #settledPromise: Promise<Array<PromiseSettledResult<void>>> | undefined
 
   async execute(): Promise<FlowResult<T>> {
@@ -54,14 +55,15 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
     // Racing it against a manual first-rejection waiter lets execute() react to
     // the first $exit/error immediately, while #settledPromise is retained so
     // the orchestration layer can still await full task teardown afterwards.
-    await Promise.race([this.#settledPromise, this.waitForFirstRejection()])
+    await Promise.race([this.#settledPromise, this.waitForFirstFailure()])
 
-    if (this.firstRejection !== undefined) {
-      if (this.firstRejection instanceof FlowExitSignalError) {
-        return this.firstRejection.value as FlowResult<T>
+    if (this.firstFailure !== undefined) {
+      if (this.firstFailure.error instanceof FlowExitSignalError) {
+        return this.firstFailure.error.value as FlowResult<T>
       }
 
-      throw this.firstRejection
+      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Report the raw task failure.
+      throw this.firstFailure.error
     }
 
     throw new Panic("FLOW_NO_EXIT")
@@ -71,18 +73,18 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
     await this.#settledPromise
   }
 
-  protected override setFirstRejection(error: unknown): void {
-    if (this.firstRejection !== undefined) {
+  protected override setFirstFailure(error: unknown): void {
+    if (this.firstFailure !== undefined) {
       return
     }
 
-    super.setFirstRejection(error)
+    super.setFirstFailure(error)
 
-    for (const resolve of this.#firstRejectionWaiters) {
+    for (const resolve of this.#firstFailureWaiters) {
       resolve()
     }
 
-    this.#firstRejectionWaiters = []
+    this.#firstFailureWaiters = []
   }
 
   protected override createTaskContext(resultProxy: ResultProxy<T>): FlowTaskContext<T> {
@@ -92,7 +94,7 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
         // Record the exit before throwing, so a task that catches the throw, or a nested run()
         // that maps it, still ends the flow. The throw only stops the rest of the task.
         const exit = new FlowExitSignalError(value)
-        this.setFirstRejection(exit)
+        this.setFirstFailure(exit)
         this.abortInternal(exit)
         throw exit
       },
@@ -115,13 +117,13 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
     return true
   }
 
-  private waitForFirstRejection(): Promise<void> {
-    if (this.firstRejection !== undefined) {
+  private waitForFirstFailure(): Promise<void> {
+    if (this.firstFailure !== undefined) {
       return Promise.resolve()
     }
 
     return new Promise((resolve) => {
-      this.#firstRejectionWaiters.push(resolve)
+      this.#firstFailureWaiters.push(resolve)
     })
   }
 }
@@ -134,7 +136,7 @@ class FlowRunnerExecution<T extends TaskRecord> extends OrchestrationExecution<F
     this.#tasks = tasks
   }
 
-  protected override executeTasks(): Promise<FlowResult<T>> {
+  protected override executeTasks(): Promise<FlowResult<T> | UnhandledException | ControlFailure> {
     return this.executeTaskGraph(new FlowExecution(this.executionSignal, this.#tasks))
   }
 }
@@ -142,7 +144,7 @@ class FlowRunnerExecution<T extends TaskRecord> extends OrchestrationExecution<F
 export async function executeFlow<T extends TaskRecord>(
   config: BuilderConfig,
   tasks: T & ThisType<InferredFlowTaskContext<T>>
-): Promise<FlowResult<T>> {
+): Promise<FlowResult<T> | UnhandledException | ControlFailure> {
   using execution = new FlowRunnerExecution(config, tasks)
   return await execution.execute()
 }

@@ -6,7 +6,7 @@ import {
   UnhandledException,
 } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic, sleep } from "./test-utils"
+import { expectPanic, expectUnhandled, sleep } from "./test-utils"
 
 function succeedOnSecondAttempt(ctx: { retry: { attempt: number } }) {
   if (ctx.retry.attempt < 2) {
@@ -111,25 +111,21 @@ describe("builder chaining", () => {
     expect(wrapAfterCalls).toBe(1)
   })
 
-  it("applies wrap around failing all and preserves rejection", async () => {
+  it("applies wrap around failing all and resolves with the failure", async () => {
     const failure = new Error("boom")
     let wrapCalls = 0
 
-    try {
-      await try$
-        .wrap((_, next) => {
-          wrapCalls += 1
-          return next()
-        })
-        .all({
-          a() {
-            throw failure
-          },
-        })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBe(failure)
-    }
+    const error = await try$
+      .wrap((_, next) => {
+        wrapCalls += 1
+        return next()
+      })
+      .all({
+        a() {
+          throw failure
+        },
+      })
+    expectUnhandled(error, failure)
 
     expect(wrapCalls).toBe(1)
   })

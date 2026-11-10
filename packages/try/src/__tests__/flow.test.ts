@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { CancellationError, TimeoutError, UnhandledException } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic } from "./test-utils"
+import { expectPanic, expectUnhandled } from "./test-utils"
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
@@ -251,25 +251,21 @@ describe("flow", () => {
 
     controller.abort(reason)
 
-    try {
-      await try$
-        .wrap((_, next) =>
-          Promise.resolve(next()).finally(() => {
-            cleaned = true
-          })
-        )
-        .signal(controller.signal)
-        .flow({
-          a() {
-            taskCalls += 1
-            return this.$exit("done")
-          },
+    const error = await try$
+      .wrap((_, next) =>
+        Promise.resolve(next()).finally(() => {
+          cleaned = true
         })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(CancellationError)
-      expect((error as CancellationError).cause).toBe(reason)
-    }
+      )
+      .signal(controller.signal)
+      .flow({
+        a() {
+          taskCalls += 1
+          return this.$exit("done")
+        },
+      })
+    expect(error).toBeInstanceOf(CancellationError)
+    expect((error as CancellationError).cause).toBe(reason)
 
     expect(cleaned).toBe(true)
     expect(taskCalls).toBe(0)
@@ -286,21 +282,15 @@ describe("flow", () => {
     process.on("unhandledRejection", onUnhandled)
 
     try {
-      const error = await try$
-        .signal(controller.signal)
-        .flow({
-          a() {
-            controller.abort(reason)
-            throw new Error("after abort")
-          },
-        })
-        .then(
-          () => expect.unreachable("should have thrown"),
-          (error: unknown) => error
-        )
+      const error = await try$.signal(controller.signal).flow({
+        a() {
+          controller.abort(reason)
+          throw new Error("after abort")
+        },
+      })
 
       expect(error).toBeInstanceOf(CancellationError)
-      expect((error as CancellationError).cause).toBe(reason)
+      expect(error.cause).toBe(reason)
 
       await new Promise((resolve) => {
         setTimeout(resolve, 0)
@@ -325,19 +315,13 @@ describe("flow", () => {
       let error: unknown
 
       try {
-        error = await try$
-          .timeout(5)
-          .flow({
-            a() {
-              // The deadline passes before the fake timer can fire.
-              vi.setSystemTime(Date.now() + 20)
-              throw new Error("after deadline")
-            },
-          })
-          .then(
-            () => expect.unreachable("should have thrown"),
-            (error: unknown) => error
-          )
+        error = await try$.timeout(5).flow({
+          a() {
+            // The deadline passes before the fake timer can fire.
+            vi.setSystemTime(Date.now() + 20)
+            throw new Error("after deadline")
+          },
+        })
       } finally {
         vi.useRealTimers()
       }
@@ -360,35 +344,31 @@ describe("flow", () => {
     let cleaned = false
     let dependencyError: unknown
 
-    try {
-      await try$.signal(controller.signal).flow({
-        async a() {
-          this.$disposer.defer(() => {
-            cleaned = true
-          })
+    const error = await try$.signal(controller.signal).flow({
+      async a() {
+        this.$disposer.defer(() => {
+          cleaned = true
+        })
 
-          // Abort after flow() has attached its cancellation race.
-          await Promise.resolve()
-          controller.abort(reason)
-          await this.$race(never())
-          return this.$exit("late")
-        },
-        async b() {
-          try {
-            await this.$result.a
-          } catch (error) {
-            dependencyError = error
-            throw error
-          }
+        // Abort after flow() has attached its cancellation race.
+        await Promise.resolve()
+        controller.abort(reason)
+        await this.$race(never())
+        return this.$exit("late")
+      },
+      async b() {
+        try {
+          await this.$result.a
+        } catch (error) {
+          dependencyError = error
+          throw error
+        }
 
-          return this.$exit("late")
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(CancellationError)
-      expect((error as CancellationError).cause).toBe(reason)
-    }
+        return this.$exit("late")
+      },
+    })
+    expect(error).toBeInstanceOf(CancellationError)
+    expect((error as CancellationError).cause).toBe(reason)
 
     expect(cleaned).toBe(true)
     expect(dependencyError).toBe(reason)
@@ -498,42 +478,34 @@ describe("flow", () => {
     expect(siblingThrew).toBe(true)
   })
 
-  it("throws the task error and aborts a sibling that would exit later", async () => {
+  it("resolves with the task error and aborts a sibling that would exit later", async () => {
     const failure = new Error("fast error")
     let siblingReason: unknown
 
-    try {
-      await try$.flow({
-        async a() {
-          await waitForAbort(this.$signal)
-          siblingReason = this.$signal.reason
-          return this.$exit("late exit")
-        },
-        b() {
-          throw failure
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBe(failure)
-    }
+    const error = await try$.flow({
+      async a() {
+        await waitForAbort(this.$signal)
+        siblingReason = this.$signal.reason
+        return this.$exit("late exit")
+      },
+      b() {
+        throw failure
+      },
+    })
+    expectUnhandled(error, failure)
 
     expect(siblingReason).toBe(failure)
   })
 
   it("surfaces a task that throws undefined as UnhandledException", async () => {
-    try {
-      await try$.flow({
-        a() {
-          // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined task failures.
-          throw undefined
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(UnhandledException)
-      expect((error as UnhandledException).cause).toBeUndefined()
-    }
+    const error = await try$.flow({
+      a() {
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined task failures.
+        throw undefined
+      },
+    })
+    expect(error).toBeInstanceOf(UnhandledException)
+    expect(error.cause).toBeUndefined()
   })
 
   it("bounds the deadline with $race for signal-unaware work", async () => {
@@ -542,24 +514,18 @@ describe("flow", () => {
     try {
       let signalReason: unknown
 
-      const promise = try$
-        .timeout(10)
-        .flow({
-          async a() {
-            try {
-              // Never settles: only $race can end this await.
-              await this.$race(never())
-            } finally {
-              signalReason = this.$signal.reason
-            }
+      const promise = try$.timeout(10).flow({
+        async a() {
+          try {
+            // Never settles: only $race can end this await.
+            await this.$race(never())
+          } finally {
+            signalReason = this.$signal.reason
+          }
 
-            return this.$exit("late" as const)
-          },
-        })
-        .then(
-          () => expect.unreachable("should have thrown"),
-          (error: unknown) => error
-        )
+          return this.$exit("late" as const)
+        },
+      })
 
       await vi.advanceTimersByTimeAsync(10)
       const error = await promise
@@ -571,25 +537,19 @@ describe("flow", () => {
     }
   })
 
-  it("rejects with TimeoutError when the graph deadline fires before $exit", async () => {
+  it("returns TimeoutError when the graph deadline fires before $exit", async () => {
     vi.useFakeTimers()
 
     try {
       let signalReason: unknown
 
-      const promise = try$
-        .timeout(10)
-        .flow({
-          async a() {
-            await waitForAbort(this.$signal)
-            signalReason = this.$signal.reason
-            return this.$exit("late" as const)
-          },
-        })
-        .then(
-          () => expect.unreachable("should have thrown"),
-          (error: unknown) => error
-        )
+      const promise = try$.timeout(10).flow({
+        async a() {
+          await waitForAbort(this.$signal)
+          signalReason = this.$signal.reason
+          return this.$exit("late" as const)
+        },
+      })
 
       await vi.advanceTimersByTimeAsync(10)
       const error = await promise

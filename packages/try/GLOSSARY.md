@@ -5,7 +5,7 @@ A small execution layer for TypeScript: callers keep writing plain functions, wh
 ## Language
 
 **Terminal execution API**:
-The point where work actually runs and a result union is produced (`run`, `runSync`).
+The point where work actually runs and a result union is produced (`run`, `runSync`, `all`, `allSettled`, `flow`). It never rejects with an error from the work, only with a Panic.
 _Avoid_: executor, runner
 
 **Policy builder**:
@@ -21,7 +21,7 @@ A failure the caller maps into their own value with `catch`; an expected outcome
 _Avoid_: business error
 
 **Policy failure**:
-A failure introduced by a policy builder (`TimeoutError`, `CancellationError`, `RetryExhaustedError`). It surfaces typed in the result union and never passes through `catch`.
+A failure introduced by a policy builder (`TimeoutError`, `CancellationError`, `RetryExhaustedError`). It surfaces typed in the result union and never passes through `catch`. Only the call's own policies produce one: a policy failure rethrown from a nested call is a domain failure.
 _Avoid_: system error, infrastructure error
 
 **Panic**:

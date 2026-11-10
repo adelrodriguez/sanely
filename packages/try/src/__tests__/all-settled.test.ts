@@ -308,11 +308,7 @@ describe("allSettled", () => {
     await started
     controller.abort(reason)
 
-    const observed = pending.then(
-      () => "resolved" as const,
-      (error: unknown) => error
-    )
-    const outcome = await Promise.race([observed, sleep(0).then(() => "blocked" as const)])
+    const outcome = await Promise.race([pending, sleep(0).then(() => "blocked" as const)])
 
     // The orchestration must stay pending while the task is still running.
     expect(outcome).toBe("blocked")
@@ -320,7 +316,7 @@ describe("allSettled", () => {
     releaseTask()
     await finished
 
-    const error = await observed
+    const error = await pending
 
     expect(error).toBeInstanceOf(CancellationError)
     expect((error as CancellationError).cause).toBe(reason)
@@ -354,12 +350,12 @@ describe("allSettled", () => {
     expect(cleanedB).toBe(true)
   })
 
-  it("waits for in-flight tasks to settle before rejecting on the graph deadline", async () => {
+  it("waits for in-flight tasks to settle before resolving with the graph deadline", async () => {
     vi.useFakeTimers()
 
     try {
       let taskSettled = false
-      let rejection: unknown
+      let outcome: unknown
 
       const promise = try$
         .timeout(10)
@@ -370,22 +366,20 @@ describe("allSettled", () => {
             return "late" as const
           },
         })
-        .then(
-          () => expect.unreachable("should have thrown"),
-          (error: unknown) => {
-            rejection = error
-          }
-        )
+        .then((result) => {
+          outcome = result
+          return result
+        })
 
       await vi.advanceTimersByTimeAsync(10)
-      expect(rejection).toBeUndefined()
+      expect(outcome).toBeUndefined()
       expect(taskSettled).toBe(false)
 
       await vi.advanceTimersByTimeAsync(30)
       await promise
 
       expect(taskSettled).toBe(true)
-      expect(rejection).toBeInstanceOf(TimeoutError)
+      expect(outcome).toBeInstanceOf(TimeoutError)
     } finally {
       vi.useRealTimers()
     }

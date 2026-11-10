@@ -2,7 +2,13 @@ import type { AsyncDisposer } from "#lib/disposal/index.ts"
 import type { BuilderConfig } from "#lib/policies/options.ts"
 import { disposer, defineAsyncDisposeAlias } from "#lib/disposal/index.ts"
 import { BaseExecution } from "#lib/execution/base.ts"
-import { Panic, UnhandledException, isPanic } from "#lib/shared/errors.ts"
+import {
+  type CancellationError,
+  Panic,
+  type TimeoutError,
+  UnhandledException,
+  isPanic,
+} from "#lib/shared/errors.ts"
 import { invariant, resolveWithAbort } from "#lib/shared/utils.ts"
 
 const TASK_RACE_ABORTED = Symbol("taskRaceAborted")
@@ -98,13 +104,20 @@ interface TaskGraphRun<R> extends AsyncDisposable {
   waitForTasksToSettle(): Promise<void>
 }
 
-export type TaskGraphFailureOutcome<R> = { mapped: R } | { thrown: unknown }
+/**
+ * The outcome of a task graph before control state and Panics are applied.
+ */
+export type TaskGraphOutcome<R> = { mapped: R } | { thrown: unknown }
 
 interface TaskGraphOptions<R> {
-  mapFailure?: (error: unknown) => TaskGraphFailureOutcome<R> | Promise<TaskGraphFailureOutcome<R>>
+  mapFailure?: (error: unknown) => TaskGraphOutcome<R> | Promise<TaskGraphOutcome<R>>
 }
 
-export abstract class OrchestrationExecution<TResult> extends BaseExecution<Promise<TResult>> {
+export type ControlFailure = CancellationError | TimeoutError
+
+export abstract class OrchestrationExecution<TResult> extends BaseExecution<
+  Promise<TResult | ControlFailure>
+> {
   protected constructor(config: BuilderConfig) {
     invariant(
       config.retry === undefined,
@@ -116,13 +129,13 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<Prom
     super(config)
   }
 
-  protected override async executeCore(): Promise<TResult> {
+  protected override async executeCore(): Promise<TResult | ControlFailure> {
     // Orchestration executions still share outer wraps/cancellation checks even
     // though their task execution strategies differ.
     const controlBeforeExecution = this.checkDidControlFail()
 
     if (controlBeforeExecution) {
-      throw controlBeforeExecution
+      return controlBeforeExecution
     }
 
     return await this.executeTasks()
@@ -130,32 +143,27 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<Prom
 
   /**
    * Shared task-graph lifecycle: race execution against cancellation and the graph deadline, let
-   * `mapFailure` turn a failure into a mapped result or a value to rethrow, wait for in-flight
-   * tasks to settle before resolving (so no task code is still running once the orchestration
-   * returns), and give control failures (cancellation first, then timeout) priority over whatever
-   * was thrown while they fired.
+   * `mapFailure` turn a failure into a mapped result, wait for in-flight tasks to settle before
+   * resolving (so no task code is still running once the orchestration returns), and report the
+   * outcome as a value, the same way `run()` does:
+   *
+   * - A Panic throws, and wins over everything else.
+   * - This call's own cancellation, then its deadline, win over the result or the failure.
+   * - A mapped result is returned as is.
+   * - An unmapped task failure becomes an {@link UnhandledException} with the failure as `cause`.
    */
   protected async executeTaskGraph<R>(
     graph: TaskGraphRun<R>,
     options: TaskGraphOptions<R> = {}
-  ): Promise<R> {
+  ): Promise<R | UnhandledException | ControlFailure> {
     await using execution = graph
-    const { mapFailure = (error): TaskGraphFailureOutcome<R> => ({ thrown: error }) } = options
-    let result!: R
-    let threw = false
-    let thrownError: unknown
+    const { mapFailure = (error): TaskGraphOutcome<R> => ({ thrown: error }) } = options
+    let outcome: TaskGraphOutcome<R>
 
     try {
-      result = (await this.race(execution.execute())) as R
+      outcome = { mapped: (await this.race(execution.execute())) as R }
     } catch (error) {
-      const outcome = await mapFailure(error)
-
-      if ("mapped" in outcome) {
-        result = outcome.mapped
-      } else {
-        threw = true
-        thrownError = outcome.thrown
-      }
+      outcome = await mapFailure(error)
     } finally {
       await execution.waitForTasksToSettle()
     }
@@ -166,24 +174,27 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<Prom
       throw execution.panic
     }
 
-    // Control state may have changed while tasks ran or settled, and it takes
-    // priority over whatever was thrown; the shared chain reports cancellation
-    // over the graph deadline when both fired.
-    const controlError = this.checkDidControlFail(thrownError)
+    // Control state may have changed while tasks ran or settled, and it takes priority over the
+    // outcome; the shared chain reports cancellation over the graph deadline when both fired.
+    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
 
     if (controlError) {
-      throw controlError
+      return controlError
     }
 
-    if (threw) {
-      // Preserve raw task failures for callers/tests.
-      throw thrownError
+    if ("mapped" in outcome) {
+      return outcome.mapped
     }
 
-    return result
+    // A catch handler that throws or rejects reports a Panic.
+    if (isPanic(outcome.thrown)) {
+      throw outcome.thrown
+    }
+
+    return new UnhandledException(undefined, { cause: outcome.thrown })
   }
 
-  protected abstract executeTasks(): Promise<TResult>
+  protected abstract executeTasks(): Promise<TResult | UnhandledException | ControlFailure>
 }
 
 export abstract class TaskGraphExecutionBase<
@@ -196,7 +207,10 @@ export abstract class TaskGraphExecutionBase<
   protected readonly internalController: AbortController = new AbortController()
   protected readonly taskSignal: AbortSignal
   protected readonly disposer: AsyncDisposer = disposer()
-  protected firstRejection: Error | undefined
+  /**
+   * The first task failure, as the task threw it.
+   */
+  protected firstFailure: { error: unknown } | undefined
   #panic: Panic | undefined
   declare [Symbol.asyncDispose]: () => Promise<void>
 
@@ -319,10 +333,10 @@ export abstract class TaskGraphExecutionBase<
     return true
   }
 
-  protected setFirstRejection(error: unknown): void {
-    // Store the mapped error: a task can throw `null` or `undefined`, and a raw
-    // value would let a later failure replace the first one.
-    this.firstRejection ??= this.mapStoredError(error)
+  protected setFirstFailure(error: unknown): void {
+    // Wrap the error: a task can throw `null` or `undefined`, and a bare value would let a later
+    // failure replace the first one.
+    this.firstFailure ??= { error }
   }
 
   protected abstract shouldAbortOnTaskError(error: unknown): boolean
@@ -344,15 +358,14 @@ export abstract class TaskGraphExecutionBase<
         this.#panic ??= error
       }
 
-      this.setFirstRejection(error)
+      this.setFirstFailure(error)
       this.taskSettlement(taskName).reject(mappedError)
       this.onTaskError?.(taskName, error)
 
       if (this.shouldAbortOnTaskError(error)) {
         // Abort with the mapped error so the signal reason siblings observe
         // (directly or via $race) is never undefined — abort(undefined) would
-        // make the platform substitute a default AbortError that could then
-        // replace an unrecordable undefined firstRejection.
+        // make the platform substitute a default AbortError.
         this.abortInternal(mappedError)
       }
 
@@ -414,7 +427,8 @@ export class FailFastTaskExecution<T extends TaskRecord> extends TaskExecution<T
     try {
       await Promise.all(this.startTasks())
     } catch (error) {
-      throw this.firstRejection ?? error
+      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Report the raw task failure.
+      throw this.firstFailure ? this.firstFailure.error : error
     }
 
     return this.#returnValue as AllValue<T>

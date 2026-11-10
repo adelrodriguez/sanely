@@ -173,7 +173,7 @@ class InternalError extends Error {
   expectTypeOf(result).toEqualTypeOf<Promise<number | RetryExhaustedError>>()
 }
 
-// Adds TimeoutError to timeout() run results and keeps orchestration results.
+// Adds TimeoutError to timeout() run and orchestration results.
 {
   const timeoutBuilder = try$.timeout(100)
   const result = timeoutBuilder.run(() => 1)
@@ -197,12 +197,28 @@ class InternalError extends Error {
   })
 
   expectTypeOf(result).toEqualTypeOf<Promise<number | UnhandledException | TimeoutError>>()
-  expectTypeOf(allResult).toEqualTypeOf<Promise<{ a: 1; b: 1 }>>()
-  expectTypeOf(settledResult).toEqualTypeOf<Promise<{ a: SettledResult<"ok"> }>>()
-  expectTypeOf(flowResult).toEqualTypeOf<Promise<"done">>()
+  expectTypeOf(allResult).toEqualTypeOf<
+    Promise<{ a: 1; b: 1 } | UnhandledException | TimeoutError>
+  >()
+  expectTypeOf(settledResult).toEqualTypeOf<Promise<{ a: SettledResult<"ok"> } | TimeoutError>>()
+  expectTypeOf(flowResult).toEqualTypeOf<Promise<"done" | UnhandledException | TimeoutError>>()
 }
 
-// Adds CancellationError to signal() run results and keeps orchestration results.
+// Keeps the policy failure in the all() union when catch maps task failures.
+{
+  const result = try$.timeout(100).all(
+    {
+      a() {
+        return 1 as const
+      },
+    },
+    { catch: () => "fallback" as const }
+  )
+
+  expectTypeOf(result).toEqualTypeOf<Promise<{ a: 1 } | "fallback" | TimeoutError>>()
+}
+
+// Adds CancellationError to signal() run and orchestration results.
 {
   const signalBuilder = try$.signal(new AbortController().signal)
   const result = signalBuilder.run(() => 1)
@@ -226,9 +242,13 @@ class InternalError extends Error {
   })
 
   expectTypeOf(result).toEqualTypeOf<Promise<number | UnhandledException | CancellationError>>()
-  expectTypeOf(allResult).toEqualTypeOf<Promise<{ a: 1; b: 1 }>>()
-  expectTypeOf(settledResult).toEqualTypeOf<Promise<{ a: SettledResult<"ok"> }>>()
-  expectTypeOf(flowResult).toEqualTypeOf<Promise<"done">>()
+  expectTypeOf(allResult).toEqualTypeOf<
+    Promise<{ a: 1; b: 1 } | UnhandledException | CancellationError>
+  >()
+  expectTypeOf(settledResult).toEqualTypeOf<
+    Promise<{ a: SettledResult<"ok"> } | CancellationError>
+  >()
+  expectTypeOf(flowResult).toEqualTypeOf<Promise<"done" | UnhandledException | CancellationError>>()
 }
 
 // Exposes AsyncDisposer on orchestration task contexts.
@@ -599,7 +619,7 @@ class InternalError extends Error {
     },
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<{ a: number; b: string }>>()
+  expectTypeOf(result).toEqualTypeOf<Promise<{ a: number; b: string } | UnhandledException>>()
 }
 
 // Infers all() $result proxy types from non-self-referencing tasks.
@@ -821,10 +841,10 @@ class InternalError extends Error {
     },
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<42 | "stop">>()
+  expectTypeOf(result).toEqualTypeOf<Promise<42 | "stop" | UnhandledException>>()
 }
 
-// Infers never from flow() when no task calls $exit().
+// Infers only UnhandledException from flow() when no task calls $exit().
 {
   const result = try$.flow({
     a() {
@@ -835,10 +855,10 @@ class InternalError extends Error {
     },
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<never>>()
+  expectTypeOf(result).toEqualTypeOf<Promise<UnhandledException>>()
 }
 
-// Keeps the task result map for signal() + all().
+// Adds CancellationError to the task result map for signal() + all().
 {
   const result = try$.signal(new AbortController().signal).all({
     a() {
@@ -849,10 +869,12 @@ class InternalError extends Error {
     },
   })
 
-  expectTypeOf(result).toEqualTypeOf<Promise<{ a: 1; b: number }>>()
+  expectTypeOf(result).toEqualTypeOf<
+    Promise<{ a: 1; b: number } | UnhandledException | CancellationError>
+  >()
 }
 
-// Keeps the settled map for signal() + allSettled().
+// Adds CancellationError to the settled map for signal() + allSettled().
 {
   const result = try$.signal(new AbortController().signal).allSettled({
     a() {
@@ -864,10 +886,13 @@ class InternalError extends Error {
   })
 
   expectTypeOf(result).toEqualTypeOf<
-    Promise<{
-      a: SettledResult<1>
-      b: SettledResult<"ok">
-    }>
+    Promise<
+      | {
+          a: SettledResult<1>
+          b: SettledResult<"ok">
+        }
+      | CancellationError
+    >
   >()
 }
 

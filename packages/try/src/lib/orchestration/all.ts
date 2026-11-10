@@ -1,13 +1,14 @@
 import type { BuilderConfig } from "#lib/policies/options.ts"
-import { Panic } from "#lib/shared/errors.ts"
+import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
 import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 import {
   FailFastTaskExecution,
   OrchestrationExecution,
   type AllOptions,
   type AllValue,
+  type ControlFailure,
   type InferredTaskContext,
-  type TaskGraphFailureOutcome,
+  type TaskGraphOutcome,
   type TaskRecord,
   type TaskResult,
   type TaskValidation,
@@ -23,7 +24,9 @@ class AllExecution<T extends TaskRecord, C> extends OrchestrationExecution<AllVa
     this.#options = options
   }
 
-  protected override executeTasks(): Promise<AllValue<T> | C> {
+  protected override executeTasks(): Promise<
+    AllValue<T> | C | UnhandledException | ControlFailure
+  > {
     const execution = new FailFastTaskExecution(this.executionSignal, this.#tasks)
 
     return this.executeTaskGraph<AllValue<T> | C>(execution, {
@@ -34,7 +37,7 @@ class AllExecution<T extends TaskRecord, C> extends OrchestrationExecution<AllVa
   async #mapFailure(
     execution: FailFastTaskExecution<T>,
     error: unknown
-  ): Promise<TaskGraphFailureOutcome<AllValue<T> | C>> {
+  ): Promise<TaskGraphOutcome<AllValue<T> | C>> {
     const controlAfterFailure = this.checkDidControlFail(error)
     const catchFn = this.#options?.catch
 
@@ -84,7 +87,7 @@ export async function executeAll<T extends TaskRecord, C = never>(
   config: BuilderConfig,
   tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
   options?: AllOptions<T, C>
-): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C> {
+): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C | UnhandledException | ControlFailure> {
   using execution = new AllExecution(config, tasks, options)
   return await execution.execute()
 }
