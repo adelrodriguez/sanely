@@ -35,7 +35,7 @@ fault.description // "DB query returned 0 rows", for debugging
 - **A message and a description.** `message` is for the user. `description` describes the error and what happened, for debugging.
 - **Cause chains.** Wrap and throw again, and keep the full chain of causes.
 - **Registries.** Group fault types into a union with `create`, `wrap`, and `match` methods.
-- **Serialization.** Convert a fault to a plain object, send it, and build it again on the other side.
+- **Serialization.** Convert a fault to a plain object, send it, and build it again on the other side. A registry types the payload by tag.
 - **No runtime dependencies.**
 
 ## Install
