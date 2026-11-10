@@ -27,6 +27,7 @@ Implementation modules do not import the public entry point.
 `@sanely/core/time` owns time unit aliases and nominal clock ratios.
 The normalizer selects its minute and hour definitions from the shared unit table.
 Vocabulary, schedule rules, validation, grammar, and description use its clock ratios. Cron owns accepted intervals, calendar rules, and errors.
+The `project/clock-ratios` lint rule rejects a clock ratio, such as `60` or `1000`, written as a literal in source.
 
 Core is a workspace development dependency. The build bundles its JavaScript and declarations and rejects external package imports in both outputs.
 Consumers install cron on its own, with no runtime dependencies.
