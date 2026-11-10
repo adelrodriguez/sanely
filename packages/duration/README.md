@@ -51,6 +51,7 @@ How-to guides:
 
 - [How to validate a time expression from user input](docs/how-to/validate-user-input.md)
 - [How to format a duration for display](docs/how-to/format-a-duration.md)
+- [How to pass a duration to an API that takes a number](docs/how-to/pass-a-duration-to-an-api.md)
 
 Reference:
 

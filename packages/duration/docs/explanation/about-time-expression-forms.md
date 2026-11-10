@@ -20,7 +20,7 @@ So the unit functions do not take `TimeExpression` alone. They take `ValidateTim
 
 A bare number, such as `"30"`, means milliseconds. In `ms("30")` that is what the caller means. In `seconds("30")` the caller almost always means 30 seconds, and the result would be `0.03`. So only the functions that return milliseconds, `ms`, `parse`, and `safeParse`, accept a bare number. `seconds("30")` is a type error, and `convert("30", "seconds")` throws.
 
-The result of each function is a `Duration` in its unit. `format` takes milliseconds, so `format(seconds("1h"))` is a type error instead of the string `"4s"`. A `Duration` is still a number, so an API that takes a number, such as `setTimeout`, accepts any `Duration`. Name the unit at the call site, such as `setTimeout(callback, ms("5m"))`.
+The result of each function is a `Duration` in its unit. `format` takes milliseconds, so `format(seconds("1h"))` is a type error instead of the string `"4s"`. A `Duration` is still a number, so an API that takes a number, such as `setTimeout`, accepts a `Duration` in any unit. The type cannot stop that mistake without making every `Duration` unusable where a plain number is expected. See [How to pass a duration to an API that takes a number](../how-to/pass-a-duration-to-an-api.md).
 
 ## Why `M` is not a unit
 
