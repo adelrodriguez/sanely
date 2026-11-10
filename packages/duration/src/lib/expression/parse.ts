@@ -1,5 +1,6 @@
 import { findUnit, getAmbiguousUnitHint } from "@sanely/core/time"
 import { InvalidTimeExpressionError } from "./errors"
+import { type Duration, toDuration } from "#lib/shared/duration.ts"
 import { LENIENT_UNIT_PATTERN, NUMBER_PATTERN } from "./grammar"
 
 const MAX_LENGTH = 200
@@ -51,7 +52,7 @@ function isValidGap(gap: string, isFirstSegment: boolean): boolean {
  * @throws {InvalidTimeExpressionError} If the input is not a string, is empty, exceeds 200
  *   characters, or cannot be parsed as a time expression
  */
-export function parse(value: string): number {
+export function parse(value: string): Duration<"milliseconds"> {
   if (typeof value !== "string") {
     throw new InvalidTimeExpressionError(value, "value must be a string")
   }
@@ -149,7 +150,7 @@ export function parse(value: string): number {
     throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
   }
 
-  return sign * total
+  return toDuration(sign * total)
 }
 
 /**
@@ -163,7 +164,7 @@ export function parse(value: string): number {
  *
  * @returns The total value in milliseconds, or `null` if the input is not a valid time expression
  */
-export function safeParse(value: string): number | null {
+export function safeParse(value: string): Duration<"milliseconds"> | null {
   try {
     return parse(value)
   } catch {

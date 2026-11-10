@@ -199,7 +199,7 @@ describe("parse", () => {
       fc.property(segmentsArbitrary, (segments) => {
         const expression = toExpression(segments)
 
-        expect(parse(`-${expression}`)).toBe(-parse(expression))
+        expect(parse(`-${expression}`)).toBe(-1 * parse(expression))
         expect(parse(`+${expression}`)).toBe(parse(expression))
       })
     )

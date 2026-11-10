@@ -1,4 +1,5 @@
 import { getUnitByName, UNITS, type UnitDefinition, type UnitName } from "@sanely/core/time"
+import type { MillisecondsOnly } from "#lib/shared/duration.ts"
 import type { FormatOptions } from "./types.ts"
 
 interface Segment {
@@ -52,7 +53,8 @@ function formatSegment(value: number, unit: UnitDefinition, long: boolean): stri
  *   format(5_432_100, { precision: 3 }) // "1h 30m 32s"
  *   format(12_096_000_000, { units: ["days"] }) // "140d"
  *
- * @param milliseconds - The value in milliseconds to format
+ * @param milliseconds - The value in milliseconds to format. A `Duration` in another unit, such as
+ *   the result of `seconds()`, is a type error.
  * @param options - Formatting options
  *
  * @returns A formatted time expression string
@@ -60,7 +62,10 @@ function formatSegment(value: number, unit: UnitDefinition, long: boolean): stri
  * @throws {RangeError} If `options.precision` is not a finite positive integer, or if
  *   `options.units` is empty or contains an unknown unit name
  */
-export function format(milliseconds: number, options?: FormatOptions): string {
+export function format<const T extends number>(
+  milliseconds: MillisecondsOnly<T>,
+  options?: FormatOptions
+): string {
   if (typeof milliseconds !== "number" || !Number.isFinite(milliseconds)) {
     throw new TypeError(
       `Value provided to format() must be a finite number. Received: ${String(milliseconds)}`

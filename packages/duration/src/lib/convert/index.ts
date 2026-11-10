@@ -1,5 +1,6 @@
 import { getUnitByName, type UnitName } from "@sanely/core/time"
 import type { TimeExpression } from "#lib/expression/types.ts"
+import { type Duration, toDuration } from "#lib/shared/duration.ts"
 import { parse } from "#lib/expression/parse.ts"
 
 /**
@@ -19,18 +20,18 @@ import { parse } from "#lib/expression/parse.ts"
  * @param value - A time expression string (simple or compound)
  * @param unit - The output unit name (e.g. `"seconds"`)
  *
- * @returns The value expressed in the given unit
+ * @returns The value expressed in the given unit, as a `Duration` in that unit
  * @throws {InvalidTimeExpressionError} If the expression cannot be parsed
  * @throws {RangeError} If the unit name is not a supported unit
  */
-export function convert(value: string, unit: UnitName): number {
+export function convert<U extends UnitName>(value: string, unit: U): Duration<U> {
   const definition = getUnitByName(unit)
 
   if (!definition) {
     throw new RangeError(`Unknown unit name provided to convert(). Received: ${String(unit)}`)
   }
 
-  return parse(value) / definition.ms
+  return toDuration<U>(parse(value) / definition.ms)
 }
 
 /**
@@ -46,7 +47,7 @@ export function convert(value: string, unit: UnitName): number {
  *
  * @returns The value in milliseconds
  */
-export function ms(value: TimeExpression): number {
+export function ms(value: TimeExpression): Duration<"milliseconds"> {
   return convert(value, "milliseconds")
 }
 
@@ -62,7 +63,7 @@ export function ms(value: TimeExpression): number {
  *
  * @returns The value in seconds
  */
-export function seconds(value: TimeExpression): number {
+export function seconds(value: TimeExpression): Duration<"seconds"> {
   return convert(value, "seconds")
 }
 
@@ -78,7 +79,7 @@ export function seconds(value: TimeExpression): number {
  *
  * @returns The value in minutes
  */
-export function minutes(value: TimeExpression): number {
+export function minutes(value: TimeExpression): Duration<"minutes"> {
   return convert(value, "minutes")
 }
 
@@ -94,7 +95,7 @@ export function minutes(value: TimeExpression): number {
  *
  * @returns The value in hours
  */
-export function hours(value: TimeExpression): number {
+export function hours(value: TimeExpression): Duration<"hours"> {
   return convert(value, "hours")
 }
 
@@ -110,7 +111,7 @@ export function hours(value: TimeExpression): number {
  *
  * @returns The value in days
  */
-export function days(value: TimeExpression): number {
+export function days(value: TimeExpression): Duration<"days"> {
   return convert(value, "days")
 }
 
@@ -126,7 +127,7 @@ export function days(value: TimeExpression): number {
  *
  * @returns The value in weeks
  */
-export function weeks(value: TimeExpression): number {
+export function weeks(value: TimeExpression): Duration<"weeks"> {
   return convert(value, "weeks")
 }
 
@@ -142,7 +143,7 @@ export function weeks(value: TimeExpression): number {
  *
  * @returns The value in months
  */
-export function months(value: TimeExpression): number {
+export function months(value: TimeExpression): Duration<"months"> {
   return convert(value, "months")
 }
 
@@ -158,6 +159,6 @@ export function months(value: TimeExpression): number {
  *
  * @returns The value in years
  */
-export function years(value: TimeExpression): number {
+export function years(value: TimeExpression): Duration<"years"> {
   return convert(value, "years")
 }

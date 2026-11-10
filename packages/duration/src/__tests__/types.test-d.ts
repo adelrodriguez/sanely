@@ -4,6 +4,7 @@ import {
   convert,
   days,
   type Days,
+  type Duration,
   format,
   type FormatOptions,
   hours,
@@ -40,6 +41,7 @@ import {
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 declare const userInput: string
+declare const start: number
 
 // ── Positive type-level tests ────────────────────────────────────────────────
 // Derives each unit alias type from the UNITS table.
@@ -105,10 +107,10 @@ declare const userInput: string
   expectTypeOf<" 1h">().toExtend<TimeExpression>()
 }
 
-// Returns number from parse and number | null from safeParse.
+// Returns a millisecond Duration from parse, or null from safeParse.
 {
-  expectTypeOf(parse(userInput)).toEqualTypeOf<number>()
-  expectTypeOf(safeParse(userInput)).toEqualTypeOf<number | null>()
+  expectTypeOf(parse(userInput)).toEqualTypeOf<Duration<"milliseconds">>()
+  expectTypeOf(safeParse(userInput)).toEqualTypeOf<Duration<"milliseconds"> | null>()
   expectTypeOf(parse).parameters.toEqualTypeOf<[value: string]>()
   expectTypeOf(safeParse).parameters.toEqualTypeOf<[value: string]>()
 }
@@ -133,24 +135,42 @@ declare const userInput: string
   }
 }
 
-// Accepts any string and a UnitName in convert, and returns number.
+// Accepts any string and a UnitName in convert, and returns a Duration in that unit.
 {
-  expectTypeOf(convert(userInput, "minutes")).toEqualTypeOf<number>()
-  expectTypeOf(convert).parameters.toEqualTypeOf<[value: string, unit: UnitName]>()
+  expectTypeOf(convert(userInput, "minutes")).toEqualTypeOf<Duration<"minutes">>()
+  expectTypeOf(convert).parameter(0).toEqualTypeOf<string>()
+  expectTypeOf(convert).parameter(1).toEqualTypeOf<UnitName>()
 }
 
-// Types each unit helper as (value: TimeExpression) => number.
+// Returns a Duration in each unit helper's own unit.
 {
-  type UnitHelper = (value: TimeExpression) => number
+  expectTypeOf(ms("1h")).toEqualTypeOf<Duration<"milliseconds">>()
+  expectTypeOf(seconds("1h")).toEqualTypeOf<Duration<"seconds">>()
+  expectTypeOf(minutes("1h")).toEqualTypeOf<Duration<"minutes">>()
+  expectTypeOf(hours("1h")).toEqualTypeOf<Duration<"hours">>()
+  expectTypeOf(days("1h")).toEqualTypeOf<Duration<"days">>()
+  expectTypeOf(weeks("1h")).toEqualTypeOf<Duration<"weeks">>()
+  expectTypeOf(months("1h")).toEqualTypeOf<Duration<"months">>()
+  expectTypeOf(years("1h")).toEqualTypeOf<Duration<"years">>()
+}
 
-  expectTypeOf(ms).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(seconds).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(minutes).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(hours).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(days).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(weeks).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(months).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(years).toEqualTypeOf<UnitHelper>()
+// Keeps a Duration usable as a number, and arithmetic gives a plain number.
+{
+  const timeoutMs: number = ms("30s")
+  const total = seconds("1m") + seconds("30s")
+
+  expectTypeOf(total).toEqualTypeOf<number>()
+  void timeoutMs
+}
+
+// Accepts plain numbers and millisecond Durations in format.
+{
+  format(5_400_000)
+  format(Date.now() - start)
+  format(ms("1h"))
+  format(parse("1h 30m"))
+  format(convert("1h", "milliseconds"))
+  format(MS_PER_HOUR * 2)
 }
 
 // Types format options and returns string from format.
@@ -158,7 +178,7 @@ declare const userInput: string
   const units: readonly UnitName[] = ["hours", "minutes"]
 
   expectTypeOf(format(5_400_000, { long: true, precision: 2, units })).toEqualTypeOf<string>()
-  expectTypeOf(format).parameters.toEqualTypeOf<[milliseconds: number, options?: FormatOptions]>()
+  expectTypeOf(format).parameter(1).toEqualTypeOf<FormatOptions | undefined>()
   expectTypeOf<FormatOptions["long"]>().toEqualTypeOf<boolean | undefined>()
   expectTypeOf<FormatOptions["precision"]>().toEqualTypeOf<number | undefined>()
   expectTypeOf<FormatOptions["units"]>().toEqualTypeOf<readonly UnitName[] | undefined>()
@@ -245,6 +265,12 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- format takes a number, not a time expression
   format("1h")
+
+  // @ts-expect-error -- format takes milliseconds, not seconds
+  format(seconds("1h"))
+
+  // @ts-expect-error -- format takes milliseconds, not minutes
+  format(convert("1h", "minutes"))
 
   // @ts-expect-error -- precision is a number
   format(1000, { precision: "2" })
