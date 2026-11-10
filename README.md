@@ -24,6 +24,7 @@ Migrated packages contain their source libraries. The other packages still conta
 | [`@sanely/cron`](packages/cron)           | A small, type-safe English-like language that compiles to exact cron expressions.                                              | None                                                      | Migrated |
 | [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Migrated |
 | [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Migrated |
+| [`@sanely/request`](packages/request)     | Read the client IP address and location from a request.                                                                        | None                                                      | Migrated |
 
 The private [`@sanely/core`](packages/core) workspace holds shared definitions.
 Libraries can reuse internal workspaces without adding third-party runtime dependencies.
