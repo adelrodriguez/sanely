@@ -11,7 +11,6 @@ describe("errors", () => {
       "RegistryNotRecognizedError",
       "RegistryTagMismatchError",
       "RegistryUnknownTagError",
-      "ReservedFieldError",
     ])
   })
 })

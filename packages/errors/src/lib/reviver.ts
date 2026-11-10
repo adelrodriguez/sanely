@@ -1,29 +1,21 @@
 import { InvalidPayloadError } from "./errors"
-import { Fault, isReservedKey } from "./fault"
+import { Fault } from "./fault"
 import {
-  collectPayloadFields,
-  definePayloadField,
   MAX_CAUSE_DEPTH,
-  RESERVED_FAULT_KEYS,
   type SerializableCause,
   type SerializableFault,
+  type SerializableValue,
 } from "./wire"
 
-export type FaultResolver = (tag: string, payload: Record<string, unknown>) => Fault | undefined
-
-// Prefix applied (repeatedly, until unique) to payload keys that would
-// collide with reserved Fault keys during deserialization.
-const PAYLOAD_PREFIX = "__payload_"
-
-type PreparedPayload = {
-  collisionPayload: Record<string, unknown>
-  constructorPayload: Record<string, unknown>
-}
+export type FaultResolver = (
+  tag: string,
+  fields: Record<string, SerializableValue>
+) => Fault | undefined
 
 class DeserializedFault extends Fault {
   // Widens Fault's protected constructor to public.
-  public constructor(tag: string) {
-    super(tag)
+  public constructor(tag: string, fields: Record<string, SerializableValue>) {
+    super(tag, fields)
   }
 }
 
@@ -51,6 +43,9 @@ function findFaultIssue(value: unknown, depth: number): string | undefined {
   if (!isOptionalString(value.stack)) return atDepth(depth, "stack must be a string")
   if (value.meta !== undefined && (!isRecord(value.meta) || Array.isArray(value.meta))) {
     return atDepth(depth, "meta must be an object")
+  }
+  if (value.fields !== undefined && (!isRecord(value.fields) || Array.isArray(value.fields))) {
+    return atDepth(depth, "fields must be an object")
   }
   if (value.cause === undefined) return undefined
 
@@ -114,49 +109,6 @@ function createDeserializedError(name: string, message: string, stack?: string):
   return error
 }
 
-function extractPayloadFields(json: SerializableFault): Record<string, unknown> {
-  // Exclude only envelope keys here (not the full reserved rule): a wire key
-  // that shadows a Fault method must be renamed by preparePayload, not dropped.
-  return collectPayloadFields(json, (key) => RESERVED_FAULT_KEYS.has(key))
-}
-
-function preparePayload(payload: Record<string, unknown>): PreparedPayload {
-  const collisionPayload: Record<string, unknown> = {}
-  const constructorPayload: Record<string, unknown> = {}
-  const rawKeys = new Set(Object.keys(payload))
-  const assignedKeys = new Set<string>()
-
-  for (const [key, value] of Object.entries(payload)) {
-    let targetKey = key
-
-    while (
-      isReservedKey(targetKey)
-      || assignedKeys.has(targetKey)
-      || (targetKey !== key && rawKeys.has(targetKey))
-    ) {
-      targetKey = `${PAYLOAD_PREFIX}${targetKey}`
-    }
-
-    assignedKeys.add(targetKey)
-
-    if (targetKey === key) {
-      definePayloadField(constructorPayload, key, value)
-    } else {
-      definePayloadField(collisionPayload, targetKey, value)
-    }
-  }
-
-  return { collisionPayload, constructorPayload }
-}
-
-function restorePayloadFields(fault: Fault, payload: Record<string, unknown>): void {
-  const target = fault as unknown as Record<string, unknown>
-
-  for (const [key, value] of Object.entries(payload)) {
-    definePayloadField(target, key, value)
-  }
-}
-
 function deserializeCause(cause: SerializableCause, resolveFault?: FaultResolver): unknown {
   switch (cause.kind) {
     case "fault":
@@ -185,16 +137,8 @@ function restoreDeserializedFields(fault: Fault, json: SerializableFault): void 
 
 // Revives an envelope that assertSerializableFault already checked, causes included.
 function reviveFault(json: SerializableFault, resolveFault?: FaultResolver): Fault {
-  const payload = preparePayload(extractPayloadFields(json))
-  const resolvedFault = resolveFault?.(json._tag, payload.constructorPayload)
-  const fault = resolvedFault ?? new DeserializedFault(json._tag)
-
-  // A resolved constructor already applied constructorPayload; the generic
-  // fallback needs both buckets restored directly.
-  if (!resolvedFault) {
-    restorePayloadFields(fault, payload.constructorPayload)
-  }
-  restorePayloadFields(fault, payload.collisionPayload)
+  const fields = json.fields ?? {}
+  const fault = resolveFault?.(json._tag, fields) ?? new DeserializedFault(json._tag, fields)
   restoreDeserializedFields(fault, json)
 
   if (json.cause !== undefined) {

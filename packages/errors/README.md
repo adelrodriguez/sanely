@@ -23,7 +23,7 @@ const fault = new NotFoundError({ id: "123" })
   .withDescription("DB query returned 0 rows")
 
 fault._tag // "NotFoundError"
-fault.id // "123"
+fault.fields.id // "123"
 fault.message // "User not found", for the user
 fault.description // "DB query returned 0 rows", for debugging
 ```
@@ -31,7 +31,7 @@ fault.description // "DB query returned 0 rows", for debugging
 ## Features
 
 - **Tagged subclasses.** Each fault type is a real class with a `_tag` discriminant, so `instanceof` works.
-- **Typed fields.** Each fault type has its own structured fields.
+- **Typed fields.** Each fault type has its own structured fields in `fault.fields`, so any field name works.
 - **A message and a description.** `message` is for the user. `description` describes the error and what happened, for debugging.
 - **Cause chains.** Wrap and throw again, and keep the full chain of causes.
 - **Registries.** Group fault types into a union with `create`, `wrap`, and `match` methods.
@@ -62,7 +62,7 @@ try {
   throw AppFault.create("NotFoundError", { id: "123" }).withMessage("User not found")
 } catch (error) {
   AppFault.matchTags(error, {
-    NotFoundError: (fault) => console.log(fault.id), // "123", typed as string
+    NotFoundError: (fault) => console.log(fault.fields.id), // "123", typed as string
     DatabaseError: () => console.log("db failed"),
   })
 }

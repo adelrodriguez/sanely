@@ -6,7 +6,7 @@ import {
   RegistryTagMismatchError,
   RegistryUnknownTagError,
 } from "./errors"
-import { Fault, toSerializable } from "./fault"
+import { Fault, isFault, toSerializable } from "./fault"
 import { dispatchTag, dispatchTags, type HandlerResult } from "./match"
 import { deserializeFault } from "./reviver"
 
@@ -28,6 +28,22 @@ type CreateArgs<Ctor extends AnyFaultCtor> =
 // JavaScript stores a numeric object key as a string, so the registry key 1 holds the tag "1".
 type RegistryTag<M extends Record<string, AnyFaultCtor>> = `${Extract<keyof M, string | number>}`
 
+// The wire format of one registered fault. The serializer omits empty fields, so a fault
+// without fields has none on the wire, and one whose fields can be empty, such as optional
+// fields or a dictionary, may have none.
+type MemberWire<Tag extends string, Fields> = Omit<SerializableFault, "_tag" | "fields"> & {
+  _tag: Tag
+} & (keyof Fields extends never
+    ? { fields?: undefined }
+    : Record<never, never> extends Fields
+      ? { fields?: Fields }
+      : { fields: Fields })
+
+// The wire formats of a registry's members, as a union that narrows by `_tag`.
+type RegistryWire<M extends Record<string, AnyFaultCtor>> = {
+  [K in keyof M]: MemberWire<`${Extract<K, string | number>}`, InstanceType<M[K]>["fields"]>
+}[keyof M]
+
 type RegistryMatchHandlers<M extends Record<string, AnyFaultCtor>> = Partial<{
   [K in keyof M]: (fault: InstanceType<M[K]>) => unknown
 }>
@@ -35,7 +51,7 @@ type RegistryMatchHandlers<M extends Record<string, AnyFaultCtor>> = Partial<{
 function constructFault(tag: string, ctor: AnyFaultCtor, args: unknown[]): Fault {
   const value: unknown = Reflect.construct(ctor, args)
 
-  if (!(value instanceof Fault)) {
+  if (!isFault(value)) {
     throw new RegistryConstructorError({ tag })
   }
 
@@ -88,11 +104,15 @@ export type FaultRegistry<M extends Record<string, AnyFaultCtor>> = {
     handlers: H,
     fallback: (err: unknown) => RF
   ): HandlerResult<H> | RF
-  toSerializable(err: unknown): SerializableFault
+  /**
+   * Serializes a member with its tag and fields typed. Any other value gets the open wire type.
+   */
+  toSerializable(fault: InstanceType<M[keyof M]>): RegistryWire<M>
+  toSerializable(value: unknown): SerializableFault
   fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault
 }
 
-// fromSerializable revives a registered fault with `new Ctor(payloadFields)`,
+// fromSerializable revives a registered fault with `new Ctor(fields)`,
 // so a registered constructor must take the fields object as its only
 // parameter. Anything else fails here instead of corrupting fields on revive.
 // The check is signature-only on purpose. Looking at instance keys to catch
@@ -204,12 +224,14 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
 
     matchTags,
 
-    toSerializable,
+    // Safe: a member's tag is its registry key and its fields are its constructor's fields, so
+    // the standalone wire format already has the member's typed shape.
+    toSerializable: toSerializable as FaultRegistry<M>["toSerializable"],
 
     fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault {
-      return deserializeFault(value, (tag, payload) => {
+      return deserializeFault(value, (tag, fields) => {
         const ctor = tagToCtor.get(tag)
-        return ctor ? constructFault(tag, ctor, [payload]) : undefined
+        return ctor ? constructFault(tag, ctor, [fields]) : undefined
       })
     },
   }

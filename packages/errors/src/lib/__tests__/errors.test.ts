@@ -7,19 +7,7 @@ import {
   RegistryNotRecognizedError,
   RegistryTagMismatchError,
   RegistryUnknownTagError,
-  ReservedFieldError,
 } from "#lib/errors.ts"
-
-describe("ReservedFieldError", () => {
-  it("exposes its tag, name, field, and message", () => {
-    const error = new ReservedFieldError({ field: "message" })
-
-    expect(error._tag).toBe("ReservedFieldError")
-    expect(error.name).toBe("ReservedFieldError")
-    expect(error.field).toBe("message")
-    expect(error.message).toBe("Reserved field key: message")
-  })
-})
 
 describe("RegistryTagMismatchError", () => {
   it("exposes its tag, name, fields, and message", () => {
@@ -30,8 +18,8 @@ describe("RegistryTagMismatchError", () => {
 
     expect(error._tag).toBe("RegistryTagMismatchError")
     expect(error.name).toBe("RegistryTagMismatchError")
-    expect(error.ctorTag).toBe("ActualError")
-    expect(error.registryKey).toBe("ExpectedError")
+    expect(error.fields.ctorTag).toBe("ActualError")
+    expect(error.fields.registryKey).toBe("ExpectedError")
     expect(error.message).toBe(
       "Registry key 'ExpectedError' does not match constructor tag 'ActualError'."
     )
@@ -44,7 +32,7 @@ describe("RegistryMergeConflictError", () => {
 
     expect(error._tag).toBe("RegistryMergeConflictError")
     expect(error.name).toBe("RegistryMergeConflictError")
-    expect(error.conflictingTag).toBe("ConflictError")
+    expect(error.fields.conflictingTag).toBe("ConflictError")
     expect(error.message).toBe("Registry merge conflict for tag 'ConflictError'.")
   })
 })
@@ -55,7 +43,7 @@ describe("RegistryUnknownTagError", () => {
 
     expect(error._tag).toBe("RegistryUnknownTagError")
     expect(error.name).toBe("RegistryUnknownTagError")
-    expect(error.tag).toBe("Nope")
+    expect(error.fields.tag).toBe("Nope")
     expect(error.message).toBe("Unknown Fault registry tag 'Nope'.")
   })
 })
@@ -76,7 +64,7 @@ describe("RegistryConstructorError", () => {
 
     expect(error._tag).toBe("RegistryConstructorError")
     expect(error.name).toBe("RegistryConstructorError")
-    expect(error.tag).toBe("NotAFault")
+    expect(error.fields.tag).toBe("NotAFault")
     expect(error.message).toBe(
       "The constructor registered for tag 'NotAFault' did not create a Fault."
     )
@@ -89,7 +77,24 @@ describe("InvalidPayloadError", () => {
 
     expect(error._tag).toBe("InvalidPayloadError")
     expect(error.name).toBe("InvalidPayloadError")
-    expect(error.reason).toBe("_tag must be a string")
+    expect(error.fields.reason).toBe("_tag must be a string")
     expect(error.message).toBe("Invalid fault payload: _tag must be a string")
+  })
+})
+
+describe("package error stacks", () => {
+  it("start with the diagnostic message, not the tag", () => {
+    const errors = [
+      new InvalidPayloadError({ reason: "bad" }),
+      new RegistryConstructorError({ tag: "X" }),
+      new RegistryMergeConflictError({ conflictingTag: "X" }),
+      new RegistryNotRecognizedError(),
+      new RegistryTagMismatchError({ ctorTag: "Y", registryKey: "X" }),
+      new RegistryUnknownTagError({ tag: "X" }),
+    ]
+
+    for (const error of errors) {
+      expect(error.stack?.split("\n")[0]).toBe(`${error.name}: ${error.message}`)
+    }
   })
 })

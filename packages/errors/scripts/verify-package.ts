@@ -24,11 +24,13 @@ function assertExports(namespace: object, expected: string[], entrypoint: string
 assertExports(
   Fault,
   [
-    "Fault",
+    "Base",
     "Tagged",
     "findCause",
     "fromSerializable",
+    "is",
     "isFault",
+    "isSerializable",
     "isSerializableFault",
     "matchTag",
     "matchTags",
@@ -47,24 +49,19 @@ assertExports(
     "RegistryNotRecognizedError",
     "RegistryTagMismatchError",
     "RegistryUnknownTagError",
-    "ReservedFieldError",
   ],
   "@sanely/errors/errors"
 )
 assertExports(FaultTypes, [], "@sanely/errors/types")
 
-// An index signature skips the compile-time check, so the runtime guard runs.
-class InvalidFieldError extends Fault.Tagged("InvalidFieldError")<Record<string, string>>() {}
-
 let thrown: unknown
 try {
-  const invalidFieldError = new InvalidFieldError({ message: "reserved" })
-  void invalidFieldError
+  Fault.fromSerializable({ __fault: false })
 } catch (error) {
   thrown = error
 }
 
-if (!(thrown instanceof FaultErrors.ReservedFieldError)) {
+if (!(thrown instanceof FaultErrors.InvalidPayloadError)) {
   throw new Error("Root behavior and @sanely/errors/errors do not share error constructor identity")
 }
 
@@ -85,7 +82,7 @@ const consumerPath = "dist/node-next-consumer.ts"
 writeFileSync(
   consumerPath,
   `import { Tagged, registry } from "@sanely/errors"
-import { ReservedFieldError } from "@sanely/errors/errors"
+import { InvalidPayloadError } from "@sanely/errors/errors"
 import type { FaultRegistry, SerializableFault } from "@sanely/errors/types"
 
 class ConsumerError extends Tagged("ConsumerError")() {}
@@ -96,7 +93,7 @@ const serialized: SerializableFault = ConsumerFault.create("ConsumerError").toSe
 
 void registryContract
 void serialized
-void ReservedFieldError
+void InvalidPayloadError
 `
 )
 

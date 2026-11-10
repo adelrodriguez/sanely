@@ -14,9 +14,7 @@ This guide shows you how to declare the errors of your app as fault classes, and
 
    Leave the type argument out when the fault has no fields. Field types must be JSON-safe values. Use a type alias or an inline type for the fields, not an interface.
 
-2. Make sure that no field name is reserved, such as `message`, `cause`, or a method name like `withMeta`. The class declaration fails to compile when a field name is reserved. With an index signature, such as `Record<string, string>`, the fault throws `ReservedFieldError` when you create it instead. Refer to [Reserved keys](../reference.md#reserved-keys) for the full list.
-
-3. Group the classes in a registry. Each key must be the tag of its class:
+2. Group the classes in a registry. Each key must be the tag of its class:
 
    ```ts
    import * as Fault from "@sanely/errors"
@@ -28,7 +26,7 @@ This guide shows you how to declare the errors of your app as fault classes, and
 
    A key that is not the tag of its class throws `RegistryTagMismatchError`.
 
-4. Create faults through the registry, and add the messages and metadata:
+3. Create faults through the registry, and add the messages and metadata:
 
    ```ts
    throw AppFault.create("NotFoundError", { resource: "user", id: "123" })
@@ -71,3 +69,15 @@ UserNotFound.forId("7").message // "User 7 not found"
 ```
 
 `registry()` refuses a class with another constructor signature at compile time. [Why registered constructors take only their fields](../explanation/about-faults.md#why-registered-constructors-take-only-their-fields) explains the rule.
+
+## Read the fields
+
+A fault keeps its fields in `fields`, so any name works, including `message` or `flatten`:
+
+```ts
+const fault = AppFault.create("NotFoundError", { resource: "user", id: "123" })
+
+fault.fields.id // "123"
+```
+
+A subclass can add methods and other properties, but it must not redeclare `fields`. Only `fields` is part of the wire format, so other properties revive with the values that the constructor gives them.

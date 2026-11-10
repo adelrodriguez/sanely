@@ -1,17 +1,17 @@
 /**
- * Base abstract fault class.
+ * The base class of every fault, for `instanceof` checks and types such as `Fault.Base`.
  *
- * Extend directly or use {@link Tagged} to define tagged subclasses.
+ * Use {@link Tagged} to define fault classes.
  */
-export { Fault } from "#lib/fault.ts"
+export { Fault as Base } from "#lib/fault.ts"
 
 /**
- * Type guard for Fault instances.
+ * Type guard for faults. `isFault` is the same function.
  *
- * Uses `instanceof Fault` and therefore is not cross-realm safe. Use serialization/deserialization
- * when crossing process/realm boundaries.
+ * Uses `instanceof` and therefore is not cross-realm safe. Use serialization/deserialization when
+ * crossing process/realm boundaries.
  */
-export { isFault } from "#lib/fault.ts"
+export { isFault as is, isFault } from "#lib/fault.ts"
 
 /**
  * Finds the first node in a fault's cause chain, head included, that is an instance of the given
@@ -89,9 +89,9 @@ export { toSerializable } from "#lib/fault.ts"
 export { fromSerializable } from "#lib/reviver.ts"
 
 /**
- * Type guard for wire payloads.
+ * Type guard for wire payloads. `isSerializableFault` is the same function.
  *
  * Returns `true` exactly when `fromSerializable` accepts the value, because both use the same
- * check. Payload and `meta` values are not deep-validated.
+ * check. Field and `meta` values are not deep-validated.
  */
-export { isSerializableFault } from "#lib/reviver.ts"
+export { isSerializableFault as isSerializable, isSerializableFault } from "#lib/reviver.ts"

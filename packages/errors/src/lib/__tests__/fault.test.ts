@@ -1,13 +1,14 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import { Fault, findCause, isFault, isReservedKey } from "#lib/fault.ts"
+import type { SerializableValue } from "#lib/wire.ts"
+import { Fault, findCause, isFault } from "#lib/fault.ts"
 import { Tagged } from "#lib/tagged.ts"
-import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
 
 class ExampleFault extends Fault {
   constructor(message?: string) {
-    super("ExampleFault", message)
+    super("ExampleFault")
+    if (message !== undefined) this.message = message
   }
 }
 
@@ -308,13 +309,6 @@ describe("findCause", () => {
     expect(findCause(new Error("plain", { cause: leaf }), ExampleFault)).toBeUndefined()
     expect(findCause("ExampleFault", ExampleFault)).toBeUndefined()
   })
-
-  it("leaves findCause free as a payload field name", () => {
-    class LookupError extends Tagged("LookupError")<{ findCause: string }>() {}
-
-    expect(isReservedKey("findCause")).toBe(false)
-    expect(new LookupError({ findCause: "saved" }).findCause).toBe("saved")
-  })
 })
 
 describe("isFault", () => {
@@ -329,53 +323,98 @@ describe("isFault", () => {
   })
 })
 
-class ProbeFault extends Fault {
-  constructor() {
-    super("ProbeFault")
+class FieldsFault extends Fault {
+  constructor(fields: Record<string, SerializableValue>) {
+    super("FieldsFault", fields)
   }
 }
 
-describe("isReservedKey", () => {
-  it("reserves every wire envelope key", () => {
-    for (const key of RESERVED_FAULT_KEYS) {
-      expect(isReservedKey(key)).toBe(true)
-    }
+// The names of the wire envelope. Fields never appear at this level.
+const ENVELOPE_KEYS = new Set([
+  "__fault",
+  "_tag",
+  "cause",
+  "description",
+  "fields",
+  "message",
+  "meta",
+  "name",
+  "stack",
+])
+
+// Random strings almost never hit a name that matters, so mix in Fault methods,
+// envelope keys, and Object.prototype names.
+const fieldKeyArb = fc.oneof(
+  fc.string({ maxLength: 30, minLength: 1 }),
+  fc.constantFrom(
+    "toString",
+    "valueOf",
+    "constructor",
+    "hasOwnProperty",
+    "__proto__",
+    "unwrap",
+    "withMeta",
+    "flatten",
+    "toJSON",
+    "toSerializable",
+    "message",
+    "_tag",
+    "fields"
+  )
+)
+
+// defineProperty, so a "__proto__" key becomes an own data property.
+function fieldsWith(key: string, value: SerializableValue): Record<string, SerializableValue> {
+  const fields: Record<string, SerializableValue> = {}
+  Object.defineProperty(fields, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  })
+  return fields
+}
+
+describe("Fault fields", () => {
+  it("keeps any field name as an own key of fields and serializes it under fields", () => {
+    fc.assert(
+      fc.property(fieldKeyArb, fc.jsonValue({ maxDepth: 2 }), (key, value) => {
+        const fault = new FieldsFault(fieldsWith(key, value))
+
+        expect(Object.hasOwn(fault.fields, key)).toBe(true)
+        expect(fault.fields[key]).toEqual(value)
+        expect(Object.getPrototypeOf(fault.fields)).toBe(Object.prototype)
+        expect(typeof fault.unwrap).toBe("function")
+
+        const serialized = fault.toSerializable()
+        expect(Object.hasOwn(serialized.fields ?? {}, key)).toBe(true)
+        expect(serialized.fields?.[key]).toEqual(value)
+        expect(Object.keys(serialized).every((name) => ENVELOPE_KEYS.has(name))).toBe(true)
+      })
+    )
   })
 
-  it("reserves every property reachable through Fault's prototype chain", () => {
-    let proto: object | null = ProbeFault.prototype
+  it("copies the fields object it receives", () => {
+    const fields: Record<string, SerializableValue> = { id: "1" }
+    const fault = new FieldsFault(fields)
+    fields.id = "2"
 
-    while (proto !== null) {
-      for (const key of Object.getOwnPropertyNames(proto)) {
-        expect(isReservedKey(key)).toBe(true)
-      }
-      proto = Object.getPrototypeOf(proto) as object | null
-    }
+    expect(fault.fields.id).toBe("1")
   })
 
-  it("controls exactly which own fields serialization includes as payload", () => {
+  it("omits fields from the wire when a fault has none", () => {
+    expect(Object.hasOwn(new ExampleFault().toSerializable(), "fields")).toBe(false)
+  })
+
+  it("never serializes own properties outside fields", () => {
     // oxlint-disable-next-line typescript/unbound-method -- always invoked with an explicit receiver via .call below.
     const toSerializable = Fault.prototype.toSerializable
-    // Random strings almost never land on a prototype-derived reserved key,
-    // so mix them in to make the exclusion branch reliable in every run.
-    const keyArb = fc.oneof(
-      fc.string({ maxLength: 30, minLength: 1 }),
-      fc.constantFrom(
-        "toString",
-        "valueOf",
-        "constructor",
-        "hasOwnProperty",
-        "__proto__",
-        "unwrap",
-        "withMeta",
-        "toJSON",
-        "toSerializable"
-      )
-    )
+    // `fields` itself is the one name a subclass must not redeclare.
+    const ownKeyArb = fieldKeyArb.filter((key) => key !== "fields")
 
     fc.assert(
-      fc.property(keyArb, fc.jsonValue({ maxDepth: 2 }), (key, value) => {
-        const fault = new ProbeFault()
+      fc.property(ownKeyArb, fc.jsonValue({ maxDepth: 2 }), (key, value) => {
+        const fault = new ExampleFault()
         Object.defineProperty(fault, key, {
           configurable: true,
           enumerable: true,
@@ -386,15 +425,8 @@ describe("isReservedKey", () => {
         // Call via the prototype: the generated key may shadow instance methods.
         const serialized = toSerializable.call(fault)
 
-        if (!isReservedKey(key)) {
-          expect(Object.hasOwn(serialized, key)).toBe(true)
-          expect(serialized[key]).toEqual(value)
-        } else if (!RESERVED_FAULT_KEYS.has(key)) {
-          // Prototype-derived reserved keys (Fault methods, Error/Object
-          // built-ins) must never leak into the wire object; envelope keys
-          // are legitimately present.
-          expect(Object.hasOwn(serialized, key)).toBe(false)
-        }
+        expect(Object.keys(serialized).every((name) => ENVELOPE_KEYS.has(name))).toBe(true)
+        expect(serialized.fields).toBeUndefined()
       })
     )
   })

@@ -53,7 +53,7 @@ const action = Fault.matchTag(
   error,
   "TimeoutError",
   () => "retry",
-  (other) => other.id // other is NotFoundError
+  (other) => other.fields.id // other is NotFoundError
 )
 ```
 
