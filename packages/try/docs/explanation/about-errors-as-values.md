@@ -68,9 +68,9 @@ A caller can read the failure behavior of a function from its return type, witho
 
 The package has three layers:
 
-1. Terminal execution runs the work. `run` and `runSync` execute a function and produce the result union.
+1. Terminal execution runs the work and produces the result union. `run` and `runSync` run one function.
 2. Policy builders configure the next terminal call. `retry`, `timeout`, and `signal` do not run work. `timeout` and `signal` add their policy failures to the result union. `retry` changes the failure only when you give no `catch`: a failure after the last attempt is a `RetryExhaustedError`, not an `UnhandledException`.
-3. Orchestration applies the same model to a group of named tasks. `all` stops at the first failure, `allSettled` keeps every outcome, and `flow` runs until a task calls `$exit`.
+3. Orchestration is terminal execution for a group of named tasks, with the same result rules as `run`. `all` stops at the first failure, `allSettled` keeps every outcome, and `flow` runs until a task calls `$exit`.
 
 Three more tools sit around the layers. `wrap` observes execution without a change to it. `gen` composes result unions in a linear style. `disposer` registers cleanup that runs when the work ends.
 
