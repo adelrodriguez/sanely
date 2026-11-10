@@ -38,7 +38,6 @@ function constructFault(ctor: AnyFaultCtor, args: unknown[]): Fault {
 
 function instantiate<Ctor extends AnyFaultCtor>(ctor: Ctor, args: unknown[]): InstanceType<Ctor> {
   // Safe: constructFault validates the instance; this preserves the specific constructor type.
-  // oxlint-disable-next-line typescript/no-unsafe-return
   return constructFault(ctor, args) as InstanceType<Ctor>
 }
 
@@ -146,7 +145,6 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
     // Same membership rule as is(): the registered tag and constructor identity.
     const found = err.unwrap().find((item) => item instanceof ctor && item._tag === String(tag))
     // Safe: found is an instance of the constructor registered under tag.
-    // oxlint-disable-next-line typescript/no-unsafe-return
     return found as InstanceType<M[K]> | undefined
   }
 

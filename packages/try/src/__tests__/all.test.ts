@@ -242,7 +242,7 @@ describe("all", () => {
       const result = await try$.all(
         {
           first() {
-            // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Task failures can be any JavaScript value.
+            // oxlint-disable-next-line typescript/only-throw-error -- Task failures can be any JavaScript value.
             throw reason
           },
           second() {
