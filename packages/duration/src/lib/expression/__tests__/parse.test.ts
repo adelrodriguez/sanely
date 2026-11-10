@@ -1,4 +1,4 @@
-import { UNITS } from "@sanely/core/time"
+import { findUnit, UNITS } from "@sanely/core/time"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import { InvalidTimeExpressionError } from "#lib/expression/errors.ts"
@@ -40,12 +40,16 @@ const segmentArbitrary = fc
     fc.constantFrom(...unit.aliases).chain((alias) =>
       fc
         .array(fc.boolean(), { maxLength: alias.length, minLength: alias.length })
-        .map((uppercase) => ({
-          expected: number.value * unit.ms,
-          text: `${number.token}${whitespace}${alias
+        .map((uppercase) =>
+          alias
             .split("")
             .map((character, index) => (uppercase[index] ? character.toUpperCase() : character))
-            .join("")}`,
+            .join("")
+        )
+        .filter((casing) => findUnit(casing) !== undefined)
+        .map((casing) => ({
+          expected: number.value * unit.ms,
+          text: `${number.token}${whitespace}${casing}`,
         }))
     )
   )
@@ -253,6 +257,20 @@ describe("parse", () => {
     expect(parse("53 DaYS")).toBe(4_579_200_000)
     expect(parse("53 HoUrs")).toBe(190_800_000)
     expect(parse("53 MiLliSeCondS")).toBe(53)
+  })
+
+  it("should reject M, which reads as months in other notations, and say what to write", () => {
+    for (const value of ["1M", "1 M", "1h 5M", "-2M"]) {
+      expect(() => parse(value)).toThrow(
+        new InvalidTimeExpressionError(
+          value,
+          '"M" is ambiguous: use "m" for minutes or "mo" for months'
+        )
+      )
+    }
+    expect(parse("1m")).toBe(60_000)
+    expect(parse("1MO")).toBe(2_629_800_000)
+    expect(parse("1Ms")).toBe(1)
   })
 
   it("should allow multiple spaces between number and unit", () => {

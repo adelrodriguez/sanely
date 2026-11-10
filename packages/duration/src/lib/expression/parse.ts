@@ -1,4 +1,4 @@
-import { getUnitMs } from "@sanely/core/time"
+import { findUnit, getAmbiguousUnitHint } from "@sanely/core/time"
 import { InvalidTimeExpressionError } from "./errors"
 import { LENIENT_UNIT_PATTERN, NUMBER_PATTERN } from "./grammar"
 
@@ -111,10 +111,14 @@ export function parse(value: string): number {
     }
 
     const n = Number.parseFloat(numberToken)
-    const multiplier = unitToken ? getUnitMs(unitToken) : 1
+    const multiplier = unitToken ? findUnit(unitToken)?.ms : 1
 
     if (multiplier === undefined) {
-      throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
+      const hint = unitToken ? getAmbiguousUnitHint(unitToken) : undefined
+      throw new InvalidTimeExpressionError(
+        value,
+        hint ? `"${unitToken}" is ambiguous: ${hint}` : "value is not a valid time expression"
+      )
     }
 
     total += n * multiplier

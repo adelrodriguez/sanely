@@ -71,9 +71,11 @@ declare const userInput: string
   expectTypeOf<UnitName>().toExtend<Unit>()
 }
 
-// Makes UnitAnyCase cover lowercase, Capitalized, and UPPERCASE units.
+// Makes UnitAnyCase cover lowercase, Capitalized, and UPPERCASE units, except the ambiguous "M".
 {
-  expectTypeOf<UnitAnyCase>().toEqualTypeOf<Unit | Capitalize<Unit> | Uppercase<Unit>>()
+  expectTypeOf<UnitAnyCase>().toEqualTypeOf<
+    Exclude<Unit | Capitalize<Unit> | Uppercase<Unit>, "M">
+  >()
   expectTypeOf<"ms">().toExtend<UnitAnyCase>()
   expectTypeOf<"Hour">().toExtend<UnitAnyCase>()
   expectTypeOf<"HOURS">().toExtend<UnitAnyCase>()
@@ -219,6 +221,9 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- Infinity is not a finite number
   years("Infinityy")
+
+  // @ts-expect-error -- "M" is ambiguous: "m" is minutes and "mo" is months
+  ms("1M")
 
   // @ts-expect-error -- unit helpers take a string, not a number
   ms(1000)

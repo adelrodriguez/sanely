@@ -1,4 +1,4 @@
-import type { UNITS } from "./table"
+import type { AMBIGUOUS_UNITS, UNITS } from "./table"
 
 type UnitRow = (typeof UNITS)[number]
 
@@ -55,6 +55,11 @@ export type Unit = UnitRow["aliases"][number]
 export type UnitName = UnitRow["longPlural"]
 
 /**
- * Any casing variant of a time unit (lowercase, Capitalized, UPPERCASE).
+ * A unit token that `findUnit` rejects because it means another unit in common notations.
  */
-export type UnitAnyCase = Unit | Capitalize<Unit> | Uppercase<Unit>
+export type AmbiguousUnit = keyof typeof AMBIGUOUS_UNITS
+
+/**
+ * Any casing variant of a time unit (lowercase, Capitalized, UPPERCASE), except an `AmbiguousUnit`.
+ */
+export type UnitAnyCase = Exclude<Unit | Capitalize<Unit> | Uppercase<Unit>, AmbiguousUnit>
