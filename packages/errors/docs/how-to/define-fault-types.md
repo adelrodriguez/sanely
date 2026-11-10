@@ -70,14 +70,18 @@ UserNotFound.forId("7").message // "User 7 not found"
 
 `registry()` refuses a class with another constructor signature at compile time. [Why registered constructors take only their fields](../explanation/about-faults.md#why-registered-constructors-take-only-their-fields) explains the rule.
 
-## Read the fields
+## Add methods and properties to a fault class
 
-A fault keeps its fields in `fields`, so any name works, including `message` or `flatten`:
+A fault class can have its own methods and getters. Read the fault's data from `this.fields`:
 
 ```ts
-const fault = AppFault.create("NotFoundError", { resource: "user", id: "123" })
-
-fault.fields.id // "123"
+class NotFoundError extends Fault.Tagged("NotFoundError")<{ resource: string; id: string }>() {
+  get label() {
+    return `${this.fields.resource} ${this.fields.id}`
+  }
+}
 ```
 
-A subclass can add methods and other properties, but it must not redeclare `fields`. Only `fields` is part of the wire format, so other properties revive with the values that the constructor gives them.
+If a value must reach the other side of a [boundary](send-faults-across-a-boundary.md), make it a field. Only `fields` is part of the wire format, so any other property revives with the value that the constructor gives it. Do not redeclare `fields` in a subclass.
+
+Refer to [Field names](../reference.md#field-names) for the names a field can use.
