@@ -36,23 +36,15 @@ describe(schedule) // "every 15 minutes between 9:00 and 17:00 on weekdays"
 npm install @sanely/cron
 ```
 
-## Schedules are exact or rejected
-
-A schedule is valid only when one standard 5-field cron expression runs at exactly its times. `@sanely/cron` never gives an expression that runs at other times.
-
-- **Intervals divide the next larger unit.** A minute interval divides 60, and an hour interval divides 24. `*/7` in the minute field runs at :56 and then at :00 of the next hour, so `every 7 minutes` is an error.
-- **Intervals start at the start of the cycle.** A minute interval starts at :00 of each hour. An hour interval starts at 00:00 of each day.
-- **Windows are on whole hours, and the end is not included.** `between 9:00 and 17:00` runs from 9:00 to 16:59. An end at midnight is the end of the day.
-- **Days of the month are 1 to 28.** Days 29 to 31 do not occur in every month.
-- **A month schedule has no day set.** When cron has both a day of the month and a day of the week, it runs on a day that matches either one.
-
-Schedules are exact in wall-clock time, not in elapsed time. On a day when daylight saving time starts or stops, the time between two runs can change. A schedule has no time zone: the scheduler sets the time zone.
-
 ## Documentation
 
 Reference:
 
 - [`@sanely/cron` reference](docs/reference.md): the functions, the `Schedule` object, the cron-phrase language, the error, the constants, and the types.
+
+Explanation:
+
+- [About exact schedules](docs/explanation/about-exact-schedules.md): why the package rejects a schedule that one cron expression cannot express exactly.
 
 ## Contributing
 
