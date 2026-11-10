@@ -214,6 +214,9 @@ importers:
       oxlint-tsgolint:
         specifier: 7.0.2004
         version: 7.0.2004
+      packref:
+        specifier: 0.3.7
+        version: 0.3.7(redis@6.3.1)
       sherif:
         specifier: 1.13.0
         version: 1.13.0
@@ -2420,6 +2423,10 @@ packages:
     resolution: {integrity: sha512-X6fBC0pmImC70gvX2zm56go9hx0MyoGVdG0tUCkg/D+Xnh5TJsOZ7iDbOdI3PvmtrDxnu1YdDufpK2QJX1Meqw==}
     engines: {node: '>=20.20.0'}
 
+  giget@3.3.1:
+    resolution: {integrity: sha512-r+mvuDjrjMpsdw46Kmeydb8bdHm7wOKw8wNBtTndkjbPjgAp5oUJUxRE76wZFknxIPokfWvep2qSXK37aXE6zg==}
+    hasBin: true
+
   happy-dom@20.14.5:
     resolution: {integrity: sha512-x/RzkpWO40bTjIoT30iQtt64FLLmH/iRcUCN2X//bLx7H3ifkdfPXyqsro/OYtqzIAhiLMMA7mmiOR9C3NOKjQ==}
     engines: {node: '>=20.0.0'}
@@ -2584,6 +2591,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  nanotar@0.3.0:
+    resolution: {integrity: sha512-Kv2JYYiCzt16Kt5QwAc9BFG89xfPNBx+oQL4GQXD9nLqPkZBiNaqaCWtwnbk/q7UVsTYevvM1b0UF8zmEI4pCg==}
+
   next@16.3.0:
     resolution: {integrity: sha512-NEdGOzH+08eTXMUp9UYkA99Nhi5N6Thrhc1jgFOQgfgnGK/dA2hRwBpXep+exdFQrnwlRf/3Wixyp8lLBUpE2A==}
     engines: {node: '>=20.9.0'}
@@ -2656,6 +2666,10 @@ packages:
 
   package-manager-detector@1.9.0:
     resolution: {integrity: sha512-zAMfbta9nPA8AKkA4WdmNAT8R8s6Dk0/xwPsqNnRidMFcLo1YkLuPDTgs2f64XdzS8vbLNnoJ+uUIkgbz7oRHA==}
+
+  packref@0.3.7:
+    resolution: {integrity: sha512-FB50V/pU7p6MYAj/OgrwKJnt5WxRP/kjFCUqatn8Zv35m+cLTX6EmaxDyqGdC0fbmxsoCb1dwnbbv5623+6c/Q==}
+    hasBin: true
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
@@ -2757,6 +2771,11 @@ packages:
 
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
+
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+    engines: {node: '>=10'}
+    hasBin: true
 
   semver@7.8.6:
     resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
@@ -4512,6 +4531,8 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
+  giget@3.3.1: {}
+
   happy-dom@20.14.5:
     dependencies:
       '@types/node': 24.19.2
@@ -4669,6 +4690,8 @@ snapshots:
 
   nanoid@3.3.20: {}
 
+  nanotar@0.3.0: {}
+
   next@16.3.0(@types/node@24.19.2)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       '@next/env': 16.3.0
@@ -4806,6 +4829,23 @@ snapshots:
 
   package-manager-detector@1.9.0: {}
 
+  packref@0.3.7(redis@6.3.1):
+    dependencies:
+      '@clack/prompts': 1.8.1
+      '@effect/platform-node': 4.0.5(effect@4.0.5)(redis@6.3.1)
+      '@effect/platform-node-shared': 4.0.5(effect@4.0.5)
+      effect: 4.0.5
+      giget: 3.3.1
+      jsonc-parser: 3.3.1
+      nanotar: 0.3.0
+      nypm: 0.6.10
+      picocolors: 1.1.1
+      semver: 7.8.5
+    transitivePeerDependencies:
+      - bufferutil
+      - redis
+      - utf-8-validate
+
   pathe@2.0.3: {}
 
   picocolors@1.1.1: {}
@@ -4916,6 +4956,8 @@ snapshots:
   safer-buffer@2.1.2: {}
 
   scheduler@0.28.0: {}
+
+  semver@7.8.5: {}
 
   semver@7.8.6: {}
 
