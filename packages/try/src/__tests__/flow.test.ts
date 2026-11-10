@@ -591,6 +591,31 @@ describe("flow", () => {
     expect(catchErrors).toEqual([])
   })
 
+  it("throws a catch handler's Panic even when the handler aborts the call's own signal", async () => {
+    const controller = new AbortController()
+    const failure = new Error("catch failed")
+
+    const error = await try$
+      .signal(controller.signal)
+      .flow(
+        {
+          a() {
+            throw new Error("boom")
+          },
+        },
+        {
+          catch: () => {
+            controller.abort(new Error("stop"))
+            throw failure
+          },
+        }
+      )
+      .catch((error: unknown) => error)
+
+    expectPanic(error, "CATCH_HANDLER_THROW")
+    expect((error as Error).cause).toBe(failure)
+  })
+
   it("throws CATCH_HANDLER_THROW and CATCH_HANDLER_REJECT when flow catch fails", async () => {
     const failure = new Error("catch failed")
     const tasks = {

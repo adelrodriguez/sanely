@@ -123,7 +123,7 @@ interface TaskGraphRun<R> extends AsyncDisposable {
 /**
  * The outcome of a task graph before control state and Panics are applied.
  */
-export type TaskGraphOutcome<R> = { mapped: R } | { thrown: unknown }
+export type TaskGraphOutcome<R> = { mapped: R } | { thrown: unknown } | { panic: Panic }
 
 interface TaskGraphOptions<R> {
   mapFailure?: (error: unknown) => TaskGraphOutcome<R> | Promise<TaskGraphOutcome<R>>
@@ -190,6 +190,12 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<
       throw execution.panic
     }
 
+    // A catch handler that throws or rejects is misuse too, so its Panic also wins over this call's
+    // own cancellation or deadline, even one that the handler itself triggered.
+    if ("panic" in outcome) {
+      throw outcome.panic
+    }
+
     // Control state may have changed while tasks ran or settled, and it takes priority over the
     // outcome; the shared chain reports cancellation over the graph deadline when both fired.
     const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
@@ -202,7 +208,8 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<
       return outcome.mapped
     }
 
-    // A catch handler that throws or rejects reports a Panic.
+    // A Panic from the graph itself, such as FLOW_NO_EXIT, comes after control state: a deadline
+    // or cancellation that stopped every task also explains why no task exited.
     if (isPanic(outcome.thrown)) {
       throw outcome.thrown
     }
@@ -252,10 +259,10 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<
 
         return { mapped: raced }
       } catch (mappedError) {
-        return { thrown: mappedError }
+        return isPanic(mappedError) ? { panic: mappedError } : { thrown: mappedError }
       }
     } catch (catchError) {
-      return { thrown: new Panic("CATCH_HANDLER_THROW", { cause: catchError }) }
+      return { panic: new Panic("CATCH_HANDLER_THROW", { cause: catchError }) }
     }
   }
 
