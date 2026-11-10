@@ -293,33 +293,35 @@ describe("parse", () => {
     expect(() => parse("1h -30m")).toThrow(/only one leading sign is allowed/)
   })
 
-  it("should reject a detached leading sign", () => {
-    expect(() => parse("- 1h")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("+ 1h")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("-")).toThrow(InvalidTimeExpressionError)
+  it.each(["- 1h", "+ 1h", "-"])("should reject a detached leading sign: %j", (value) => {
+    expect(() => parse(value)).toThrow(
+      new InvalidTimeExpressionError(value, "a sign must be attached to the first number")
+    )
   })
 
-  it("should throw for exponent overflow and non-finite totals", () => {
-    expect(() => parse("1e309ms")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("-1e309ms")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e309s")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e400y")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e308y")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e308ms 1e308ms")).toThrow(/overflows/)
-  })
+  it.each(["1e309ms", "-1e309ms", "1e309s", "1e400y", "1e308y", "1e308ms 1e308ms"])(
+    "should throw for exponent overflow and non-finite totals: %j",
+    (value) => {
+      expect(() => parse(value)).toThrow(
+        new InvalidTimeExpressionError(value, "value overflows the representable range")
+      )
+    }
+  )
 
   it("should throw for empty string", () => {
-    expect(() => parse("")).toThrow(InvalidTimeExpressionError)
+    expect(() => parse("")).toThrow(
+      new InvalidTimeExpressionError("", "value must have between 1 and 200 characters")
+    )
   })
 
-  it("should throw for non-string inputs", () => {
-    expect(() => parse(undefined as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(null as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse([] as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse({} as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(100 as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(Number.NaN as never)).toThrow(InvalidTimeExpressionError)
-  })
+  it.each([undefined, null, [], {}, 100, Number.NaN])(
+    "should throw for a non-string input: %j",
+    (value) => {
+      expect(() => parse(value as never)).toThrow(
+        new InvalidTimeExpressionError(value, "value must be a string")
+      )
+    }
+  )
 
   it("should include the invalid input in thrown messages", () => {
     expect(() => parse(Number.POSITIVE_INFINITY as never)).toThrow(/Received: Infinity/)

@@ -90,8 +90,12 @@ describe("isTimeExpression", () => {
     expect(isTimeExpression("")).toBe(false)
   })
 
-  it("should return false for very long strings", () => {
-    expect(isTimeExpression("a".repeat(201))).toBe(false)
+  it("should return false for a strict expression longer than 200 characters", () => {
+    const value = `${"1".repeat(200)}h`
+
+    expect(value).toHaveLength(201)
+    expect(isTimeExpression(value)).toBe(false)
+    expect(isTimeExpression(value.slice(1))).toBe(true)
   })
 
   it("should return false for non-string inputs at runtime", () => {
