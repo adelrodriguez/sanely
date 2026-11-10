@@ -34,6 +34,14 @@ describe("serialize", () => {
     )
   })
 
+  it("should not write a step when a later value breaks it", () => {
+    const hours = [...range(0, 20, 2), 23]
+
+    expect(serialize(createFields({ hour: hours, minute: [0] }))).toBe(
+      "0 0,2,4,6,8,10,12,14,16,18,20,23 * * *"
+    )
+  })
+
   it("should write three or more consecutive values as a range", () => {
     expect(serialize(createFields({ dayOfWeek: [1, 2, 3, 4, 5] }))).toBe("* * * * 1-5")
     expect(serialize(createFields({ hour: range(9, 16) }))).toBe("* 9-16 * * *")

@@ -160,6 +160,22 @@ describe("isSchedule", () => {
 
 // `*/N` is the only candidate cron for an interval of N. The language must contain the phrase
 // exactly when all gaps of `*/N` are equal.
+describe("errors that are not about the schedule", () => {
+  // A getter that throws stands for a bug in the caller's code, not for an invalid schedule.
+  const failure = new TypeError("the getter failed")
+  const hostile = {
+    get every(): never {
+      throw failure
+    },
+  }
+
+  it("should pass them on unchanged from parse, safeParse, and isSchedule", () => {
+    expect(() => parse(hostile)).toThrow(failure)
+    expect(() => safeParse(hostile)).toThrow(failure)
+    expect(() => isSchedule(hostile)).toThrow(failure)
+  })
+})
+
 describe("parse exactness", () => {
   it("should reject every interval that has no exact single cron", () => {
     for (const [unit, cycle] of [

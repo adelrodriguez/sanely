@@ -133,4 +133,9 @@ describe("formatChoices", () => {
     expect(formatChoices([2, 3, 4])).toBe("2, 3, or 4")
     expect(formatChoices(MINUTE_INTERVALS)).toBe("2, 3, 4, 5, 6, 10, 12, 15, 20, or 30")
   })
+
+  it("should join one or two values without a comma", () => {
+    expect(formatChoices([2])).toBe("2")
+    expect(formatChoices([2, 3])).toBe("2 or 3")
+  })
 })
