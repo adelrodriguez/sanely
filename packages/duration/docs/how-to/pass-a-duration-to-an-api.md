@@ -18,7 +18,7 @@ This guide shows you how to give a timer, a header, or a library option a readab
    ```ts
    import { seconds } from "@sanely/duration"
 
-   const headers = { "Cache-Control": `max-age=${seconds("1h")}` } // "max-age=3600"
+   const headers = { "Cache-Control": `max-age=${seconds("1h")}` } // { "Cache-Control": "max-age=3600" }
    ```
 
    Give the expression a unit, such as `"30s"`. A bare number, such as `"30"`, means milliseconds, so `seconds("30")` is a type error.
