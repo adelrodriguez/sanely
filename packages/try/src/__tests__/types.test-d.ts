@@ -124,6 +124,18 @@ class InternalError extends Error {
   expectTypeOf(result).toEqualTypeOf<Promise<number | "err">>()
 }
 
+// Unwraps explicit promise type arguments in run() try and catch.
+{
+  const tryResult = try$.run<Promise<number>>(() => Promise.resolve(42))
+  const catchResult = try$.run<number, Promise<"err">>({
+    catch: () => Promise.resolve("err" as const),
+    try: () => 42,
+  })
+
+  expectTypeOf(tryResult).toEqualTypeOf<Promise<number | UnhandledException>>()
+  expectTypeOf(catchResult).toEqualTypeOf<Promise<number | "err">>()
+}
+
 // Returns AsyncDisposer from disposer().
 {
   const disposer = try$.disposer()
