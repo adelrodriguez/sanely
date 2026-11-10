@@ -20,6 +20,12 @@ So a registry checks the class too. `is`, `findCause`, `matchTag`, and `matchTag
 
 For the same reason, `merge` refuses one tag for two different classes, and `merge` takes a list with a known length. TypeScript can then keep the class type of each tag in the merged registry.
 
+## Why a registry has its own serializer
+
+The standalone `toSerializable` accepts any value, because it has to handle whatever a `catch` block receives. Its result can only have the open wire type: any tag, any fields.
+
+A registry knows its members. For a member, `registry.toSerializable` returns one wire type for each tag, with that member's fields, and the type narrows when you check `_tag`. A response that carries a fault can then name the exact faults it may send. A client that reads it gets the same guarantee that `matchTags` gives. The runtime work is the same as the standalone function. Only the type is narrower. Creating faults works the same way: `create` and `wrap().as` accept only the registry's tags, and the fields for each tag.
+
 ## Why registered constructors take only their fields
 
 A registry reads a serialized fault and builds an instance of the class again with `new Class(fields)`. It has only the fields object from the wire, so the constructor must accept that object as its only parameter. `registry()` checks this signature at compile time.
