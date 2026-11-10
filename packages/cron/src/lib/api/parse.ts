@@ -1,3 +1,4 @@
+import { getAmbiguousUnitHint } from "@sanely/core/time"
 import type { Schedule } from "#lib/schedule/index.ts"
 import { parsePhrase } from "#lib/grammar/index.ts"
 import { normalize } from "#lib/normalize/index.ts"
@@ -5,9 +6,20 @@ import { ParseError, fail, show } from "#lib/schedule/rules.ts"
 import { validate } from "#lib/validate/index.ts"
 import { withInput } from "./errors"
 
+// Normalization keeps an ambiguous unit, such as "M" or "5M", as written. The strict grammar
+// would only say to use lowercase words, so name the unit and what to write instead.
+function rejectAmbiguousUnits(phrase: string): string {
+  for (const token of phrase.split(" ")) {
+    const unit = token.replace(/^\d+/, "")
+    const hint = getAmbiguousUnitHint(unit)
+    if (hint) fail(`"${unit}" is ambiguous: ${hint}`)
+  }
+  return phrase
+}
+
 // A string is a cron phrase, and any other object is a schedule object.
 function read(value: unknown): Schedule {
-  if (typeof value === "string") return parsePhrase(normalize(value))
+  if (typeof value === "string") return parsePhrase(rejectAmbiguousUnits(normalize(value)))
   if (typeof value !== "object" || value === null) {
     fail(`${show(value)} is not a cron phrase or a schedule object`)
   }
