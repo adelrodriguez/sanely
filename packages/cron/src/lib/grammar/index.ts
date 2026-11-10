@@ -1,7 +1,13 @@
-import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
+import { HOURS_PER_DAY } from "@sanely/core/time"
 import type { DaySet, Schedule, ScheduleOf, Time } from "#lib/schedule/index.ts"
 import type { DayGroup, Shortcut, Weekday } from "#lib/vocabulary/words.ts"
-import { fail, toHourInterval, toMinuteInterval, toWindow } from "#lib/schedule/rules.ts"
+import {
+  INTERVAL_CYCLES,
+  fail,
+  toHourInterval,
+  toMinuteInterval,
+  toWindow,
+} from "#lib/schedule/rules.ts"
 import {
   DAY_GROUP_NAMES,
   DAY_GROUPS,
@@ -87,8 +93,8 @@ class Cursor {
 
 // An interval of 1 and an interval of one full cycle have their own sentence shapes.
 const INTERVAL_WORDS = {
-  hours: { cycle: HOURS_PER_DAY, next: "every day at midnight", single: "every hour" },
-  minutes: { cycle: MINUTES_PER_HOUR, next: "every hour", single: "every minute" },
+  hours: { cycle: INTERVAL_CYCLES.hour, next: "every day at midnight", single: "every hour" },
+  minutes: { cycle: INTERVAL_CYCLES.minute, next: "every hour", single: "every minute" },
 } as const
 
 function parseIntervalNumber(token: string, unit: keyof typeof INTERVAL_WORDS): number {

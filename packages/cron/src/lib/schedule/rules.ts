@@ -1,7 +1,7 @@
 import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
 import type { Hour, HourInterval, MinuteInterval, WindowEnd } from "#lib/vocabulary/words.ts"
 import { HOUR_INTERVALS, MINUTE_INTERVALS, formatChoices, isOneOf } from "#lib/vocabulary/words.ts"
-import type { Window } from "./index.ts"
+import type { Kind, ScheduleOf, Window } from "./index.ts"
 import { isWindow } from "./index.ts"
 
 /**
@@ -56,6 +56,21 @@ export function fail(reason: string, path: Path = []): never {
   throw new ParseError(reason, path)
 }
 
+/**
+ * The kinds of schedule that take an interval: `"minute"` and `"hour"`.
+ */
+export type IntervalKind = {
+  [K in Kind]: "interval" extends keyof ScheduleOf<K> ? K : never
+}[Kind]
+
+/**
+ * The cycle that the interval of each kind divides: the minutes in an hour, and the hours in a day.
+ */
+export const INTERVAL_CYCLES = {
+  hour: HOURS_PER_DAY,
+  minute: MINUTES_PER_HOUR,
+} as const satisfies Record<IntervalKind, number>
+
 // An interval that is not a divisor of the cycle has gaps of two lengths, so one cron expression
 // cannot express it.
 function failInterval(
@@ -76,7 +91,7 @@ function failInterval(
  */
 export function toMinuteInterval(value: number, path: Path = []): MinuteInterval {
   if (isOneOf(MINUTE_INTERVALS, value)) return value
-  return failInterval(value, "minutes", MINUTES_PER_HOUR, MINUTE_INTERVALS, path)
+  return failInterval(value, "minutes", INTERVAL_CYCLES.minute, MINUTE_INTERVALS, path)
 }
 
 /**
@@ -84,7 +99,7 @@ export function toMinuteInterval(value: number, path: Path = []): MinuteInterval
  */
 export function toHourInterval(value: number, path: Path = []): HourInterval {
   if (isOneOf(HOUR_INTERVALS, value)) return value
-  return failInterval(value, "hours", HOURS_PER_DAY, HOUR_INTERVALS, path)
+  return failInterval(value, "hours", INTERVAL_CYCLES.hour, HOUR_INTERVALS, path)
 }
 
 /**
