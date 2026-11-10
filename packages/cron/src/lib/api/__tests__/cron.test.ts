@@ -174,6 +174,9 @@ function getGaps(runs: readonly number[]): Set<number> {
 }
 
 describe("cron exactness", () => {
+  // Croner computes every run of 400 schedules, up to 11,520 runs each. That takes about 3 s alone,
+  // and more than 20 s when the root `pnpm test` runs every package at once, so the 5 s default
+  // fails on a busy machine.
   it("should run at exactly the times that the schedule describes", () => {
     fc.assert(
       fc.property(scheduleArb, startArb, (schedule, start) => {
@@ -189,7 +192,7 @@ describe("cron exactness", () => {
       }),
       { numRuns: 400 }
     )
-  })
+  }, 60_000)
 
   it("should have equal gaps for every minute interval and hour interval", () => {
     fc.assert(
