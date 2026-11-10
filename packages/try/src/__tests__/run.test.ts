@@ -736,6 +736,44 @@ describe("timeout and cancellation behavior", () => {
     }
   })
 
+  it("returns CancellationError without calling catch when try throws after its own signal aborts", async () => {
+    const controller = new AbortController()
+    const failure = new Error("boom")
+    let catchCalls = 0
+
+    const result = await try$.signal(controller.signal).run({
+      catch: () => {
+        catchCalls += 1
+        return "mapped" as const
+      },
+      try: () => {
+        controller.abort(new Error("stop"))
+        throw failure
+      },
+    })
+
+    expect(result).toBeInstanceOf(CancellationError)
+    expect((result as CancellationError).cause).toBe(failure)
+    expect(catchCalls).toBe(0)
+  })
+
+  it("returns CancellationError from runSync without running the work when its signal already aborted", () => {
+    const reason = new Error("stop")
+    let attempts = 0
+
+    const result = try$
+      .signal(AbortSignal.abort(reason))
+      .retry(2)
+      .runSync(() => {
+        attempts += 1
+        return 1
+      })
+
+    expect(result).toBeInstanceOf(CancellationError)
+    expect((result as CancellationError).cause).toBe(reason)
+    expect(attempts).toBe(0)
+  })
+
   it("returns CancellationError with the abort reason when signal aborts during async try", async () => {
     const controller = new AbortController()
     const reason = new Error("stop")
@@ -1241,6 +1279,64 @@ describe("wrap behavior", () => {
     expect((asyncError as Error).cause).toBe(failure)
     expectPanic(syncError, "WRAP_THROW")
     expect((syncError as Error).cause).toBe(failure)
+  })
+
+  it("reports a Panic from the work, not WRAP_THROW, when an async wrap rethrows it", async () => {
+    const failure = new Error("catch failed")
+
+    const error = await try$
+      .wrap(async (_, next) => {
+        await next()
+      })
+      .run({
+        catch: () => {
+          throw failure
+        },
+        try: () => {
+          throw new Error("boom")
+        },
+      })
+      .catch((error: unknown) => error)
+
+    expectPanic(error, "CATCH_HANDLER_THROW")
+    expect((error as Error).cause).toBe(failure)
+  })
+
+  it("reports a Panic from runSync work whether a wrap rethrows or swallows it", () => {
+    const failure = new Error("catch failed")
+    const input = {
+      catch: () => {
+        throw failure
+      },
+      try: () => {
+        throw new Error("boom")
+      },
+    }
+    const thrown: unknown[] = []
+
+    for (const wrap of [
+      (_: unknown, next: () => unknown) => next(),
+      (_: unknown, next: () => unknown) => {
+        try {
+          next()
+        } catch {
+          // Swallowing the Panic does not hide it.
+        }
+      },
+    ]) {
+      try {
+        try$.wrap(wrap).runSync(input)
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        thrown.push(error)
+      }
+    }
+
+    for (const error of thrown) {
+      expectPanic(error, "CATCH_HANDLER_THROW")
+      expect((error as Error).cause).toBe(failure)
+    }
+    expect(thrown).toHaveLength(2)
   })
 
   it("throws a Panic from the work even when a wrap swallows it", async () => {

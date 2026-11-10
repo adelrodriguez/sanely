@@ -159,6 +159,26 @@ describe("entrypoints", () => {
       expect(isPanic(createForeignError("Panic", { code: 42 }))).toBe(false)
     })
 
+    it("matches the same errors on a runtime without Error.isError, such as Node.js 22", () => {
+      const isError = Reflect.get(Error, "isError") as unknown
+      Reflect.deleteProperty(Error, "isError")
+
+      try {
+        expect(isTimeoutError(new TimeoutError())).toBe(true)
+        expect(isTimeoutError(createForeignError("TimeoutError"))).toBe(true)
+        expect(isPanic(createForeignError("Panic", { code: "FLOW_NO_EXIT" }))).toBe(true)
+        expect(isTimeoutError({ name: "TimeoutError", [Symbol.toStringTag]: "Error" })).toBe(false)
+        expect(isTimeoutError({ name: "TimeoutError" })).toBe(false)
+        expect(isTimeoutError(null)).toBe(false)
+      } finally {
+        Reflect.defineProperty(Error, "isError", {
+          configurable: true,
+          value: isError,
+          writable: true,
+        })
+      }
+    })
+
     it("rejects non-errors and unrelated names", () => {
       const spoofedError = { name: "TimeoutError", [Symbol.toStringTag]: "Error" }
 
