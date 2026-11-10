@@ -5,17 +5,17 @@ The [glossary](../GLOSSARY.md) defines the Schedule model and the package langua
 
 ## Domain ownership
 
-| Domain                                    | Ownership                                                              |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| `api/`                                    | Public calls, input dispatch, type guards, and `InvalidScheduleError`. |
-| `validate/index.ts`                       | Runtime validation of schedule objects.                                |
-| `normalize/index.ts`                      | Conversion of lenient cron phrases to the strict form.                 |
-| `grammar/index.ts` and `grammar/types.ts` | Runtime phrase parsing and compile-time phrase validation.             |
-| `describe/index.ts`                       | Writing a schedule as a cron phrase.                                   |
-| `serialize/index.ts`                      | Writing cron fields as a cron expression.                              |
-| `fields/index.ts`                         | Conversion of schedules to cron fields.                                |
-| `schedule/`                               | Schedule types, schedule matching, and validation reasons and paths.   |
-| `vocabulary/`                             | Words, value tuples, slot types, and slot guards.                      |
+| Domain                                    | Ownership                                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `api/`                                    | Public calls, input dispatch, type guards, and `InvalidScheduleError`.                |
+| `validate/index.ts`                       | Runtime validation of schedule objects.                                               |
+| `normalize/index.ts`                      | Conversion of lenient cron phrases to the strict form.                                |
+| `grammar/index.ts` and `grammar/types.ts` | Runtime phrase parsing and compile-time phrase validation.                            |
+| `describe/index.ts`                       | Writing a schedule as a cron phrase.                                                  |
+| `serialize/index.ts`                      | Writing cron fields as a cron expression.                                             |
+| `fields/index.ts`                         | Conversion of schedules to cron fields.                                               |
+| `schedule/`                               | Schedule types, schedule matching, interval cycles, and validation reasons and paths. |
+| `vocabulary/`                             | Words, value tuples, slot types, and slot guards.                                     |
 
 Dependencies point from vocabulary through schedule, fields, and serialization to the phrase domains, validation, and public calls.
 Grammar and description are independent domains. Neither imports the other.
