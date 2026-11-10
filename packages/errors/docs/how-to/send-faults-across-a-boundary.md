@@ -11,6 +11,16 @@ This guide shows you how to send a fault from a server to a client, or between p
 
    `toSerializable` accepts any caught value. A native `Error` becomes a fault with the tag `UnknownError`, and any other value becomes a fault with the tag `UnknownThrown`.
 
+   If you want the payload's type to name the faults that the response can carry, check membership first. For a registry member, the result narrows by `_tag` to that member's fields:
+
+   ```ts
+   if (AppFault.is(error)) {
+     const payload = AppFault.toSerializable(error)
+     if (payload._tag === "NotFoundError") payload.fields.id // string
+     res.json(payload)
+   }
+   ```
+
 2. On the receiving side, build the fault again with the same registry:
 
    ```ts
