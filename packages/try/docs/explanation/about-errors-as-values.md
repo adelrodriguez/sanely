@@ -82,7 +82,7 @@ The package treats three kinds of failure in different ways:
 - A policy failure comes from the chain: `TimeoutError`, `CancellationError`, or `RetryExhaustedError`. It is in the result union when you add the matching policy.
 - A panic signals programmer misuse, such as an invalid builder chain or an invalid task graph. The package throws a `Panic`, and a panic is never part of a result union.
 
-The `catch` contract keeps these apart. `catch` maps only the errors that started inside `try`: an error that the work threw, or the error of the last attempt after the retry policy gives up. A policy failure never goes through `catch`. If it did, a `catch` written for a parse error could turn a timeout into a parse error, and the caller would lose the difference.
+The `catch` contract keeps these apart. `catch` maps only the errors that started inside `try`: an error that the work threw, or the error of the last attempt after the retry policy gives up. A policy failure from the call's own chain never goes through `catch`. If it did, a `catch` written for a parse error could turn a timeout into a parse error, and the caller would lose the difference. A `TimeoutError` that `try` rethrows from a nested call is different: for this call, it is an error that the work threw, so `catch` receives it.
 
 ## Why the chain has a fixed order
 
