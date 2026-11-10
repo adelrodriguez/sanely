@@ -226,10 +226,6 @@ export default defineConfig({
       rules: { "typescript/no-generated-empty-object-type": "off" },
     },
     {
-      files: ["packages/errors/src/__tests__/types.test-d.ts"],
-      rules: { "no-lone-blocks": "off" },
-    },
-    {
       files: ["packages/duration/src/__tests__/types.test-d.ts"],
       rules: { "no-lone-blocks": "off" },
     },
