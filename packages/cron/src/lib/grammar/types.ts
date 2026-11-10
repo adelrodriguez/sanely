@@ -161,12 +161,14 @@ type CheckAtClause<Rest extends string, Before extends string> = Rest extends ""
 type DayGroupWord = "weekday" | "weekdays" | "weekend" | "weekends"
 type DaySetHint = "Use monday to sunday, weekday, weekend, or weekdays, weekends"
 
-// The day names in a list, without separators.
+// The day names in a list, without separators. The runtime grammar drops every "and".
 type ListNames<S extends string> = S extends `${infer Word} ${infer Rest}`
   ? Word extends "and"
     ? ListNames<Rest>
     : [Word extends `${infer Name},` ? Name : Word, ...ListNames<Rest>]
-  : [S extends `${infer Name},` ? Name : S]
+  : S extends "and" | ""
+    ? []
+    : [S extends `${infer Name},` ? Name : S]
 
 type FormatList<T extends readonly string[]> = T extends readonly [infer Only extends string]
   ? Only
@@ -205,8 +207,13 @@ type FindDuplicate<
     : FindDuplicate<Rest, Seen | First>
   : true
 
-type CheckDayList<S extends string, Names extends string[] = ListNames<S>> =
-  FindInvalidName<Names> extends infer Invalid extends string
+type CheckDayList<
+  S extends string,
+  Before extends string,
+  Names extends string[] = ListNames<S>,
+> = Names extends []
+  ? `expected a day set after "${Before}"`
+  : FindInvalidName<Names> extends infer Invalid extends string
     ? Invalid
     : FindDuplicate<Names> extends infer Duplicate extends string
       ? Duplicate
@@ -216,32 +223,34 @@ type CheckDayList<S extends string, Names extends string[] = ListNames<S>> =
           : `list the days in calendar order, Monday first: "${FormatList<Sorted>}"`
         : never
 
-type CheckDaySet<S extends string, Context extends "every" | "on"> =
+type CheckDaySet<S extends string, Context extends "every" | "on", Before extends string> =
   S extends PhraseDaySet<Context>
     ? true
     : S extends "weekday" | "weekdays"
       ? `use "${Context extends "every" ? "weekday" : "weekdays"}" after "${Context}"`
       : S extends "weekend" | "weekends"
         ? `use "${Context extends "every" ? "weekend" : "weekends"}" after "${Context}"`
-        : CheckDayList<S>
+        : CheckDayList<S, Before>
 
 // The day set after `on` ends at the end of the phrase, or before `at` or `between`.
-type CutDaySet<S extends string> = S extends `${infer Days} at ${infer Rest}`
-  ? Days extends `${infer Earlier} between ${infer Later}`
-    ? [Earlier, `between ${Later} at ${Rest}`]
-    : [Days, `at ${Rest}`]
-  : S extends `${infer Days} between ${infer Rest}`
-    ? [Days, `between ${Rest}`]
-    : [S, ""]
+type CutDaySet<S extends string> = S extends "at" | "between" | `${"at" | "between"} ${string}`
+  ? ["", S]
+  : S extends `${infer Days} at ${infer Rest}`
+    ? Days extends `${infer Earlier} between ${infer Later}`
+      ? [Earlier, `between ${Later} at ${Rest}`]
+      : [Days, `at ${Rest}`]
+    : S extends `${infer Days} between ${infer Rest}`
+      ? [Days, `between ${Rest}`]
+      : [S, ""]
 
 // ---- Clauses of the interval shapes ----
 
 type MinuteAtClause =
   `a minute interval cannot have an "at" clause. Use "between <time> and <time>" to limit it to a window`
 
-type CheckOnClause<S extends string, Unit extends "minute" | "hour"> =
+type CheckOnClause<S extends string, Unit extends "minute" | "hour", Before extends string> =
   CutDaySet<S> extends [infer Days extends string, infer Rest extends string]
-    ? CheckDaySet<Days, "on"> extends infer Result extends string
+    ? CheckDaySet<Days, "on", `${Before} on`> extends infer Result extends string
       ? Result
       : Rest extends ""
         ? true
@@ -278,54 +287,62 @@ type CheckWindow<S extends string, Before extends string> = S extends ""
   : CheckTime<FirstWord<S>> extends infer Start
     ? Start extends string
       ? Start
-      : AfterFirstWord<S> extends `and ${infer EndRest}`
-        ? EndRest extends ""
-          ? `expected a time after "${Before} between ${FirstWord<S>} and"`
-          : CheckTime<FirstWord<EndRest>> extends infer End
-            ? End extends string
-              ? End
-              : CheckWindowHours<
-                    Start & ClockTime,
-                    End & ClockTime,
-                    FirstWord<S>,
-                    FirstWord<EndRest>
-                  > extends infer Hours extends string
-                ? Hours
-                : CheckAfterWindow<
-                    AfterFirstWord<EndRest>,
-                    `${Before} between ${FirstWord<S>} and ${FirstWord<EndRest>}`
-                  >
-            : never
-        : `expected "and" after "${Before} between ${FirstWord<S>}"`
+      : AfterFirstWord<S> extends "and"
+        ? `expected a time after "${Before} between ${FirstWord<S>} and"`
+        : AfterFirstWord<S> extends `and ${infer EndRest}`
+          ? EndRest extends ""
+            ? `expected a time after "${Before} between ${FirstWord<S>} and"`
+            : CheckTime<FirstWord<EndRest>> extends infer End
+              ? End extends string
+                ? End
+                : CheckWindowHours<
+                      Start & ClockTime,
+                      End & ClockTime,
+                      FirstWord<S>,
+                      FirstWord<EndRest>
+                    > extends infer Hours extends string
+                  ? Hours
+                  : CheckAfterWindow<
+                      AfterFirstWord<EndRest>,
+                      `${Before} between ${FirstWord<S>} and ${FirstWord<EndRest>}`
+                    >
+              : never
+          : `expected "and" after "${Before} between ${FirstWord<S>}"`
     : never
 
 type CheckAfterWindow<Rest extends string, Before extends string> = Rest extends ""
   ? true
-  : Rest extends `on ${infer Days}`
-    ? CheckOnClause<Days, "minute">
-    : Rest extends "at" | `at ${string}`
-      ? MinuteAtClause
-      : Unexpected<Rest, Before>
+  : Rest extends "on"
+    ? CheckOnClause<"", "minute", Before>
+    : Rest extends `on ${infer Days}`
+      ? CheckOnClause<Days, "minute", Before>
+      : Rest extends "at" | `at ${string}`
+        ? MinuteAtClause
+        : Unexpected<Rest, Before>
 
 type CheckMinuteClauses<Rest extends string, Before extends string> = Rest extends ""
   ? true
   : Rest extends "between" | `between ${string}`
     ? CheckWindow<AfterFirstWord<Rest>, Before>
-    : Rest extends `on ${infer Days}`
-      ? CheckOnClause<Days, "minute">
-      : Rest extends "at" | `at ${string}`
-        ? MinuteAtClause
-        : Unexpected<Rest, Before>
+    : Rest extends "on"
+      ? CheckOnClause<"", "minute", Before>
+      : Rest extends `on ${infer Days}`
+        ? CheckOnClause<Days, "minute", Before>
+        : Rest extends "at" | `at ${string}`
+          ? MinuteAtClause
+          : Unexpected<Rest, Before>
 
 type CheckHourClauses<Rest extends string, Before extends string> = Rest extends ""
   ? true
   : Rest extends "between" | `between ${string}`
     ? "an hour interval cannot have a window"
-    : Rest extends `on ${infer Days}`
-      ? CheckOnClause<Days, "hour">
-      : Rest extends "at" | `at ${string}`
-        ? `an hour interval cannot have an "at" clause`
-        : Unexpected<Rest, Before>
+    : Rest extends "on"
+      ? CheckOnClause<"", "hour", Before>
+      : Rest extends `on ${infer Days}`
+        ? CheckOnClause<Days, "hour", Before>
+        : Rest extends "at" | `at ${string}`
+          ? `an hour interval cannot have an "at" clause`
+          : Unexpected<Rest, Before>
 
 // ---- Sentence shapes ----
 
@@ -343,13 +360,15 @@ type CheckIntervalShape<N extends string, Rest extends string> = Rest extends ""
         : `"${Unit}" is not an interval unit. Use minutes or hours`
     : never
 
-type CheckDaysShape<S extends string> = S extends `${infer Days} at ${infer Time}`
-  ? CheckDaySet<Days, "every"> extends infer Result extends string
-    ? Result
-    : CheckTimeAt<Time, `every ${Days} at`>
-  : CheckDaySet<S, "every"> extends infer Result extends string
-    ? Result
-    : `expected "at <time>" after "every ${S}"`
+type CheckDaysShape<S extends string> = S extends "at" | `at ${string}`
+  ? `expected a day set after "every"`
+  : S extends `${infer Days} at ${infer Time}`
+    ? CheckDaySet<Days, "every", "every"> extends infer Result extends string
+      ? Result
+      : CheckTimeAt<Time, `every ${Days} at`>
+    : CheckDaySet<S, "every", "every"> extends infer Result extends string
+      ? Result
+      : `expected "at <time>" after "every ${S}"`
 
 type CheckEvery<S extends string> = S extends ""
   ? `expected an interval, "day", or a day set after "every"`
@@ -379,15 +398,17 @@ type CheckOrdinal<O extends string> = O extends Ordinal
       : `"${O}" is not a day of the month. Use 1st to 28th`
     : `"${O}" is not a day of the month. Use 1st to 28th`
 
-type CheckDayOfMonth<S extends string> = S extends `the ${infer Rest}`
-  ? CheckOrdinal<FirstWord<Rest>> extends infer Result extends string
-    ? Result
-    : AfterFirstWord<Rest> extends `of every month${infer Tail}`
-      ? Tail extends "" | ` ${string}`
-        ? CheckAtClause<AfterFirstWord<Tail>, `on the ${FirstWord<Rest>} of every month`>
+type CheckDayOfMonth<S extends string> = S extends "the"
+  ? `expected a day of the month after "on the"`
+  : S extends `the ${infer Rest}`
+    ? CheckOrdinal<FirstWord<Rest>> extends infer Result extends string
+      ? Result
+      : AfterFirstWord<Rest> extends `of every month${infer Tail}`
+        ? Tail extends "" | ` ${string}`
+          ? CheckAtClause<AfterFirstWord<Tail>, `on the ${FirstWord<Rest>} of every month`>
+          : `expected "of every month" after "on the ${FirstWord<Rest>}"`
         : `expected "of every month" after "on the ${FirstWord<Rest>}"`
-      : `expected "of every month" after "on the ${FirstWord<Rest>}"`
-  : `expected "the" after "on"`
+    : `expected "the" after "on"`
 
 type InvalidStart<First extends string> =
   `"${First}" is not a valid start of a phrase. Start with "every", "on the", or a shortcut: hourly, daily, weekly, or monthly`
