@@ -23,12 +23,12 @@ ip(request, options) // "203.0.113.9"
 geo(request, options).country // "US"
 ```
 
-Set `platform` to the platform the app runs on. `ip` then reads only that platform's headers, which a client cannot forge. Without a platform, `ip` falls back to the common forwarding headers, such as `X-Forwarded-For`, which a client can forge unless a proxy in front of the app replaces them.
+Set `platform` to the platform the app runs on. `ip` then reads only that platform's headers, which a client cannot forge. With `platform: "none"`, `ip` reads the connection and falls back to the common forwarding headers, such as `X-Forwarded-For`, which a client can forge unless a proxy in front of the app replaces them.
 
 Behind your own proxies or load balancers, list their addresses so that `ip` skips them:
 
 ```ts
-ip(request, { proxies: ["10.0.0.0/8", "198.51.100.7"] })
+ip(request, { platform: "none", proxies: ["10.0.0.0/8", "198.51.100.7"] })
 ```
 
 ## Documentation

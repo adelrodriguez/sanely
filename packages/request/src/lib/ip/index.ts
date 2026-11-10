@@ -3,7 +3,7 @@ import type { RequestLike } from "#lib/request/index.ts"
 import { isGlobal } from "#lib/address/global.ts"
 import { format, parseHost } from "#lib/address/index.ts"
 import { contains, parseRange } from "#lib/address/range.ts"
-import { readHeader } from "#lib/request/index.ts"
+import { checkPlatform, readHeader } from "#lib/request/index.ts"
 
 // How each kind of header writes addresses, split into candidates in the order to try them.
 const CANDIDATES = {
@@ -66,10 +66,14 @@ export type IpPlatform = keyof typeof PLATFORMS
 
 export interface IpOptions {
   /**
-   * The platform the app runs on. `ip` then reads only the headers that platform sets, and ignores
-   * the common forwarding headers, which a client can forge.
+   * The platform the app runs on. `ip` then reads only the headers that platform sets. Use `"none"`
+   * when no platform sits in front of the app: `ip` then reads the connection first, and falls back
+   * to the common forwarding headers, which a client can forge.
+   *
+   * @throws {TypeError} When the platform is not one of these, such as an unset environment
+   *   variable.
    */
-  readonly platform?: IpPlatform | undefined
+  readonly platform: IpPlatform | "none"
   /**
    * Addresses and CIDR ranges of proxies in front of the app, such as `10.0.0.0/8`. `ip` skips them
    * while it looks for the client.
@@ -107,10 +111,11 @@ function parseClient(candidate: unknown, proxies: readonly Range[]) {
  *   import { ip } from "@sanely/request"
  *
  *   ip(request, { platform: "vercel" }) // "203.0.113.9"
+ *   ip(request, { platform: "none", proxies: ["10.0.0.0/8"] }) // "198.51.100.7"
  *
  * @returns The client's address, or `undefined` when the request has no public address.
  */
-export function ip(request: RequestLike, options: IpOptions = {}): string | undefined {
+export function ip(request: RequestLike, options: IpOptions): string | undefined {
   const proxies = (options.proxies ?? []).map((text) => parseProxy(text))
   const fromHeaders = (sources: readonly Source[]) =>
     sources.flatMap((source) => {
@@ -124,17 +129,19 @@ export function ip(request: RequestLike, options: IpOptions = {}): string | unde
     request.requestContext?.identity?.sourceIp,
   ]
 
-  // Behind a platform, the connection comes from the platform's edge, so its headers come first.
-  // Without one, the connection comes first, because a client can forge the common headers.
-  const candidates =
-    options.platform === undefined
-      ? [...fromConnection, ...fromHeaders(COMMON)]
-      : [...fromHeaders(PLATFORMS[options.platform]), ...fromConnection]
+  // Without a platform, the connection comes first, because a client can forge the common
+  // headers. Behind a platform, the connection comes from the platform's edge, so its headers come
+  // first.
+  const { platform } = options
+  if (platform === "none") return findClient([...fromConnection, ...fromHeaders(COMMON)], proxies)
 
-  for (const candidate of candidates) {
-    const client = parseClient(candidate, proxies)
-    if (client !== undefined) return client
-  }
+  checkPlatform(platform, PLATFORMS, '"none" or one of: ')
+  return findClient([...fromHeaders(PLATFORMS[platform]), ...fromConnection], proxies)
+}
 
-  return undefined
+// Returns the first candidate that is a client, in the order given.
+function findClient(candidates: readonly unknown[], proxies: readonly Range[]) {
+  return candidates
+    .map((candidate) => parseClient(candidate, proxies))
+    .find((client) => client !== undefined)
 }

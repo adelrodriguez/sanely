@@ -49,3 +49,19 @@ export function readHeader(request: RequestLike, name: string): string | undefin
 
   return trimmed === "" ? undefined : trimmed
 }
+
+/**
+ * Checks a reader's platform at runtime, where a typo or an unset environment variable can reach it
+ * despite the type. Throws a `TypeError` that lists what the reader accepts.
+ */
+export function checkPlatform<Platform extends string>(
+  platform: unknown,
+  platforms: Readonly<Record<Platform, unknown>>,
+  expected: string
+): asserts platform is Platform {
+  if (typeof platform === "string" && Object.hasOwn(platforms, platform)) return
+
+  throw new TypeError(
+    `Unknown platform ${String(JSON.stringify(platform))}. Expected ${expected}${Object.keys(platforms).join(", ")}`
+  )
+}

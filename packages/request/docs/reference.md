@@ -5,7 +5,7 @@ The package has one entry point, `@sanely/request`. Every export is a named expo
 ## `ip`
 
 ```ts
-function ip(request: RequestLike, options?: IpOptions): string | undefined
+function ip(request: RequestLike, options: IpOptions): string | undefined
 ```
 
 Returns the IP address of the client that sent the request, or `undefined` when the request carries no public address.
@@ -14,13 +14,13 @@ Returns the IP address of the client that sent the request, or `undefined` when 
 import { ip } from "@sanely/request"
 
 ip(request, { platform: "cloudflare" }) // "203.0.113.9"
-ip(request, { proxies: ["10.0.0.0/8"] }) // "2606:4700::1"
-ip(new Request("http://localhost")) // undefined
+ip(request, { platform: "none", proxies: ["10.0.0.0/8"] }) // "2606:4700::1"
+ip(new Request("http://localhost"), { platform: "none" }) // undefined
 ```
 
 `ip` checks these places in order and returns the first public address.
 
-Without a platform:
+With `platform: "none"`, for an app with no platform in front of it:
 
 1. The address that the runtime or framework reports: `request.ip`, `request.socket.remoteAddress`, `request.info.remoteAddress`, then `request.requestContext.identity.sourceIp`. A client cannot forge these.
 2. The common forwarding headers: `X-Forwarded-For`, `X-Client-IP`, `DO-Connecting-IP`, `Fastly-Client-IP`, `True-Client-IP`, `X-Real-IP`, `X-Cluster-Client-IP`, `X-Forwarded`, `Forwarded-For`, `Forwarded`, then `X-Appengine-User-IP`.
@@ -54,12 +54,14 @@ CloudFront sends `CloudFront-Viewer-Address` only when an origin request policy 
 
 ### `IpOptions`
 
-| Option     | Type                | Default | Description                                                                                           |
-| ---------- | ------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `platform` | `IpPlatform`        | None    | The platform the app runs on. `ip` then reads only that platform's headers.                           |
-| `proxies`  | `readonly string[]` | `[]`    | Addresses and CIDR ranges of your own proxies, such as `"10.0.0.0/8"`. `ip` skips matching addresses. |
+| Option     | Type                   | Default  | Description                                                                                           |
+| ---------- | ---------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `platform` | `IpPlatform \| "none"` | Required | The platform the app runs on, or `"none"`. With a platform, `ip` reads only that platform's headers.  |
+| `proxies`  | `readonly string[]`    | `[]`     | Addresses and CIDR ranges of your own proxies, such as `"10.0.0.0/8"`. `ip` skips matching addresses. |
 
-`ip` throws a `TypeError` when an entry in `proxies` is not an IP address or a CIDR range.
+`ip` throws a `TypeError` when `platform` is not `"none"` or a known platform, such as when it comes from an unset environment variable. It also throws one when an entry in `proxies` is not an IP address or a CIDR range.
+
+`platform` is required so that a missing setting fails loudly instead of trusting headers that a client can forge.
 
 ## `geo`
 
@@ -79,7 +81,7 @@ geo(request, { platform: "vercel" })
 // }
 ```
 
-`platform` is required. Location headers have no common form, and a client can send any header that its platform does not replace.
+`platform` is required, and `geo` throws a `TypeError` for an unknown one. Location headers have no common form, and a client can send any header that its platform does not replace.
 
 | Field        | Type     | Description                                                                |
 | ------------ | -------- | -------------------------------------------------------------------------- |

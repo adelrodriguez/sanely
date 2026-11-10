@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest"
 import type { IpOptions, IpPlatform, RequestLike } from "#index.ts"
 import { ip } from "#index.ts"
 
+// Calls `ip` without a platform unless the options name one.
+function find(request: RequestLike, options: Partial<IpOptions> = {}) {
+  return ip(request, { platform: "none", ...options })
+}
+
 function headers(entries: Record<string, string>): RequestLike {
   return { headers: new Headers(entries) }
 }
@@ -85,30 +90,30 @@ const FIELDS = [
 
 describe.each(FIELDS)("ip from %s", (_, place) => {
   it.each(NOT_GLOBAL)("skips a %s address", (_name, address) => {
-    expect(ip(place(address))).toBeUndefined()
+    expect(find(place(address))).toBeUndefined()
   })
 
   it.each(MALFORMED)("skips %s", (_name, text) => {
-    expect(ip(place(text))).toBeUndefined()
+    expect(find(place(text))).toBeUndefined()
   })
 
   it.each(GLOBAL)("returns %s", (_name, text, expected) => {
-    expect(ip(place(text))).toBe(expected)
+    expect(find(place(text))).toBe(expected)
   })
 
   it("skips a trusted proxy given as an address", () => {
-    expect(ip(place("1.1.1.1"), { proxies: ["1.1.1.1"] })).toBeUndefined()
-    expect(ip(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2ff"] })).toBeUndefined()
+    expect(find(place("1.1.1.1"), { proxies: ["1.1.1.1"] })).toBeUndefined()
+    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2ff"] })).toBeUndefined()
   })
 
   it("skips a trusted proxy inside a range", () => {
-    expect(ip(place("1.1.1.1"), { proxies: ["1.1.1.0/24"] })).toBeUndefined()
-    expect(ip(place("::abcd:c00a:2ff"), { proxies: ["::abcd:0:0/96"] })).toBeUndefined()
+    expect(find(place("1.1.1.1"), { proxies: ["1.1.1.0/24"] })).toBeUndefined()
+    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:0:0/96"] })).toBeUndefined()
   })
 
   it("returns an address that no proxy matches", () => {
-    expect(ip(place("1.1.1.1"), { proxies: ["1.1.1.2", "1.1.2.0/24"] })).toBe("1.1.1.1")
-    expect(ip(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2fa/128"] })).toBe(
+    expect(find(place("1.1.1.1"), { proxies: ["1.1.1.2", "1.1.2.0/24"] })).toBe("1.1.1.1")
+    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2fa/128"] })).toBe(
       "::abcd:c00a:2ff"
     )
   })
@@ -116,23 +121,23 @@ describe.each(FIELDS)("ip from %s", (_, place) => {
 
 describe("ip", () => {
   it("returns undefined for a request with no address", () => {
-    expect(ip(headers({}))).toBeUndefined()
+    expect(find(headers({}))).toBeUndefined()
   })
 
   it("ignores a non-string request.ip", () => {
-    expect(ip({ headers: new Headers(), ip: ["1", "1", "1", "1"] })).toBeUndefined()
+    expect(find({ headers: new Headers(), ip: ["1", "1", "1", "1"] })).toBeUndefined()
   })
 
   it("writes IPv6 addresses in canonical form, so one address has one spelling", () => {
-    expect(ip(headers({ "x-real-ip": "2606:4700:0000:0000:0000:0000:0000:0001" }))).toBe(
+    expect(find(headers({ "x-real-ip": "2606:4700:0000:0000:0000:0000:0000:0001" }))).toBe(
       "2606:4700::1"
     )
-    expect(ip(headers({ "x-real-ip": "2606:4700:0:1:0:0:1:1" }))).toBe("2606:4700:0:1::1:1")
-    expect(ip(headers({ "x-real-ip": "2606:4700:0:0:1:0:0:1" }))).toBe("2606:4700::1:0:0:1")
-    expect(ip(headers({ "x-real-ip": "2606:4700:1:1:1:1:1:1" }))).toBe("2606:4700:1:1:1:1:1:1")
-    expect(ip(headers({ "x-real-ip": "2606:4700:0:1:1:1:1:1" }))).toBe("2606:4700:0:1:1:1:1:1")
-    expect(ip(headers({ "x-real-ip": "64:FF9B::C000:221" }))).toBe("64:ff9b::c000:221")
-    expect(ip(headers({ "x-real-ip": "64:ff9b::192.0.2.33" }))).toBe("64:ff9b::c000:221")
+    expect(find(headers({ "x-real-ip": "2606:4700:0:1:0:0:1:1" }))).toBe("2606:4700:0:1::1:1")
+    expect(find(headers({ "x-real-ip": "2606:4700:0:0:1:0:0:1" }))).toBe("2606:4700::1:0:0:1")
+    expect(find(headers({ "x-real-ip": "2606:4700:1:1:1:1:1:1" }))).toBe("2606:4700:1:1:1:1:1:1")
+    expect(find(headers({ "x-real-ip": "2606:4700:0:1:1:1:1:1" }))).toBe("2606:4700:0:1:1:1:1:1")
+    expect(find(headers({ "x-real-ip": "64:FF9B::C000:221" }))).toBe("64:ff9b::c000:221")
+    expect(find(headers({ "x-real-ip": "64:ff9b::192.0.2.33" }))).toBe("64:ff9b::c000:221")
   })
 
   it("prefers the connection's address to any header", () => {
@@ -141,7 +146,7 @@ describe("ip", () => {
       socket: { remoteAddress: "1.1.1.1" },
     }
 
-    expect(ip(request)).toBe("1.1.1.1")
+    expect(find(request)).toBe("1.1.1.1")
   })
 
   it("reads headers when the connection comes from a private proxy", () => {
@@ -150,19 +155,19 @@ describe("ip", () => {
       socket: { remoteAddress: "10.0.0.1" },
     }
 
-    expect(ip(request)).toBe("2.2.2.2")
+    expect(find(request)).toBe("2.2.2.2")
   })
 
   it("reads a Node.js header record, joining repeated values", () => {
-    expect(ip({ headers: { "x-real-ip": "1.1.1.1" } })).toBe("1.1.1.1")
-    expect(ip({ headers: { "x-forwarded-for": ["1.1.1.1", "2.2.2.2", "3.3.3.3"] } })).toBe(
+    expect(find({ headers: { "x-real-ip": "1.1.1.1" } })).toBe("1.1.1.1")
+    expect(find({ headers: { "x-forwarded-for": ["1.1.1.1", "2.2.2.2", "3.3.3.3"] } })).toBe(
       "3.3.3.3"
     )
   })
 
   it("throws a TypeError for a proxy that is not an address or a range", () => {
     for (const proxy of ["", "proxy", "1.1.1.1/33", "::/129", "1.1.1.1/8/8", "1.1.1.1/a"]) {
-      expect(() => ip(headers({}), { proxies: [proxy] })).toThrow(TypeError)
+      expect(() => find(headers({}), { proxies: [proxy] })).toThrow(TypeError)
     }
   })
 })
@@ -184,7 +189,7 @@ describe("ip from X-Forwarded-For", () => {
     ],
     ["past a trusted range", "1.1.1.1, 2.2.2.2, 3.3.3.3", "1.1.1.1", ["2.0.0.0/7"]],
   ] as const)("returns %s", (_name, value, expected, proxies) => {
-    expect(ip(headers({ "x-forwarded-for": value }), { proxies })).toBe(expected)
+    expect(find(headers({ "x-forwarded-for": value }), { proxies })).toBe(expected)
   })
 
   it("comes before the other common headers", () => {
@@ -195,7 +200,7 @@ describe("ip from X-Forwarded-For", () => {
       "x-forwarded-for": "2.2.2.2, 3.3.3.3",
     })
 
-    expect(ip(request)).toBe("3.3.3.3")
+    expect(find(request)).toBe("3.3.3.3")
   })
 })
 
@@ -212,13 +217,13 @@ describe("ip without a platform", () => {
     "forwarded",
     "x-appengine-user-ip",
   ])("reads %s", (header) => {
-    expect(ip(headers({ [header]: "1.1.1.1" }))).toBe("1.1.1.1")
+    expect(find(headers({ [header]: "1.1.1.1" }))).toBe("1.1.1.1")
   })
 
   it.each(["cf-connecting-ip", "cf-connecting-ipv6", "fly-client-ip", "x-vercel-forwarded-for"])(
     "ignores the platform header %s",
     (header) => {
-      expect(ip(headers({ [header]: "1.1.1.1" }))).toBeUndefined()
+      expect(find(headers({ [header]: "1.1.1.1" }))).toBeUndefined()
     }
   )
 })
@@ -245,14 +250,14 @@ const FORGED = { "x-client-ip": "9.9.9.9" }
 
 describe("ip with a platform", () => {
   it.each(PLATFORMS)("%s reads %o", (platform, entries, expected) => {
-    expect(ip(headers(entries), { platform })).toBe(expected)
-    expect(ip(headers({ ...FORGED, ...entries }), { platform })).toBe(expected)
+    expect(find(headers(entries), { platform })).toBe(expected)
+    expect(find(headers({ ...FORGED, ...entries }), { platform })).toBe(expected)
   })
 
   it.each([...new Set(PLATFORMS.map(([platform]) => platform))])(
     "%s ignores every other header",
     (platform) => {
-      expect(ip(headers(FORGED), { platform })).toBeUndefined()
+      expect(find(headers(FORGED), { platform })).toBeUndefined()
     }
   )
 
@@ -260,10 +265,10 @@ describe("ip with a platform", () => {
     const options: IpOptions = { platform: "cloudflare" }
 
     expect(
-      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "abcd::" }), options)
+      find(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "abcd::" }), options)
     ).toBe("abcd::")
     expect(
-      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
+      find(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
     ).toBe("1.1.1.1")
   })
 
@@ -273,21 +278,39 @@ describe("ip with a platform", () => {
       socket: { remoteAddress: "104.16.0.1" },
     }
 
-    expect(ip(request, { platform: "cloudflare" })).toBe("1.1.1.1")
+    expect(find(request, { platform: "cloudflare" })).toBe("1.1.1.1")
   })
 
   it("falls back to the connection when the platform's headers are missing", () => {
     const request = { headers: new Headers(), socket: { remoteAddress: "1.1.1.1" } }
 
-    expect(ip(request, { platform: "cloudflare" })).toBe("1.1.1.1")
+    expect(find(request, { platform: "cloudflare" })).toBe("1.1.1.1")
   })
 
   it("skips trusted proxies in the platform's headers", () => {
     expect(
-      ip(headers({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }), {
+      find(headers({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }), {
         platform: "firebase",
         proxies: ["2.2.2.2"],
       })
     ).toBe("1.1.1.1")
+  })
+})
+
+describe("ip options", () => {
+  it("throws a TypeError naming the problem when the platform is missing", () => {
+    const options = { platform: process.env["SANELY_UNSET_PLATFORM"] } as unknown as IpOptions
+
+    expect(() => ip(headers({ "x-client-ip": "9.9.9.9" }), options)).toThrow(
+      new TypeError(
+        'Unknown platform undefined. Expected "none" or one of: app-engine, cloudflare, cloudfront, firebase, fly-io, render, vercel'
+      )
+    )
+  })
+
+  it("throws a TypeError naming the problem for an unknown platform", () => {
+    const options = { platform: "netlify" } as unknown as IpOptions
+
+    expect(() => ip(headers({}), options)).toThrow(/^Unknown platform "netlify"/)
   })
 })

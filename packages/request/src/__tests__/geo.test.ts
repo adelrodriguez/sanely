@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { Geo, GeoPlatform } from "#index.ts"
+import type { Geo, GeoOptions, GeoPlatform } from "#index.ts"
 import { geo } from "#index.ts"
 
 function headers(entries: Record<string, string>) {
@@ -187,5 +187,15 @@ describe("geo", () => {
       latitude: undefined,
       longitude: undefined,
     })
+  })
+
+  it("throws a TypeError naming the problem for an unknown platform", () => {
+    const options = { platform: "fly-io" } as unknown as GeoOptions
+
+    expect(() => geo(headers({}), options)).toThrow(
+      new TypeError(
+        'Unknown platform "fly-io". Expected one of: app-engine, cloudflare, cloudfront, vercel'
+      )
+    )
   })
 })

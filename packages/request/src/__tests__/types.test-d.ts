@@ -8,12 +8,20 @@ declare const incoming: IncomingMessage
 
 describe("ip", () => {
   it("returns a string or undefined", () => {
-    expectTypeOf(ip(request)).toEqualTypeOf<string | undefined>()
+    expectTypeOf(ip(request, { platform: "none" })).toEqualTypeOf<string | undefined>()
   })
 
   it("accepts a Fetch request and a Node.js request", () => {
     ip(request, { platform: "vercel", proxies: ["10.0.0.0/8"] })
-    ip(incoming)
+    ip(incoming, { platform: "none" })
+  })
+
+  it("requires a platform, or an explicit none", () => {
+    ip(request, { platform: "none" })
+    // @ts-expect-error -- a missing platform must not silently trust forgeable headers.
+    ip(request)
+    // @ts-expect-error -- a missing platform must not silently trust forgeable headers.
+    ip(request, { proxies: [] })
   })
 
   it("accepts only known platforms", () => {

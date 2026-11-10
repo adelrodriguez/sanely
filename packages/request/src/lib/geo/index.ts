@@ -1,5 +1,5 @@
 import type { RequestLike } from "#lib/request/index.ts"
-import { readHeader } from "#lib/request/index.ts"
+import { checkPlatform, readHeader } from "#lib/request/index.ts"
 
 /**
  * Where the client of a request is, as its platform reports it. Each field is `undefined` when
@@ -83,6 +83,9 @@ export interface GeoOptions {
   /**
    * The platform the app runs on. It is required because only the platform's own headers are
    * trustworthy. A client can send any other header.
+   *
+   * @throws {TypeError} When the platform is not one of these, such as an unset environment
+   *   variable.
    */
   readonly platform: GeoPlatform
 }
@@ -130,7 +133,10 @@ function parseCoordinate(value: string | undefined, limit: number) {
  * @returns The location. A field is `undefined` when the platform did not report it.
  */
 export function geo(request: RequestLike, options: GeoOptions): Geo {
-  const headers: FieldHeaders = PLATFORMS[options.platform]
+  const { platform } = options
+  checkPlatform(platform, PLATFORMS, "one of: ")
+
+  const headers: FieldHeaders = PLATFORMS[platform]
   const read = (field: keyof FieldHeaders) => {
     const name = headers[field]
     return name === undefined ? undefined : readHeader(request, name)
