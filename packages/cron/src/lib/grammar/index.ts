@@ -1,3 +1,4 @@
+import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
 import type { DaySet, Schedule, ScheduleOf, Time } from "#lib/schedule/index.ts"
 import type { DayGroup, Shortcut, Weekday } from "#lib/vocabulary/words.ts"
 import { fail, toHourInterval, toMinuteInterval, toWindow } from "#lib/schedule/rules.ts"
@@ -86,8 +87,8 @@ class Cursor {
 
 // An interval of 1 and an interval of one full cycle have their own sentence shapes.
 const INTERVAL_WORDS = {
-  hours: { cycle: 24, next: "every day at midnight", single: "every hour" },
-  minutes: { cycle: 60, next: "every hour", single: "every minute" },
+  hours: { cycle: HOURS_PER_DAY, next: "every day at midnight", single: "every hour" },
+  minutes: { cycle: MINUTES_PER_HOUR, next: "every hour", single: "every minute" },
 } as const
 
 function parseIntervalNumber(token: string, unit: keyof typeof INTERVAL_WORDS): number {
@@ -229,7 +230,7 @@ function parseWindow(cursor: Cursor): Pick<ScheduleOf<"minute">, "between"> {
   }
 
   // The end is not included. An end at midnight is the end of the day.
-  return { between: toWindow(start.hour, end.hour === 0 ? 24 : end.hour) }
+  return { between: toWindow(start.hour, end.hour === 0 ? HOURS_PER_DAY : end.hour) }
 }
 
 function parseMinuteInterval(
