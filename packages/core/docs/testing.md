@@ -1,16 +1,28 @@
 # Testing
 
-The unit table suite lives in `src/lib/time/__tests__/table.test.ts`.
-It checks conversion values, unknown aliases and names, unique alias ownership, and the size order needed by duration formatting.
-The type suite in `src/__tests__/types.test-d.ts` checks that each unit lists its `long`, `longPlural`, and `short` spellings among its aliases, so duration's formatted output stays parseable.
-`pnpm run check` enforces the type suite, and Vitest never runs it.
+Core's own suites check the unit table. The libraries that use core check its definitions again through their public APIs.
 
-Duration's public type suite checks the shared alias types through its existing exports.
-Cron's public type suite checks schedule ranges derived from the shared clock ratios.
-Both libraries retain their parsing, formatting, and error contract suites.
+## Core suites
 
-Consumer builds reject external package imports in JavaScript and declarations.
-Their `build:verify` scripts install packed libraries in isolated consumers and check runtime loading and types.
-Core's `test:compat` script loads its built entry point, and CI runs it on the package's Node.js floor.
+Core has two suites:
 
-See the root [contributor guide](../../../CONTRIBUTING.md#run-the-checks) for commands.
+- `src/lib/time/__tests__/table.test.ts` checks conversion values, alias lookups in any casing, the rejection of unknown aliases and names, that each alias belongs to one unit, and the largest-to-smallest order that duration's `format` relies on.
+- `src/__tests__/types.test-d.ts` checks that each unit lists its `long`, `longPlural`, and `short` spellings among its aliases. Duration's `format` writes those spellings, so this check keeps its output parseable. `pnpm run check` enforces this suite, and Vitest never runs it.
+
+## Library suites
+
+These library suites also cover core's definitions:
+
+- Duration's public type suite checks the shared alias types through duration's exports.
+- Cron's public type suite checks the interval and time types that cron derives from the clock ratios.
+- The parsing, formatting, and error suites of cron and duration run against core through each library's public API.
+
+## Build checks
+
+Each library's `build:verify` script loads its built entry points and type-checks a consumer against its declarations.
+Cron, duration, and ratelimit first pack the library and install it in an isolated consumer.
+
+Core's `test:compat` script loads core's built entry point.
+CI runs it on the Node.js version in core's `engines.node` field.
+
+See [Run the checks](../../../CONTRIBUTING.md#run-the-checks) for the commands.
