@@ -1,17 +1,6 @@
 {
   "packages": [
     {
-      "name": "adamantite",
-      "registry": "npm",
-      "source": {
-        "host": "github.com",
-        "type": "repository",
-        "url": "https://github.com/adelrodriguez/adamantite"
-      },
-      "tracking": "dependency",
-      "version": "0.45.0"
-    },
-    {
       "name": "tsdown",
       "registry": "npm",
       "source": {
@@ -21,6 +10,17 @@
       },
       "tracking": "manual",
       "version": "0.23.5"
+    },
+    {
+      "name": "adamantite",
+      "registry": "npm",
+      "source": {
+        "host": "github.com",
+        "type": "repository",
+        "url": "https://github.com/adelrodriguez/adamantite"
+      },
+      "tracking": "dependency",
+      "version": "0.46.0"
     }
   ]
 }

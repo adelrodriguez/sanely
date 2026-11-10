@@ -6,9 +6,11 @@
 
 Use the [root scripts](../../README.md#scripts) for formatting, lint, types, and dependency analysis.
 
-To add a project-specific lint rule, run `pnpm exec adamantite rule add <name>`.
-Read the generated guidance in `.adamantite/rules/AGENTS.md` before you implement the rule.
-Each rule has its own file in `.adamantite/rules/`.
+Use the Adamantite skill for managed setup, Doctor repairs, and custom rules.
+If the skill is not installed, read `node_modules/adamantite/skills/adamantite/SKILL.md`.
+
+To add a project-specific lint rule, run `pnpm exec adamantite rule add <name>`, then follow the "Custom rules" section of the skill.
+Each rule has its own file in `.adamantite/lint/`, and its tests live in `.adamantite/lint/__tests__/`.
 
 Run `pnpm exec adamantite doctor` to inspect the managed setup.
 

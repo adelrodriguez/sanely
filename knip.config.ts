@@ -8,8 +8,8 @@ export default {
   ignoreDependencies: [...ignoreDependencies.monorepo, "packref"],
   workspaces: {
     ".": {
-      entry: ["scripts/*.{mjs,ts}", ".adamantite/rules/__tests__/*.test.ts"],
-      project: ["scripts/**/*.{mjs,ts}", "turbo/generators/**/*.ts", ".adamantite/rules/**/*.ts"],
+      entry: ["scripts/*.{mjs,ts}", ".adamantite/lint/__tests__/*.test.ts"],
+      project: ["scripts/**/*.{mjs,ts}", "turbo/generators/**/*.ts", ".adamantite/lint/**/*.ts"],
     },
     "packages/*": {
       entry: ["src/**/*.test-d.{ts,tsx}", "scripts/*.{mjs,ts}"],

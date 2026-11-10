@@ -1,17 +1,6 @@
-import { describe, it } from "node:test"
-import { RuleTester } from "oxlint/plugins-dev"
+import { RuleTester } from "adamantite/rules/testing"
 import rule from "../clock-ratios.ts"
 import { fixture } from "./fixtures.ts"
-
-RuleTester.describe = (name, run) => {
-  void describe(name, run)
-}
-RuleTester.it = (name, run) => {
-  void it(name, run)
-}
-RuleTester.itOnly = (name, run) => {
-  void it.only(name, run)
-}
 
 const usesCore = { devDependencies: { "@sanely/core": "workspace:*" } }
 const source = (path = "lib/schedule/rules.ts") => fixture(path, [], usesCore)

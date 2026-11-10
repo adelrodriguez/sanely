@@ -1,7 +1,7 @@
 import core from "adamantite/lint"
-import custom from "adamantite/lint/custom"
 import react from "adamantite/lint/react"
 import reactStrict from "adamantite/lint/react-strict"
+import custom from "adamantite/rules"
 import { defineConfig } from "oxlint"
 
 // Every folder in `packages/ratelimit/src/lib` bans this pattern.

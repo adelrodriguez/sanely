@@ -555,7 +555,7 @@ class FieldlessDefaultsError extends Tagged("FieldlessDefaultsError")() {
   }
 
   isRetryable(): boolean {
-    return true
+    return this.message === "Timed out"
   }
 
   get summary(): string {

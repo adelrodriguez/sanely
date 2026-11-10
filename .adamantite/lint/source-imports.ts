@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
-import { defineRule, type ESTree } from "adamantite/rules"
+import { defineRule, type ESTree } from "adamantite/rules/plugin"
 
 export default defineRule({
   createOnce(context) {

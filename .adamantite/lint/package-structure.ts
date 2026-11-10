@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { basename, dirname, extname, join } from "node:path"
-import { defineRule } from "adamantite/rules"
+import { defineRule } from "adamantite/rules/plugin"
 
 export default defineRule({
   createOnce(context) {
