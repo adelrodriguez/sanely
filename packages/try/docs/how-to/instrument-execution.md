@@ -2,7 +2,7 @@
 
 This guide shows you how to add logs, traces, or metrics around a terminal call without a change to the work or to the result.
 
-1. Start the chain with `wrap`. Call `next()` to run the work, and return its result:
+1. Start the chain with `wrap`. Call `next()` exactly once to run the work. The call returns the result of the work, whatever the wrap returns:
 
    ```ts
    import * as try$ from "@sanely/try"
@@ -26,6 +26,8 @@ This guide shows you how to add logs, traces, or metrics around a terminal call 
    ```
 
 2. Read the context, but do not change it. `ctx` is read-only. `ctx.retry.attempt` is live: after `next()` settles, it shows the final attempt count.
+
+A wrap that never calls `next()`, calls it twice, or throws throws a `Panic`.
 
 A wrap surrounds the whole terminal call, retries included. To add several wraps, chain them: `.wrap(first).wrap(second)`.
 

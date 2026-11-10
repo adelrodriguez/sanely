@@ -16,6 +16,10 @@ export type PanicCode =
   | "TIMEOUT_INVALID_MS"
   | "TASK_UNKNOWN_REFERENCE"
   | "UNREACHABLE_RETRY_POLICY_BACKOFF"
+  | "UNREACHABLE_WORK_STATE"
+  | "WRAP_NEXT_CALLED_TWICE"
+  | "WRAP_NEXT_NOT_CALLED"
+  | "WRAP_THROW"
 
 export const PanicMessages = {
   ALL_CATCH_HANDLER_REJECT: "Panic: all() catch handler rejected",
@@ -36,6 +40,10 @@ export const PanicMessages = {
   TASK_UNKNOWN_REFERENCE: "Task attempted to read an unknown task result.",
   TIMEOUT_INVALID_MS: "timeout() requires a non-negative finite millisecond value.",
   UNREACHABLE_RETRY_POLICY_BACKOFF: "Panic: unreachable retry policy backoff",
+  UNREACHABLE_WORK_STATE: "Panic: unreachable wrapped work state",
+  WRAP_NEXT_CALLED_TWICE: "wrap() called next() more than once.",
+  WRAP_NEXT_NOT_CALLED: "wrap() returned without calling next().",
+  WRAP_THROW: "wrap() threw or rejected.",
 } as const satisfies Record<PanicCode, string>
 
 /**

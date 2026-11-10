@@ -32,6 +32,10 @@ function captureScheduledDelays() {
   }
 }
 
+function skipNext() {
+  return "skipped"
+}
+
 function never<T>(): Promise<T> {
   return new Promise<T>(() => {
     // Intentionally never settles.
@@ -1040,5 +1044,130 @@ describe("wrap behavior", () => {
     expect(result).toBe(2)
     expect(wrapCalls).toBe(1)
     expect(attempts).toBe(2)
+  })
+
+  it("returns the result of the work when a wrap does not return next()", async () => {
+    const events: string[] = []
+
+    const asyncResult = await try$
+      .wrap(async (_, next) => {
+        try {
+          await next()
+        } finally {
+          events.push("wrap-finally")
+        }
+      })
+      .run(() => {
+        events.push("try")
+        return 42
+      })
+
+    const syncResult = try$
+      .wrap((_, next) => {
+        next()
+        return "replaced"
+      })
+      .runSync(() => 7)
+
+    expect(asyncResult).toBe(42)
+    expect(syncResult).toBe(7)
+    expect(events).toEqual(["try", "wrap-finally"])
+  })
+
+  it("throws WRAP_NEXT_NOT_CALLED when a wrap never calls next()", async () => {
+    let attempts = 0
+
+    await expect(
+      try$.wrap(skipNext).run(() => {
+        attempts += 1
+        return 1
+      })
+    ).rejects.toMatchObject({ code: "WRAP_NEXT_NOT_CALLED" })
+
+    try {
+      try$.wrap(skipNext).runSync(() => 1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "WRAP_NEXT_NOT_CALLED")
+    }
+
+    expect(attempts).toBe(0)
+  })
+
+  it("throws WRAP_NEXT_CALLED_TWICE and runs the work once when a wrap calls next() twice", async () => {
+    let attempts = 0
+
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          await next()
+          try {
+            await next()
+          } catch {
+            // Swallowing the second call's Panic does not hide it.
+          }
+        })
+        .run(() => {
+          attempts += 1
+          return 1
+        })
+    ).rejects.toMatchObject({ code: "WRAP_NEXT_CALLED_TWICE" })
+
+    expect(attempts).toBe(1)
+  })
+
+  it("throws WRAP_THROW with the cause when a wrap throws or rejects", async () => {
+    const failure = new Error("wrap failed")
+
+    await expect(
+      try$
+        .wrap(() => {
+          throw failure
+        })
+        .run(() => 1)
+    ).rejects.toMatchObject({ cause: failure, code: "WRAP_THROW" })
+
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          await next()
+          throw failure
+        })
+        .run(() => 1)
+    ).rejects.toMatchObject({ cause: failure, code: "WRAP_THROW" })
+
+    try {
+      try$
+        .wrap((_, next) => {
+          next()
+          throw failure
+        })
+        .runSync(() => 1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "WRAP_THROW")
+      expect((error as Panic).cause).toBe(failure)
+    }
+  })
+
+  it("throws a Panic from the work even when a wrap swallows it", async () => {
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          try {
+            await next()
+          } catch {
+            // Swallowed.
+          }
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+    ).rejects.toMatchObject({ code: "RUN_CATCH_HANDLER_THROW" })
   })
 })

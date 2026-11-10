@@ -6,17 +6,27 @@ import { TimeoutController } from "#lib/policies/timeout.ts"
 import {
   CancellationError,
   ControlError,
+  isPanic,
   Panic,
   RetryExhaustedError,
   TimeoutError,
   UnhandledException,
 } from "#lib/shared/errors.ts"
+import { assertUnreachable, checkIsPromiseLike, discardOutcome } from "#lib/shared/utils.ts"
 
 export type RunnerError =
   | CancellationError
   | RetryExhaustedError
   | TimeoutError
   | UnhandledException
+
+/**
+ * What the work inside the wraps has done so far.
+ */
+type WorkState<TResult> =
+  | { status: "pending" }
+  | { status: "returned"; result: TResult }
+  | { status: "threw"; error: unknown }
 
 export class RetryDirective {
   readonly delay: number
@@ -50,23 +60,111 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
     this.ctx = BaseExecution.createContext(this.#retryState, this.executionSignal)
   }
 
+  /**
+   * Runs the work inside the wraps. Wraps cover the full retry scope; `ctx.retry.attempt` may
+   * reflect the final attempt when observed after `next()` resolves.
+   *
+   * Wraps observe execution and never replace its result: the call returns what the work returned,
+   * whatever a wrap returns. A wrap must call `next()` exactly once, and a wrap that throws or
+   * rejects is a defect.
+   */
   execute(): TResult {
-    // Wraps cover the full retry scope; `ctx.retry.attempt` may reflect the final
-    // attempt when observed after `next()` resolves.
-    const wraps = this.config.wraps
+    const wraps = this.config.wraps ?? []
 
-    if (!wraps || wraps.length === 0) {
+    if (wraps.length === 0) {
       return this.executeCore()
     }
 
-    let next = (): unknown => this.executeCore()
+    let work: WorkState<TResult> = { status: "pending" }
+    // The work's own rejection, so a wrap that rethrows it is not reported as a wrap failure.
+    let workRejection: { error: unknown } | undefined
 
-    for (const wrap of wraps.toReversed()) {
-      const previous = next
-      next = () => wrap(this.ctx, previous)
+    const runWork = (): TResult => {
+      if (work.status !== "pending") {
+        if (work.status === "returned" && checkIsPromiseLike(work.result)) {
+          discardOutcome(work.result)
+        }
+
+        const panic = new Panic("WRAP_NEXT_CALLED_TWICE")
+        work = { error: panic, status: "threw" }
+        throw panic
+      }
+
+      try {
+        const result = this.executeCore()
+        work = { result, status: "returned" }
+
+        if (checkIsPromiseLike(result)) {
+          Promise.resolve(result).catch((error: unknown) => {
+            workRejection = { error }
+          })
+        }
+
+        return result
+      } catch (error) {
+        work = { error, status: "threw" }
+        throw error
+      }
     }
 
-    return next() as TResult
+    const resolveWork = (): TResult => {
+      switch (work.status) {
+        case "pending":
+          throw new Panic("WRAP_NEXT_NOT_CALLED")
+        case "threw":
+          throw work.error
+        case "returned":
+          return work.result
+        default:
+          return assertUnreachable(work, "UNREACHABLE_WORK_STATE")
+      }
+    }
+
+    const failWrap = (error: unknown): never => {
+      if (work.status === "threw") {
+        throw work.error
+      }
+
+      if (isPanic(error) || (workRejection !== undefined && workRejection.error === error)) {
+        throw error
+      }
+
+      throw new Panic("WRAP_THROW", { cause: error })
+    }
+
+    let next = runWork
+
+    for (const wrap of wraps.toReversed()) {
+      const inner = next
+
+      next = () => {
+        let returned: unknown
+
+        try {
+          returned = wrap(this.ctx, inner)
+        } catch (error) {
+          return failWrap(error)
+        }
+
+        return checkIsPromiseLike(returned)
+          ? this.settleAsyncWrap(returned, resolveWork, failWrap)
+          : resolveWork()
+      }
+    }
+
+    return next()
+  }
+
+  /**
+   * Waits for an async wrap to settle, then reports the result of the work. Sync executions
+   * override this, because they cannot wait.
+   */
+  protected settleAsyncWrap(
+    returned: PromiseLike<unknown>,
+    resolveWork: () => TResult,
+    failWrap: (error: unknown) => never
+  ): TResult {
+    return Promise.resolve(returned).then(resolveWork, failWrap) as TResult
   }
 
   protected abstract executeCore(): TResult

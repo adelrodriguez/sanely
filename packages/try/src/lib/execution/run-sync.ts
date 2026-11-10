@@ -1,7 +1,7 @@
 import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
 import type { NonPromise } from "#lib/shared/utils.ts"
 import { Panic, type PanicCode, type UnhandledException } from "#lib/shared/errors.ts"
-import { checkIsPromiseLike, invariant } from "#lib/shared/utils.ts"
+import { checkIsPromiseLike, discardOutcome, invariant } from "#lib/shared/utils.ts"
 import type { RunnerError } from "./base"
 import { BaseExecution, RetryDirective } from "./base"
 
@@ -41,10 +41,10 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
     this.#tryFn = typeof input === "function" ? input : input.try
   }
 
-  override execute(): T | E | RunnerError {
-    const result = super.execute()
-    assertNotPromiseLike(result, "RUN_SYNC_WRAPPED_RESULT_PROMISE")
-    return result
+  // oxlint-disable-next-line class-methods-use-this -- polymorphic override
+  protected override settleAsyncWrap(returned: PromiseLike<unknown>): T | E | RunnerError {
+    discardOutcome(returned)
+    throw new Panic("RUN_SYNC_WRAPPED_RESULT_PROMISE")
   }
 
   protected override executeCore(): T | E | RunnerError {

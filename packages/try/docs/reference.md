@@ -146,7 +146,7 @@ Adds external cancellation. You can call it more than once. Any of the signals c
 wrap(fn: (ctx: WrapCtx, next: () => unknown) => unknown)
 ```
 
-Adds a hook around the whole terminal call, retries included. `fn` must call `next()` and return its result. `ctx` is a read-only view of the context, and `ctx.retry.attempt` is live. The first wrap that you add is the outermost.
+Adds a hook around the whole terminal call, retries included. `fn` must call `next()` exactly once. `next()` returns the result of the work, and the call returns that result whatever `fn` returns. When `fn` returns a promise, the call waits for it before it resolves. A wrap that never calls `next()`, calls it twice, or throws or rejects throws a `Panic`. `ctx` is a read-only view of the context, and `ctx.retry.attempt` is live. The first wrap that you add is the outermost.
 
 ## Orchestration
 
@@ -265,6 +265,10 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 | `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                |
 | `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                    |
 | `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                |
+| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                |
+| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                    |
+| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                 |
+| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.       |
 
 ## Types
 
