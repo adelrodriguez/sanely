@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { calculateRetryDelay, retryOptions } from "#lib/policies/retry.ts"
+import { retryOptions } from "#lib/policies/retry.ts"
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -35,29 +35,5 @@ describe("retry helpers", () => {
       shouldRetry: undefined,
     })
     expect("maxDelayMs" in normalized).toBe(false)
-  })
-
-  it("calculates retry delay for no-policy, constant, linear, and exponential backoff", () => {
-    expect(calculateRetryDelay(1, {})).toBe(0)
-    expect(
-      calculateRetryDelay(3, {
-        retry: { backoff: "constant", delayMs: 7, limit: 4 },
-      })
-    ).toBe(7)
-    expect(
-      calculateRetryDelay(2, {
-        retry: { backoff: "linear", delayMs: 10, limit: 4 },
-      })
-    ).toBe(20)
-    expect(
-      calculateRetryDelay(3, {
-        retry: { backoff: "exponential", delayMs: 5, limit: 5 },
-      })
-    ).toBe(20)
-    expect(
-      calculateRetryDelay(3, {
-        retry: { backoff: "exponential", delayMs: 5, limit: 5, maxDelayMs: 12 },
-      })
-    ).toBe(12)
   })
 })

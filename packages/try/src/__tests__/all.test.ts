@@ -661,9 +661,10 @@ describe("all", () => {
 
     try {
       const controller = new AbortController()
+      const reason = new Error("stop")
 
       setTimeout(() => {
-        controller.abort(new Error("stop"))
+        controller.abort(reason)
       }, 10)
 
       const promise = try$
@@ -680,6 +681,7 @@ describe("all", () => {
       const error = await promise
 
       expect(error).toBeInstanceOf(CancellationError)
+      expect((error as CancellationError).cause).toBe(reason)
     } finally {
       vi.useRealTimers()
     }
@@ -724,8 +726,9 @@ describe("all", () => {
 
   it("prefers cancellation over the graph deadline when both are tripped before execution", async () => {
     const controller = new AbortController()
+    const reason = new Error("stop")
 
-    controller.abort(new Error("stop"))
+    controller.abort(reason)
 
     const error = await try$
       .signal(controller.signal)
@@ -736,6 +739,7 @@ describe("all", () => {
         },
       })
     expect(error).toBeInstanceOf(CancellationError)
+    expect((error as CancellationError).cause).toBe(reason)
   })
 
   it("bounds the deadline with $race for signal-unaware work", async () => {
@@ -807,6 +811,44 @@ describe("all", () => {
     expectUnhandled(error, boom)
 
     expect(racedRejection).toBe(boom)
+  })
+
+  it("rejects $race at once and observes the raced promise when the task signal already aborted", async () => {
+    const boom = new Error("boom")
+    let racedRejection: unknown
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+
+    process.on("unhandledRejection", onUnhandled)
+
+    try {
+      const result = await try$.all({
+        a() {
+          throw boom
+        },
+        async b() {
+          await waitForAbort(this.$signal)
+
+          try {
+            await this.$race(Promise.reject(new Error("late")))
+          } catch (error) {
+            racedRejection = error
+          }
+
+          return 1
+        },
+      })
+
+      await sleep(0)
+
+      expectUnhandled(result, boom)
+      expect(racedRejection).toBe(boom)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
   })
 
   it("normalizes an undefined sibling failure observed through $race", async () => {

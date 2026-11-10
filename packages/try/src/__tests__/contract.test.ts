@@ -248,14 +248,17 @@ describe("runSync follows the terminal call contract", () => {
       expect.unreachable("should have thrown")
     } catch (error) {
       expectPanic(error, "WRAP_THROW")
+      expect((error as Error).cause).toBe(failure)
     }
   })
 
   it("throws CATCH_HANDLER_THROW when catch throws", () => {
+    const failure = new Error("catch failed")
+
     try {
       try$.runSync({
         catch: () => {
-          throw new Error("catch failed")
+          throw failure
         },
         try: () => {
           throw new Error("boom")
@@ -264,6 +267,7 @@ describe("runSync follows the terminal call contract", () => {
       expect.unreachable("should have thrown")
     } catch (error) {
       expectPanic(error, "CATCH_HANDLER_THROW")
+      expect((error as Error).cause).toBe(failure)
     }
   })
 })

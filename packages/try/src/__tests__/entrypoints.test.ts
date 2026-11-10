@@ -87,6 +87,15 @@ describe("entrypoints", () => {
     })
   })
 
+  it("throws Panic when retryOptions() receives an unknown backoff from untyped code", () => {
+    try {
+      try$.retryOptions({ backoff: "bogus", limit: 2 } as never)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "UNREACHABLE_RETRY_POLICY_BACKOFF")
+    }
+  })
+
   it("throws Panic when timeout() receives Infinity", () => {
     try {
       try$.timeout(Infinity)

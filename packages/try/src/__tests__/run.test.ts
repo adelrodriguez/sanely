@@ -144,25 +144,6 @@ describe("runSync", () => {
       expect(catchCalls).toBe(0)
     })
 
-    it("throws Panic with the catch error as cause when catch throws", () => {
-      const catchFailure = new Error("catch failed")
-
-      try {
-        try$.runSync({
-          catch: () => {
-            throw catchFailure
-          },
-          try: () => {
-            throw new Error("boom")
-          },
-        })
-        expect.unreachable("should have thrown")
-      } catch (error) {
-        expectPanic(error, "CATCH_HANDLER_THROW")
-        expect((error as Panic).cause).toBe(catchFailure)
-      }
-    })
-
     it("throws Panic when catch returns a Promise via unsafe cast", () => {
       const unsafeCatch = (() => Promise.resolve("mapped")) as unknown as (error: unknown) => string
 
@@ -264,7 +245,7 @@ describe("retry behavior", () => {
     expect(result).toBe(limit)
   })
 
-  it("keeps the attempt count when try or shouldRetry writes to its context", async () => {
+  it("keeps the attempt count when try or shouldRetry writes, defines, or deletes context fields", async () => {
     const seen: number[] = []
     const writes: boolean[] = []
 
@@ -281,13 +262,18 @@ describe("retry behavior", () => {
         seen.push(ctx.retry.attempt)
         writes.push(
           Reflect.set(ctx.retry, "attempt", 99),
-          Reflect.set(ctx, "signal", new AbortController().signal)
+          Reflect.set(ctx, "signal", new AbortController().signal),
+          Reflect.defineProperty(ctx.retry, "attempt", { configurable: true, value: 99 }),
+          Reflect.defineProperty(ctx, "signal", { configurable: true, value: undefined }),
+          Reflect.deleteProperty(ctx.retry, "attempt"),
+          Reflect.deleteProperty(ctx, "signal")
         )
         throw new Error("fail")
       })
 
     expect(seen).toEqual([1, 2, 3])
-    expect(writes.every((write) => !write)).toBe(true)
+    // Six writes in each of three attempts, and one in shouldRetry after each of the first two.
+    expect(writes).toEqual(Array.from({ length: 20 }, () => false))
     expect(result).toBeInstanceOf(RetryExhaustedError)
   })
 
@@ -333,6 +319,25 @@ describe("retry behavior", () => {
     expect(result).toBeInstanceOf(RetryExhaustedError)
     expect(result.cause).toBe(failure)
     expect(attempts).toBe(1)
+  })
+
+  it.each([
+    [{ backoff: "constant", delayMs: 7, limit: 3 }, [7, 7]],
+    [{ backoff: "linear", delayMs: 10, limit: 4 }, [10, 20, 30]],
+    [{ backoff: "exponential", delayMs: 5, limit: 4 }, [5, 10, 20]],
+    [{ backoff: "exponential", delayMs: 5, limit: 4, maxDelayMs: 12 }, [5, 10, 12]],
+  ] as const)("waits the backoff delay of %o between attempts", async (policy, expected) => {
+    const scheduledDelays = captureScheduledDelays()
+
+    try {
+      await try$.retry(policy).run(() => {
+        throw new Error("boom")
+      })
+
+      expect(scheduledDelays.values).toEqual(expected)
+    } finally {
+      scheduledDelays.restore()
+    }
   })
 
   it("caps exponential backoff delays at maxDelayMs through the public API", async () => {
