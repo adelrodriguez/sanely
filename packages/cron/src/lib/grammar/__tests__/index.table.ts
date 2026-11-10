@@ -1093,4 +1093,71 @@ export const GRAMMAR = [
     strict: false,
     strictError: `use "every minute", or write a number before "minutes"`,
   },
+  // ---- A clause that ends before its words ----
+  {
+    error: 'expected a day set after "every"',
+    lenient: false,
+    phrase: "every and at 9:00",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every"',
+    lenient: false,
+    phrase: "every at 9:00",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every"',
+    lenient: false,
+    phrase: "every and",
+    strict: false,
+  },
+  {
+    error: 'write the list as "monday"',
+    lenient: false,
+    phrase: "every monday and",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every hour on"',
+    lenient: false,
+    phrase: "every hour on",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every hour on"',
+    lenient: false,
+    phrase: "every hour on at 9:00",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every 15 minutes on"',
+    lenient: false,
+    phrase: "every 15 minutes on",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every 15 minutes on"',
+    lenient: false,
+    phrase: "every 15 minutes on and",
+    strict: false,
+  },
+  {
+    error: 'expected a day set after "every 15 minutes between 9:00 and 17:00 on"',
+    lenient: false,
+    phrase: "every 15 minutes between 9:00 and 17:00 on",
+    strict: false,
+  },
+  {
+    error: 'expected a time after "every 15 minutes between 9:00 and"',
+    lenient: false,
+    phrase: "every 15 minutes between 9:00 and",
+    strict: false,
+  },
+  {
+    error: 'expected a day of the month after "on the"',
+    lenient: false,
+    phrase: "on the",
+    strict: false,
+  },
 ] as const satisfies readonly GrammarRow[]
