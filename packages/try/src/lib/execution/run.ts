@@ -129,11 +129,11 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
 export function executeRun<T, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: RunTryFn<T, Ctx>
-): Promise<T | UnhandledException>
+): Promise<Awaited<T> | UnhandledException>
 export function executeRun<T, E, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: AsyncRunInput<T, E, Ctx>
-): Promise<T | E | RunnerError>
+): Promise<Awaited<T> | Awaited<E> | RunnerError>
 export async function executeRun<T, E, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: AsyncRunInput<T, E, Ctx>
