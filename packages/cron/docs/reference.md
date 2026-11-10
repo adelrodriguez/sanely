@@ -55,7 +55,7 @@ safeParse("every 90 minutes") // null
 
 ## `describe(schedule)`
 
-Writes a schedule as its canonical cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule. The result is a `CronPhrase`, so `cron` accepts it.
+Writes a schedule as its canonical cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule in its canonical form, with each list of days in calendar order and without duplicates. The result is a `CronPhrase`, so `cron` accepts it.
 
 ```ts
 describe({ every: "day", at: { hour: 8, minute: 0 }, on: ["friday", "monday", "wednesday"] })
@@ -168,29 +168,30 @@ These phrases are not valid:
 
 `parse` and `safeParse` also accept the **lenient form**: the strict form with small spelling changes. The lenient form never adds words or sentence shapes, and each lenient phrase has the same meaning as exactly one strict phrase.
 
-| Change                | Example                                                                     |
-| --------------------- | --------------------------------------------------------------------------- |
-| Case                  | `Every Monday At 9:30`, `EVERY 15 MINUTES`                                  |
-| Whitespace            | `"  every   15 minutes "`, tabs, and new lines                              |
-| Unit aliases          | `min`, `mins`, `m`, `minute` · `hr`, `hrs`, `h`, `hour`                     |
-| A unit after a number | `every 15m`, `every 2h`                                                     |
-| Day aliases           | `mon`, `tue`, `tues`, `wed`, `thu`, `thurs`, `fri`, `sat`, `sun`, `mondays` |
-| Day groups            | `every weekdays`, `on weekend`                                              |
-| Lists                 | `mon,wed,fri` spacing, and a comma before `and`                             |
-| Times                 | `9:30 PM`, `9:30PM`                                                         |
+| Change                | Example                                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Case                  | `Every Monday At 9:30`, `EVERY 15 MINUTES`                                                                                           |
+| Whitespace            | `"  every   15 minutes "`, tabs, and new lines                                                                                       |
+| Unit aliases          | `min`, `mins`, `m`, `minute` · `hr`, `hrs`, `h`, `hour`                                                                              |
+| A unit after a number | `every 15m`, `every 2h`                                                                                                              |
+| Day aliases           | `mon`, `tue`, `tues`, `wed`, `weds`, `thu`, `thur`, `thurs`, `fri`, `sat`, `sun`, and the plural of each day name, such as `mondays` |
+| Day groups            | `every weekdays`, `on weekend`                                                                                                       |
+| Lists                 | Any spacing around a comma, such as `mon,wed and fri`, and a comma before `and`. The last day still needs `and`                      |
+| Times                 | `9:30 PM`, `9:30PM`                                                                                                                  |
 
 The unit aliases mean the same units as in [`@sanely/duration`](../../duration): `m` is minutes, and `mo` (months) is not an interval unit. `M` is not a unit in any case, because other notations use it for months, so `parse("every 5 M")` throws.
 
 ## `InvalidScheduleError`
 
-The error that `cron`, `parse`, and `describe` throw. It has these properties:
+The error that `cron`, `parse`, and `describe` throw. It extends `Error` and has these properties:
 
-| Property | Type                            | Value                                                                                                |
-| -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `name`   | `"InvalidScheduleError"`        | The error name                                                                                       |
-| `value`  | `unknown`                       | The input, without a change                                                                          |
-| `reason` | `string`                        | Why the input is not valid. For a cron phrase, the same text as the type error                       |
-| `path`   | `readonly (string \| number)[]` | The keys to the value that failed in a schedule object, such as `["at", "hour"]`. Empty for a phrase |
+| Property  | Type                            | Value                                                                                                                                                            |
+| --------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`    | `"InvalidScheduleError"`        | The error name                                                                                                                                                   |
+| `message` | `string`                        | `Invalid schedule: <reason>. Received: <value>`, or `Invalid schedule at "<path>": <reason>. Received: <value>` when `path` is not empty, such as `at "at.hour"` |
+| `value`   | `unknown`                       | The input, without a change                                                                                                                                      |
+| `reason`  | `string`                        | Why the input is not valid. For a cron phrase, the same text as the type error                                                                                   |
+| `path`    | `readonly (string \| number)[]` | The keys to the value that failed in a schedule object, such as `["at", "hour"]`. Empty for a phrase, and for an input that fails as a whole                     |
 
 ```ts
 try {
