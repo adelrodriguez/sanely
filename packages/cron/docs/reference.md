@@ -55,7 +55,7 @@ safeParse("every 90 minutes") // null
 
 ## `describe(schedule)`
 
-Writes a schedule as its canonical cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule in its canonical form, with each list of days in calendar order and without duplicates. The result is a `CronPhrase`, so `cron` accepts it.
+Writes a schedule as a cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule in its canonical form, with each list of days in calendar order and without duplicates. The result is a `CronPhrase`, so `cron` accepts it.
 
 ```ts
 describe({ every: "day", at: { hour: 8, minute: 0 }, on: ["friday", "monday", "wednesday"] })

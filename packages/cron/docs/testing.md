@@ -8,7 +8,7 @@ Public export checks and type assertions live in `src/__tests__/`.
 The workspace `check` command checks type assertions. Vitest does not run them.
 The architecture suite checks test ownership and coverage. Import direction is checked by lint.
 
-Property tests check exact run times, canonical phrase round trips, and JSON schedule round trips.
+Property tests check exact run times, round trips from a schedule to its cron phrase and back to its canonical form, and JSON schedule round trips.
 Keep the grammar table shared between runtime tests and public type assertions.
 A rejected row also checks that the type error and the runtime error give the same reason, so give each new error path a row.
 

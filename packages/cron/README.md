@@ -11,7 +11,7 @@
 - **A cron phrase in your code**, such as `"every 15 minutes on weekdays"`. The type checker checks the phrase and gives the reason for an error.
 - **A `Schedule` object in your code**, such as `{ every: "day", at: { hour: 17, minute: 30 } }`. Ordinary types check it.
 - **Input at runtime**: a cron phrase in any case and spelling, or a schedule object from JSON. `parse` checks it and throws an error with the reason.
-- **A phrase for display**: `describe` writes a schedule back as its canonical cron phrase.
+- **A phrase for display**: `describe` writes a schedule back as a cron phrase in the strict form.
 
 Each schedule maps to exactly one cron expression, and the package rejects every schedule that one cron expression cannot express exactly. It has no runtime dependencies and no side effects. It is ESM only, for Node 20 and later.
 
