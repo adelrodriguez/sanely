@@ -29,12 +29,13 @@ type CreateArgs<Ctor extends AnyFaultCtor> =
 type RegistryTag<M extends Record<string, AnyFaultCtor>> = `${Extract<keyof M, string | number>}`
 
 // The wire format of one registered fault. The serializer omits empty fields, so a fault
-// without fields has none on the wire, and one whose fields are all optional may have none.
+// without fields has none on the wire, and one whose fields can be empty, such as optional
+// fields or a dictionary, may have none.
 type MemberWire<Tag extends string, Fields> = Omit<SerializableFault, "_tag" | "fields"> & {
   _tag: Tag
 } & (keyof Fields extends never
     ? { fields?: undefined }
-    : Partial<Fields> extends Fields
+    : Record<never, never> extends Fields
       ? { fields?: Fields }
       : { fields: Fields })
 

@@ -152,6 +152,21 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf(AppFault.toSerializable(caught)).toEqualTypeOf<SerializableFault>()
 }
 
+// Marks wire fields optional when a member's fields can be empty, because the serializer omits them.
+{
+  class LabelsError extends Tagged("LabelsError")<Record<string, string>>() {}
+  class OptionalError extends Tagged("OptionalError")<{ hint?: string }>() {}
+  const Open = registry({ LabelsError, OptionalError })
+  const member: typeof Open.Type = Open.create("LabelsError", {})
+  const wire = Open.toSerializable(member)
+
+  if (wire._tag === "LabelsError") {
+    expectTypeOf(wire.fields).toEqualTypeOf<Readonly<Record<string, string>> | undefined>()
+  } else {
+    expectTypeOf(wire.fields).toEqualTypeOf<Readonly<{ hint?: string }> | undefined>()
+  }
+}
+
 // Types registry guards, tags, and serialization contracts.
 {
   const value: unknown = AppFault.create("TimeoutError")
