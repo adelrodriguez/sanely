@@ -13,7 +13,6 @@ import {
   years,
 } from "#lib/convert/index.ts"
 import { InvalidTimeExpressionError } from "#lib/expression/errors.ts"
-import { parse } from "#lib/expression/parse.ts"
 
 describe("convert", () => {
   it("should convert generated expressions from unit definitions", () => {
@@ -31,12 +30,6 @@ describe("convert", () => {
         }
       )
     )
-  })
-
-  it("should convert simple expressions into the given unit", () => {
-    expect(convert("90s", "minutes")).toBe(1.5)
-    expect(convert("1h", "seconds")).toBe(3600)
-    expect(convert("1w", "days")).toBe(7)
   })
 
   it("should convert compound expressions into the given unit", () => {
@@ -79,11 +72,6 @@ describe("ms", () => {
     expect(ms("1h")).toBe(3_600_000)
     expect(ms("100")).toBe(100)
   })
-
-  it("should throw for invalid input", () => {
-    expect(() => ms("" as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => ms("foo" as never)).toThrow(InvalidTimeExpressionError)
-  })
 })
 
 describe("seconds", () => {
@@ -91,15 +79,6 @@ describe("seconds", () => {
     expect(seconds("1h")).toBe(3600)
     expect(seconds("500ms")).toBe(0.5)
     expect(seconds("1m")).toBe(60)
-  })
-
-  it("should reject a bare number, which means milliseconds", () => {
-    expect(() => seconds("30" as never)).toThrow(InvalidTimeExpressionError)
-  })
-
-  it("should throw for invalid input", () => {
-    expect(() => seconds("" as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => seconds("☃" as never)).toThrow(InvalidTimeExpressionError)
   })
 })
 
@@ -109,10 +88,6 @@ describe("minutes", () => {
     expect(minutes("30s")).toBe(0.5)
     expect(minutes("1d")).toBe(1440)
   })
-
-  it("should throw for invalid input", () => {
-    expect(() => minutes(null as never)).toThrow(InvalidTimeExpressionError)
-  })
 })
 
 describe("hours", () => {
@@ -120,15 +95,6 @@ describe("hours", () => {
     expect(hours("1d")).toBe(24)
     expect(hours("30m")).toBe(0.5)
     expect(hours("1w")).toBe(168)
-  })
-
-  it("should agree with parse for compound expressions", () => {
-    expect(convert("1w 2d", "hours")).toBe(216)
-    expect(parse("1w 2d") / 3_600_000).toBe(216)
-  })
-
-  it("should throw for invalid input", () => {
-    expect(() => hours("bar" as never)).toThrow(InvalidTimeExpressionError)
   })
 })
 

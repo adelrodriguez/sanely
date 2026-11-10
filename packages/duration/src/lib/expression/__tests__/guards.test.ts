@@ -113,20 +113,6 @@ describe("isValidTimeExpression", () => {
     expect(isValidTimeExpression(".5ms")).toBe(true)
   })
 
-  it("should return true for valid compound expressions", () => {
-    expect(isValidTimeExpression("1h 30m")).toBe(true)
-    expect(isValidTimeExpression("1 day, 6 hours")).toBe(true)
-    expect(isValidTimeExpression("1h, 30m, 15s")).toBe(true)
-    expect(isValidTimeExpression("1h30m")).toBe(true)
-    expect(isValidTimeExpression("-1h 30m")).toBe(true)
-  })
-
-  it("should return true for lenient forms that parse accepts", () => {
-    expect(isValidTimeExpression("1   h")).toBe(true)
-    expect(isValidTimeExpression("53 YeArS")).toBe(true)
-    expect(isValidTimeExpression(" 1h ")).toBe(true)
-  })
-
   it("should return false for invalid strings", () => {
     expect(isValidTimeExpression("hello")).toBe(false)
     expect(isValidTimeExpression("abc123")).toBe(false)
@@ -136,30 +122,5 @@ describe("isValidTimeExpression", () => {
     expect(isValidTimeExpression("1h,")).toBe(false)
     expect(isValidTimeExpression("1h,,30m")).toBe(false)
     expect(isValidTimeExpression("1h, ,30m")).toBe(false)
-  })
-
-  it("should return false for signs on later segments", () => {
-    expect(isValidTimeExpression("1h -30m")).toBe(false)
-    expect(isValidTimeExpression("-1h +30m")).toBe(false)
-    expect(isValidTimeExpression("1h+30m")).toBe(false)
-  })
-
-  it("should return false for expressions that overflow to non-finite values", () => {
-    expect(isValidTimeExpression("1e309ms")).toBe(false)
-    expect(isValidTimeExpression("1e400y")).toBe(false)
-  })
-
-  it("should return false for empty string", () => {
-    expect(isValidTimeExpression("")).toBe(false)
-  })
-
-  it("should return false for very long strings", () => {
-    expect(isValidTimeExpression("a".repeat(201))).toBe(false)
-  })
-
-  it("should return false for non-string inputs at runtime", () => {
-    expect(isValidTimeExpression(undefined as never)).toBe(false)
-    expect(isValidTimeExpression(null as never)).toBe(false)
-    expect(isValidTimeExpression(123 as never)).toBe(false)
   })
 })

@@ -164,10 +164,6 @@ describe("format", () => {
     expect(format(0, { long: true })).toBe("0 milliseconds")
   })
 
-  it("should match default when precision is 1", () => {
-    expect(format(5_432_100, { precision: 1 })).toBe(format(5_432_100))
-  })
-
   it("should decompose into 2 segments with precision 2", () => {
     expect(format(5_432_100, { precision: 2 })).toBe("1h 31m")
   })

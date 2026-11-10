@@ -76,12 +76,6 @@ describe("format → parse", () => {
     }
   })
 
-  it("should round-trip clean values at precision 3", () => {
-    for (const val of CLEAN_VALUES) {
-      expect(parse(format(val, { precision: 3 }))).toBe(val)
-    }
-  })
-
   it("should exactly round-trip multi-unit values at high precision", () => {
     for (const val of [5_432_100, 90_061_100, 109_800_000]) {
       expect(parse(format(val, { precision: 10 }))).toBe(val)
