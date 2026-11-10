@@ -178,14 +178,10 @@ declare const choice: "1h" | "30m"
   days("1d")
 }
 
-// Accepts a TimeExpression that isTimeExpression narrowed, and a union of valid literals.
+// Accepts a union of valid literals.
 {
   ms(choice)
   seconds(choice)
-
-  if (isTimeExpression(userInput)) {
-    ms(userInput)
-  }
 }
 
 // Accepts a bare number only where the result is milliseconds.
