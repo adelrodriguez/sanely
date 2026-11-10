@@ -2,7 +2,11 @@ import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 import type { SerializableFault } from "#lib/wire.ts"
-import { RegistryMergeConflictError, RegistryTagMismatchError } from "#lib/errors.ts"
+import {
+  InvalidPayloadError,
+  RegistryMergeConflictError,
+  RegistryTagMismatchError,
+} from "#lib/errors.ts"
 import { Fault, toSerializable } from "#lib/fault.ts"
 import { merge, registry } from "#lib/registry.ts"
 import { Tagged } from "#lib/tagged.ts"
@@ -170,7 +174,7 @@ describe("registry", () => {
       _tag: "TimeoutError",
       name: "TimeoutError",
       withCause: "reserved-value",
-    } as unknown as SerializableFault)
+    })
 
     const value = restored as unknown as Record<string, unknown>
 
@@ -199,7 +203,7 @@ describe("registry", () => {
         __fault: false,
         _tag: "ValidatedError",
         name: "ValidatedError",
-      } as unknown as SerializableFault)
+      })
     ).toThrow("Invalid fault payload")
 
     expect(() =>
@@ -208,7 +212,7 @@ describe("registry", () => {
         _tag: "ValidatedError",
         meta: "not-an-object",
         name: "ValidatedError",
-      } as unknown as SerializableFault)
+      })
     ).toThrow("meta must be an object")
 
     expect(constructorCalls).toBe(0)
@@ -412,7 +416,7 @@ describe("registry", () => {
     expect(restored.message).toBe("other")
   })
 
-  it("caps deep nested registry cause chains during deserialization", () => {
+  it("rejects a registry cause chain deeper than the depth limit", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     let current: SerializableFault = {
@@ -431,20 +435,11 @@ describe("registry", () => {
       }
     }
 
-    const restored = Faults.fromSerializable(current)
-    expect(restored).toBeInstanceOf(NotFoundError)
-
-    let node = restored
-    let depth = 0
-    while (node.cause instanceof Fault) {
-      depth += 1
-      node = node.cause
-    }
-
-    expect(depth).toBe(100)
-    expect(node).toBeInstanceOf(NotFoundError)
-    expect((node as NotFoundError).id).toBe("49")
-    expect(node.cause).toBeUndefined()
+    expect(() => Faults.fromSerializable(current)).toThrow(
+      new InvalidPayloadError({
+        reason: "cause at depth 101: exceeds the limit of 100 nested causes",
+      })
+    )
   })
 
   it("throws when constructor does not produce a Fault instance", () => {

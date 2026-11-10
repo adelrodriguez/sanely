@@ -117,7 +117,7 @@ Membership uses the class, not only the tag. A fault from another class with the
 | `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.            |
 | `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                      |
 | `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                     |
-| `fromSerializable(data)`                   | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
+| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
 
 ```ts
 const AppFault = Fault.registry({ NotFoundError, TimeoutError })
@@ -146,8 +146,8 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 | `isFault(value)`             | Returns `true` when `value` is an instance of `Fault`. It uses `instanceof`, so it does not work across realms.                                                                                     |
 | `findCause(value, Class)`    | Returns the first node of the chain, from the head and including it, that is an instance of `Class`. Returns `undefined` when `value` is not a fault.                                               |
 | `toSerializable(value)`      | Returns the wire format of any value. A fault serializes itself. A native `Error` gets the tag `UnknownError`, and any other value gets the tag `UnknownThrown`. The original value is the `cause`. |
-| `fromSerializable(data)`     | Builds a generic `Fault` from the wire format, without its subclass. Throws `InvalidPayloadError` for a malformed value.                                                                            |
-| `isSerializableFault(value)` | Returns `true` when the envelope and every cause are valid, so `fromSerializable` accepts `value`. It does not check the values of fields and `meta` deeply.                                        |
+| `fromSerializable(value)`    | Builds a generic `Fault` from the wire format, without its subclass. Accepts any value, and throws `InvalidPayloadError` when the envelope or any cause is malformed.                               |
+| `isSerializableFault(value)` | Returns `true` when `fromSerializable` accepts `value`. Both use the same check. It does not check the values of fields and `meta` deeply.                                                          |
 
 ## Wire format
 
@@ -172,7 +172,7 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 `SerializableValue` is a JSON-safe value: a string, a number, a boolean, `null`, `undefined`, an array of these values, or an object of these values. The type checks `meta` and the fields when you create a fault. The package does not check them deeply at run time. A cause that is not JSON-safe becomes a JSON-safe value during serialization.
 
-Serialization, deserialization, and chain traversal stop after 100 nested causes.
+Serialization and chain traversal stop after 100 nested causes. Deserialization throws `InvalidPayloadError` for a deeper chain.
 
 ## Reserved keys
 

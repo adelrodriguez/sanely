@@ -83,6 +83,7 @@ export { toSerializable } from "#lib/fault.ts"
 /**
  * Deserializes a generic fault from the wire format.
  *
+ * Accepts any value and throws `InvalidPayloadError` when the envelope or any cause is malformed.
  * Use `registry.fromSerializable` when you want subclass reconstruction for registered tags.
  */
 export { fromSerializable } from "#lib/reviver.ts"
@@ -90,8 +91,7 @@ export { fromSerializable } from "#lib/reviver.ts"
 /**
  * Type guard for wire payloads.
  *
- * Returns `true` only when the value's envelope fields and cause chain match `SerializableFault`,
- * so `fromSerializable` will accept it. Payload and `meta` values are not deep-validated. Use it to
- * check data received over RPC or HTTP.
+ * Returns `true` exactly when `fromSerializable` accepts the value, because both use the same
+ * check. Payload and `meta` values are not deep-validated.
  */
 export { isSerializableFault } from "#lib/reviver.ts"

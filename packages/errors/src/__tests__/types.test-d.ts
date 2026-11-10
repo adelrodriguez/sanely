@@ -131,6 +131,11 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   if (isSerializableFault(value)) {
     expectTypeOf(value).toEqualTypeOf<SerializableFault>()
   }
+  // Received data parses without a cast.
+  expectTypeOf(fromSerializable(value)).toEqualTypeOf<Fault>()
+  expectTypeOf(AppFault.fromSerializable(value)).toEqualTypeOf<
+    NotFoundError | TimeoutError | Fault
+  >()
   expectTypeOf(findCause(value, TypeError)).toEqualTypeOf<TypeError | undefined>()
 
   expectTypeOf(tags).toEqualTypeOf<ReadonlyArray<"NotFoundError" | "TimeoutError">>()

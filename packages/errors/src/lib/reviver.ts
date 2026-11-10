@@ -27,89 +27,80 @@ class DeserializedFault extends Fault {
   }
 }
 
-// The envelope rule fromSerializable enforces at every fault it revives:
-// returns why a value is not a revivable envelope, or undefined when it is one.
-function findPayloadIssue(value: unknown): string | undefined {
-  if (
-    typeof value !== "object"
-    || value === null
-    || !("__fault" in value)
-    || value.__fault !== true
-  ) {
-    return "expected __fault: true"
-  }
-
-  if (!("_tag" in value) || typeof value._tag !== "string") {
-    return "_tag must be a string"
-  }
-
-  if (
-    "meta" in value
-    && value.meta !== undefined
-    && (typeof value.meta !== "object" || value.meta === null)
-  ) {
-    return "meta must be an object"
-  }
-
-  return undefined
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string"
 }
 
-// Mirrors the serializer's depth budget (toCause and serializeFault): it never
-// writes a cause past MAX_CAUSE_DEPTH, so one found there is rejected rather
-// than left unchecked.
-function isSerializableCause(cause: unknown, depth: number): boolean {
-  if (typeof cause !== "object" || cause === null || !("kind" in cause)) return false
-
-  if (cause.kind === "thrown") return true
-
-  if (cause.kind === "fault") {
-    return "value" in cause && isFaultEnvelope(cause.value, depth + 1)
-  }
-
-  if (cause.kind === "error") {
-    return (
-      "name" in cause
-      && typeof cause.name === "string"
-      && "message" in cause
-      && typeof cause.message === "string"
-      && isOptionalString(Reflect.get(cause, "stack"))
-      && (!("cause" in cause)
-        || cause.cause === undefined
-        || (depth + 1 < MAX_CAUSE_DEPTH && isSerializableCause(cause.cause, depth + 1)))
-    )
-  }
-
-  return false
+// Prefixes an issue below the head with the number of cause edges above it.
+function atDepth(depth: number, issue: string): string {
+  return depth === 0 ? issue : `cause at depth ${depth}: ${issue}`
 }
 
-function isFaultEnvelope(value: unknown, depth: number): value is SerializableFault {
-  return (
-    typeof value === "object"
-    && value !== null
-    && findPayloadIssue(value) === undefined
-    && "name" in value
-    && typeof value.name === "string"
-    && isOptionalString(Reflect.get(value, "message"))
-    && isOptionalString(Reflect.get(value, "description"))
-    && isOptionalString(Reflect.get(value, "stack"))
-    && (!("cause" in value)
-      || value.cause === undefined
-      || (depth < MAX_CAUSE_DEPTH && isSerializableCause(value.cause, depth)))
-  )
+// Returns why a value is not a SerializableFault, or undefined when it is one.
+// `depth` counts the cause edges between the head and this envelope.
+function findFaultIssue(value: unknown, depth: number): string | undefined {
+  if (!isRecord(value) || value.__fault !== true) return atDepth(depth, "expected __fault: true")
+  if (typeof value._tag !== "string") return atDepth(depth, "_tag must be a string")
+  if (typeof value.name !== "string") return atDepth(depth, "name must be a string")
+  if (!isOptionalString(value.message)) return atDepth(depth, "message must be a string")
+  if (!isOptionalString(value.description)) return atDepth(depth, "description must be a string")
+  if (!isOptionalString(value.stack)) return atDepth(depth, "stack must be a string")
+  if (value.meta !== undefined && (!isRecord(value.meta) || Array.isArray(value.meta))) {
+    return atDepth(depth, "meta must be an object")
+  }
+  if (value.cause === undefined) return undefined
+
+  return findCauseIssue(value.cause, depth + 1)
 }
 
-// Stricter than fromSerializable, which tolerates a missing name or malformed
-// causes: true only when the value really is a SerializableFault.
+// Each cause kind's check. The Record type fails the type check when
+// SerializableCause gains a kind that has no check here.
+type CauseIssueFinder = (cause: Record<string, unknown>, depth: number) => string | undefined
+
+const causeIssueFinders: Record<SerializableCause["kind"], CauseIssueFinder> = {
+  error(cause, depth): string | undefined {
+    if (typeof cause.name !== "string") return atDepth(depth, "name must be a string")
+    if (typeof cause.message !== "string") return atDepth(depth, "message must be a string")
+    if (!isOptionalString(cause.stack)) return atDepth(depth, "stack must be a string")
+    if (cause.cause === undefined) return undefined
+
+    return findCauseIssue(cause.cause, depth + 1)
+  },
+  fault(cause, depth) {
+    return findFaultIssue(cause.value, depth)
+  },
+  thrown(): string | undefined {
+    return undefined
+  },
+}
+
+function isCauseKind(kind: unknown): kind is SerializableCause["kind"] {
+  return typeof kind === "string" && Object.hasOwn(causeIssueFinders, kind)
+}
+
+// `depth` counts the cause edges from the head to this cause, starting at 1.
+// The serializer never writes more than MAX_CAUSE_DEPTH of them.
+function findCauseIssue(cause: unknown, depth: number): string | undefined {
+  if (depth > MAX_CAUSE_DEPTH) {
+    return atDepth(depth, `exceeds the limit of ${MAX_CAUSE_DEPTH} nested causes`)
+  }
+  if (!isRecord(cause) || !isCauseKind(cause.kind)) {
+    return atDepth(depth, "kind must be fault, error, or thrown")
+  }
+
+  return causeIssueFinders[cause.kind](cause, depth)
+}
+
 export function isSerializableFault(value: unknown): value is SerializableFault {
-  return isFaultEnvelope(value, 0)
+  return findFaultIssue(value, 0) === undefined
 }
 
 function assertSerializableFault(value: unknown): asserts value is SerializableFault {
-  const issue = findPayloadIssue(value)
+  const issue = findFaultIssue(value, 0)
 
   if (issue !== undefined) {
     throw new InvalidPayloadError({ reason: issue })
@@ -166,62 +157,34 @@ function restorePayloadFields(fault: Fault, payload: Record<string, unknown>): v
   }
 }
 
-function deserializeCause(
-  cause: SerializableCause,
-  resolveFault: FaultResolver | undefined,
-  depth: number
-): unknown {
-  if (cause.kind === "fault") {
-    // Invariant: allow at most MAX_CAUSE_DEPTH nested fault edges.
-    if (depth >= MAX_CAUSE_DEPTH) return undefined
-    return deserializeFault(cause.value, resolveFault, depth + 1)
-  }
-
-  if (cause.kind === "error") {
-    const error = createDeserializedError(cause.name, cause.message, cause.stack)
-
-    // Same budget as toCause (fault.ts): native errors spend fault-edge depth.
-    if (cause.cause && depth + 1 < MAX_CAUSE_DEPTH) {
-      error.cause = deserializeCause(cause.cause, resolveFault, depth + 1)
+function deserializeCause(cause: SerializableCause, resolveFault?: FaultResolver): unknown {
+  switch (cause.kind) {
+    case "fault":
+      return reviveFault(cause.value, resolveFault)
+    case "error": {
+      const error = createDeserializedError(cause.name, cause.message, cause.stack)
+      if (cause.cause !== undefined) {
+        error.cause = deserializeCause(cause.cause, resolveFault)
+      }
+      return error
     }
-
-    return error
+    case "thrown":
+      return cause.value
   }
-
-  return cause.value
 }
 
 function restoreDeserializedFields(fault: Fault, json: SerializableFault): void {
   const target = fault
+  target.name = json.name
 
-  if (typeof json.name === "string") {
-    target.name = json.name
-  }
-
-  if (typeof json.message === "string") {
-    target.message = json.message
-  }
-
-  if (typeof json.description === "string") {
-    target.description = json.description
-  }
-
-  if (json.meta !== undefined) {
-    target.meta = json.meta
-  }
-
-  if (typeof json.stack === "string") {
-    target.stack = json.stack
-  }
+  if (json.message !== undefined) target.message = json.message
+  if (json.description !== undefined) target.description = json.description
+  if (json.meta !== undefined) target.meta = json.meta
+  if (json.stack !== undefined) target.stack = json.stack
 }
 
-export function fromSerializable(json: SerializableFault): Fault {
-  return deserializeFault(json)
-}
-
-export function deserializeFault(json: unknown, resolveFault?: FaultResolver, depth = 0): Fault {
-  assertSerializableFault(json)
-
+// Revives an envelope that assertSerializableFault already checked, causes included.
+function reviveFault(json: SerializableFault, resolveFault?: FaultResolver): Fault {
   const payload = preparePayload(extractPayloadFields(json))
   const resolvedFault = resolveFault?.(json._tag, payload.constructorPayload)
   const fault = resolvedFault ?? new DeserializedFault(json._tag)
@@ -234,11 +197,20 @@ export function deserializeFault(json: unknown, resolveFault?: FaultResolver, de
   restorePayloadFields(fault, payload.collisionPayload)
   restoreDeserializedFields(fault, json)
 
-  if (json.cause) {
+  if (json.cause !== undefined) {
     // Intentionally assign cause directly instead of withCause().
     // Serialized stacks already contain any prior "Caused by:" enhancement.
-    fault.cause = deserializeCause(json.cause, resolveFault, depth)
+    fault.cause = deserializeCause(json.cause, resolveFault)
   }
 
   return fault
+}
+
+export function deserializeFault(value: unknown, resolveFault?: FaultResolver): Fault {
+  assertSerializableFault(value)
+  return reviveFault(value, resolveFault)
+}
+
+export function fromSerializable(value: unknown): Fault {
+  return deserializeFault(value)
 }

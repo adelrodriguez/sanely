@@ -79,7 +79,7 @@ export type FaultRegistry<M extends Record<string, AnyFaultCtor>> = {
     fallback: (err: unknown) => RF
   ): HandlerResult<H> | RF
   toSerializable(err: unknown): SerializableFault
-  fromSerializable(json: SerializableFault): InstanceType<M[keyof M]> | Fault
+  fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault
 }
 
 // fromSerializable revives a registered fault with `new Ctor(payloadFields)`,
@@ -196,8 +196,8 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
 
     toSerializable,
 
-    fromSerializable(json: SerializableFault): InstanceType<M[keyof M]> | Fault {
-      return deserializeFault(json, (tag, payload) => {
+    fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault {
+      return deserializeFault(value, (tag, payload) => {
         const ctor = tagToCtor.get(tag)
         return ctor ? constructFault(ctor, [payload]) : undefined
       })
