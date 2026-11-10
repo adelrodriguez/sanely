@@ -37,11 +37,14 @@ Like `run`, `all` resolves with its failures instead of rejecting. When one task
 class PageUnavailableError extends Error {}
 
 const page = await try$.all(tasks, {
-  catch: (error, { failedTask, partial }) => new PageUnavailableError(`${failedTask} failed`),
+  catch: (error, { failedTask, result }) =>
+    new PageUnavailableError(
+      `${failedTask} failed for ${result("user")?.name ?? "an unknown user"}`
+    ),
 })
 ```
 
-`catch` receives the error as the task threw it. `partial` holds the results of the tasks that succeeded before the failure.
+`catch` receives the error as the task threw it. `result(task)` returns the result of a task that succeeded before the failure, or `undefined`.
 
 ## Keep every outcome with `allSettled`
 

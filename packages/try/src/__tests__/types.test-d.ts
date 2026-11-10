@@ -391,8 +391,8 @@ class InternalError extends Error {
         const catchCtx = ctx
         // @ts-expect-error -- catch ctx is read-only
         catchCtx.failedTask = undefined
-        // @ts-expect-error -- catch ctx partial results are read-only
-        catchCtx.partial.a = 1
+        // @ts-expect-error -- catch ctx results are read-only
+        catchCtx.result = () => 1
         return 0
       },
     }
@@ -709,7 +709,7 @@ class InternalError extends Error {
     {
       catch: (_error, ctx) => {
         const failedTask = ctx.failedTask
-        const partialA = ctx.partial.a
+        const partialA = ctx.result("a")
         const signal = ctx.signal
 
         expectTypeOf(failedTask).toEqualTypeOf<"a" | "b" | undefined>()
@@ -740,8 +740,8 @@ class InternalError extends Error {
     {
       catch: (_error, ctx) => {
         const failedTask = ctx.failedTask
-        const partialUser = ctx.partial["load-user"]
-        const partialProfile = ctx.partial["load-profile"]
+        const partialUser = ctx.result("load-user")
+        const partialProfile = ctx.result("load-profile")
 
         expectTypeOf(failedTask).toEqualTypeOf<"load-user" | "load-profile" | undefined>()
         expectTypeOf(partialUser).toEqualTypeOf<{ id: "user_1" } | undefined>()
@@ -858,7 +858,7 @@ class InternalError extends Error {
     {
       catch: (_error, ctx) => {
         expectTypeOf(ctx.failedTask).toEqualTypeOf<"a" | "b" | undefined>()
-        expectTypeOf(ctx.partial.a).toEqualTypeOf<1 | undefined>()
+        expectTypeOf(ctx.result("a")).toEqualTypeOf<1 | undefined>()
         expectTypeOf(ctx.signal).toEqualTypeOf<AbortSignal>()
 
         return "fallback" as const
@@ -867,6 +867,38 @@ class InternalError extends Error {
   )
 
   expectTypeOf(result).toEqualTypeOf<Promise<"done" | "fallback" | TimeoutError>>()
+}
+
+// Keeps task result types when catch reads results and a task returns a value read through this.
+{
+  const allResult = try$.all(
+    {
+      a() {
+        return 1
+      },
+      async b() {
+        return (await this.$result.a) + 1
+      },
+    },
+    { catch: (_error, ctx) => ({ a: ctx.result("a") }) }
+  )
+  const flowResult = try$.flow(
+    {
+      a() {
+        return 1
+      },
+      async b() {
+        await this.$result.a
+        return this.$exit("done" as const)
+      },
+    },
+    { catch: (_error, ctx) => ({ a: ctx.result("a") }) }
+  )
+
+  expectTypeOf(allResult).toEqualTypeOf<
+    Promise<{ a: number; b: number } | { a: number | undefined }>
+  >()
+  expectTypeOf(flowResult).toEqualTypeOf<Promise<"done" | { a: number | undefined }>>()
 }
 
 // Infers only UnhandledException from flow() when no task calls $exit().
