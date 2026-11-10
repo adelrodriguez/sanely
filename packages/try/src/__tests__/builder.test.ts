@@ -6,7 +6,7 @@ import {
   UnhandledException,
 } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic } from "./test-utils"
+import { expectPanic, sleep } from "./test-utils"
 
 function succeedOnSecondAttempt(ctx: { retry: { attempt: number } }) {
   if (ctx.retry.attempt < 2) {
@@ -14,6 +14,11 @@ function succeedOnSecondAttempt(ctx: { retry: { attempt: number } }) {
   }
 
   return ctx.retry.attempt
+}
+
+async function finishAfter200ms() {
+  await sleep(200)
+  return "done"
 }
 
 function never<T>(): Promise<T> {
@@ -165,6 +170,15 @@ describe("builder chaining", () => {
     expect(rooted).toBeInstanceOf(UnhandledException)
     expect(rootAttempts).toBe(1)
     expect(events).toEqual(["base", "base", "derived", "base", "base"])
+  })
+
+  it("keeps the tighter deadline when timeout() is chained twice", async () => {
+    expect(await try$.timeout(10).timeout(60_000).run(finishAfter200ms)).toBeInstanceOf(
+      TimeoutError
+    )
+    expect(await try$.timeout(60_000).timeout(10).run(finishAfter200ms)).toBeInstanceOf(
+      TimeoutError
+    )
   })
 
   it("throws Panic when wrapped runSync returns a Promise", () => {

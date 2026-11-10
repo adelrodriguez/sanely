@@ -82,9 +82,10 @@ export class RunBuilder<
   protected buildTimeoutConfig(ms: number): BuilderConfig {
     assertValidTimeout(ms)
 
+    // Deadlines combine the way signals do: each one can only make the call stop sooner.
     return {
       ...this.config,
-      timeout: ms,
+      timeout: Math.min(this.config.timeout ?? ms, ms),
     }
   }
 
@@ -117,12 +118,13 @@ export class RunBuilder<
   }
 
   /**
-   * Applies one total deadline to the next terminal call. For `run`, the deadline spans attempts,
-   * delays, and catch handling, and surfaces typed as {@link TimeoutError}. For orchestration
-   * (`all`/`allSettled`/`flow`), it is a whole-graph deadline: the task signal aborts when it fires
-   * and the orchestration rejects with {@link TimeoutError} (cancellation still wins when both
-   * fire). The deadline is cooperative — orchestration waits for in-flight tasks to settle before
-   * rejecting, so tasks must observe `$signal` for it to bound wall-clock time.
+   * Applies one total deadline to the next terminal call. When the chain already has a deadline,
+   * the tighter one applies. For `run`, the deadline spans attempts, delays, and catch handling,
+   * and surfaces typed as {@link TimeoutError}. For orchestration (`all`/`allSettled`/`flow`), it is
+   * a whole-graph deadline: the task signal aborts when it fires and the orchestration rejects with
+   * {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative —
+   * orchestration waits for in-flight tasks to settle before rejecting, so tasks must observe
+   * `$signal` for it to bound wall-clock time.
    */
   timeout(
     ms: number

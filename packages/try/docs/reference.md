@@ -130,7 +130,7 @@ try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
 timeout(ms: number)
 ```
 
-Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`.
+Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. When the chain already has a deadline, the tighter deadline applies.
 
 ### `signal(abortSignal)`
 
