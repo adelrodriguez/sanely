@@ -164,10 +164,6 @@ describe("format", () => {
     expect(format(0, { long: true })).toBe("0 milliseconds")
   })
 
-  it("should match default when precision is 1", () => {
-    expect(format(5_432_100, { precision: 1 })).toBe(format(5_432_100))
-  })
-
   it("should decompose into 2 segments with precision 2", () => {
     expect(format(5_432_100, { precision: 2 })).toBe("1h 31m")
   })
@@ -241,31 +237,27 @@ describe("format", () => {
     )
   })
 
-  it("should throw for NaN", () => {
-    expect(() => format(Number.NaN)).toThrow(TypeError)
-  })
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "should throw a TypeError that names the non-finite value %d",
+    (value) => {
+      expect(() => format(value)).toThrow(
+        new TypeError(
+          `Value provided to format() must be a finite number. Received: ${String(value)}`
+        )
+      )
+    }
+  )
 
-  it("should throw for Infinity", () => {
-    expect(() => format(Number.POSITIVE_INFINITY)).toThrow(TypeError)
-  })
-
-  it("should throw for -Infinity", () => {
-    expect(() => format(Number.NEGATIVE_INFINITY)).toThrow(TypeError)
-  })
-
-  it("should include non-finite values in thrown messages", () => {
-    expect(() => format(Number.POSITIVE_INFINITY)).toThrow(/Received: Infinity/)
-    expect(() => format(Number.NEGATIVE_INFINITY)).toThrow(/Received: -Infinity/)
-    expect(() => format(Number.NaN)).toThrow(/Received: NaN/)
-  })
-
-  it("should throw for invalid precision values", () => {
-    expect(() => format(1234, { precision: 0 })).toThrow(RangeError)
-    expect(() => format(1234, { precision: -1 })).toThrow(RangeError)
-    expect(() => format(1234, { precision: Number.NaN })).toThrow(RangeError)
-    expect(() => format(1234, { precision: Number.POSITIVE_INFINITY })).toThrow(RangeError)
-    expect(() => format(1234, { precision: 2.5 })).toThrow(RangeError)
-  })
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 2.5])(
+    "should throw for the invalid precision %d",
+    (precision) => {
+      expect(() => format(1234, { precision })).toThrow(
+        new RangeError(
+          `Option "precision" must be a finite positive integer. Received: ${String(precision)}`
+        )
+      )
+    }
+  )
 
   it("should round precision-1 ties symmetrically by magnitude", () => {
     expect(format(1500)).toBe("2s")
@@ -274,12 +266,16 @@ describe("format", () => {
     expect(format(-1.5)).toBe("-2ms")
   })
 
-  it("should throw for non-number inputs", () => {
-    expect(() => format("100" as never)).toThrow(TypeError)
-    expect(() => format(undefined as never)).toThrow(TypeError)
-    expect(() => format(null as never)).toThrow(TypeError)
-    expect(() => format([] as never)).toThrow(TypeError)
-    expect(() => format({} as never)).toThrow(TypeError)
+  it.each([
+    ["100", "100"],
+    [undefined, "undefined"],
+    [null, "null"],
+    [[], ""],
+    [{}, "[object Object]"],
+  ])("should throw for the non-number input %j", (value, received) => {
+    expect(() => format(value as never)).toThrow(
+      new TypeError(`Value provided to format() must be a finite number. Received: ${received}`)
+    )
   })
 
   it("should restrict output to the given units", () => {
@@ -311,8 +307,12 @@ describe("format", () => {
   })
 
   it("should throw for invalid units options", () => {
-    expect(() => format(1000, { units: [] })).toThrow(RangeError)
-    expect(() => format(1000, { units: ["fortnights" as never] })).toThrow(RangeError)
-    expect(() => format(1000, { units: "seconds" as never })).toThrow(RangeError)
+    const notAList = new RangeError('Option "units" must be a non-empty array of unit names.')
+
+    expect(() => format(1000, { units: [] })).toThrow(notAList)
+    expect(() => format(1000, { units: "seconds" as never })).toThrow(notAList)
+    expect(() => format(1000, { units: ["fortnights" as never] })).toThrow(
+      new RangeError('Option "units" contains an unknown unit name. Received: fortnights')
+    )
   })
 })

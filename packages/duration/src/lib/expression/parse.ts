@@ -7,7 +7,7 @@ const MAX_LENGTH = 200
 
 // Each segment is an unsigned number with an optional unit. Signs are handled once for the whole
 // expression, before segment matching.
-const SEGMENT_RE = new RegExp(`(${NUMBER_PATTERN})\\s*(${LENIENT_UNIT_PATTERN})?`, "gi")
+const SEGMENT_RE = new RegExp(`(?:${NUMBER_PATTERN})\\s*(${LENIENT_UNIT_PATTERN})?`, "gi")
 
 const WHITESPACE_RE = /^\s*$/
 const COMMA_SEPARATOR_RE = /^\s*,\s*$/
@@ -111,33 +111,34 @@ export function parseExpression(value: string): ParsedExpression {
       throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
     }
 
-    const numberToken = match[1] ?? ""
-    const unitToken = match[2]
+    // The segment starts with its number, and `parseFloat` stops at the unit.
+    const segment = match[0]
+    const unitToken = match[1]
 
     // Without this check, "1h.5m" reads as "1h 0.5m".
-    if (segmentCount > 0 && gap === "" && numberToken.startsWith(".")) {
+    if (segmentCount > 0 && gap === "" && segment.startsWith(".")) {
       throw new InvalidTimeExpressionError(
         value,
         "a segment that follows another segment with no separator must start with a digit"
       )
     }
 
-    if (!unitToken) {
+    let multiplier = 1
+    if (unitToken === undefined) {
       hasBareSegment = true
+    } else {
+      const unit = findUnit(unitToken)
+      // The lenient pattern matches only unit aliases, so findUnit rejects only an ambiguous one.
+      if (!unit) {
+        throw new InvalidTimeExpressionError(
+          value,
+          `"${unitToken}" is ambiguous: ${String(getAmbiguousUnitHint(unitToken))}`
+        )
+      }
+      multiplier = unit.ms
     }
 
-    const n = Number.parseFloat(numberToken)
-    const multiplier = unitToken ? findUnit(unitToken)?.ms : 1
-
-    if (multiplier === undefined) {
-      const hint = unitToken ? getAmbiguousUnitHint(unitToken) : undefined
-      throw new InvalidTimeExpressionError(
-        value,
-        hint ? `"${unitToken}" is ambiguous: ${hint}` : "value is not a valid time expression"
-      )
-    }
-
-    total += n * multiplier
+    total += Number.parseFloat(segment) * multiplier
 
     if (!Number.isFinite(total)) {
       throw new InvalidTimeExpressionError(value, "value overflows the representable range")

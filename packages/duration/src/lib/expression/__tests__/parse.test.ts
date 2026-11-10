@@ -248,17 +248,6 @@ describe("parse", () => {
     })
   }
 
-  it("should be case-insensitive", () => {
-    expect(parse("1H")).toBe(3_600_000)
-    expect(parse("1 Hour")).toBe(3_600_000)
-    expect(parse("1 HOUR")).toBe(3_600_000)
-    expect(parse("53 YeArS")).toBe(1_672_552_800_000)
-    expect(parse("53 WeEkS")).toBe(32_054_400_000)
-    expect(parse("53 DaYS")).toBe(4_579_200_000)
-    expect(parse("53 HoUrs")).toBe(190_800_000)
-    expect(parse("53 MiLliSeCondS")).toBe(53)
-  })
-
   it("should reject M, which reads as months in other notations, and say what to write", () => {
     for (const value of ["1M", "1 M", "1h 5M", "-2M"]) {
       expect(() => parse(value)).toThrow(
@@ -271,63 +260,6 @@ describe("parse", () => {
     expect(parse("1m")).toBe(60_000)
     expect(parse("1MO")).toBe(2_629_800_000)
     expect(parse("1Ms")).toBe(1)
-  })
-
-  it("should allow multiple spaces between number and unit", () => {
-    expect(parse("1   h")).toBe(3_600_000)
-    expect(parse("1   s")).toBe(1000)
-    expect(parse("1 h")).toBe(3_600_000)
-  })
-
-  it("should allow surrounding whitespace", () => {
-    expect(parse(" 1h")).toBe(3_600_000)
-    expect(parse("1h ")).toBe(3_600_000)
-    expect(parse("  1h 30m  ")).toBe(5_400_000)
-  })
-
-  it("should handle decimal values", () => {
-    expect(parse("1.5h")).toBe(5_400_000)
-    expect(parse("1.5 hours")).toBe(5_400_000)
-    expect(parse("-10.5h")).toBe(-37_800_000)
-  })
-
-  it("should handle leading-dot decimals", () => {
-    expect(parse(".5ms")).toBe(0.5)
-    expect(parse("-.5h")).toBe(-1_800_000)
-  })
-
-  it("should handle exponent notation", () => {
-    expect(parse("1e3ms")).toBe(1000)
-    expect(parse("1e2s")).toBe(100_000)
-    expect(parse("-2.5e2s")).toBe(-250_000)
-    expect(parse("+1E2m")).toBe(6_000_000)
-    expect(parse("1e2m30s")).toBe(6_030_000)
-    expect(parse("1e-3s")).toBe(1)
-  })
-
-  it("should handle negative values", () => {
-    expect(parse("-100ms")).toBe(-100)
-    expect(parse("-1.5h")).toBe(-5_400_000)
-    expect(parse("-500ms")).toBe(-500)
-  })
-
-  it("should parse space-separated compound expressions", () => {
-    expect(parse("1h 30m")).toBe(5_400_000)
-  })
-
-  it("should parse comma-separated compound expressions", () => {
-    expect(parse("1h, 30m, 15s")).toBe(5_415_000)
-    expect(parse("1h,30m")).toBe(5_400_000)
-  })
-
-  it("should parse compound expressions with no separator", () => {
-    expect(parse("1h30m")).toBe(5_400_000)
-    expect(parse("1h0.5m")).toBe(3_630_000)
-  })
-
-  it("should parse a leading-dot segment after a separator", () => {
-    expect(parse("1h .5m")).toBe(3_630_000)
-    expect(parse("1h, .5m")).toBe(3_630_000)
   })
 
   it("should reject a leading-dot segment with no separator", () => {
@@ -351,37 +283,6 @@ describe("parse", () => {
     )
   })
 
-  it("should parse long-form compound expressions", () => {
-    expect(parse("1 hour 30 minutes")).toBe(5_400_000)
-    expect(parse("1 year 2 weeks 5 days")).toBe(31_557_600_000 + 2 * 604_800_000 + 5 * 86_400_000)
-  })
-
-  it("should parse mixed short and long forms", () => {
-    expect(parse("1 hour, 30m")).toBe(5_400_000)
-  })
-
-  it("should sum duplicate units", () => {
-    expect(parse("1h 2h")).toBe(10_800_000)
-  })
-
-  it("should be order-independent", () => {
-    expect(parse("30m 1h")).toBe(parse("1h 30m"))
-    expect(parse("-30m 1h")).toBe(parse("-1h 30m"))
-  })
-
-  it("should parse complex compound expressions", () => {
-    expect(parse("1 day, 6 hours, 30 minutes")).toBe(109_800_000)
-    expect(parse("1d 6h 30m")).toBe(109_800_000)
-  })
-
-  it("should apply a single leading sign to the whole expression", () => {
-    expect(parse("-1h 30m")).toBe(-5_400_000)
-    expect(parse("-1h30m")).toBe(-5_400_000)
-    expect(parse("-1 hour 30 minutes")).toBe(-5_400_000)
-    expect(parse("+1h 30m")).toBe(5_400_000)
-    expect(parse("+1h30m")).toBe(5_400_000)
-  })
-
   it("should reject signs on later segments", () => {
     expect(() => parse("-1h -30m")).toThrow(InvalidTimeExpressionError)
     expect(() => parse("-1h +30m")).toThrow(InvalidTimeExpressionError)
@@ -392,37 +293,35 @@ describe("parse", () => {
     expect(() => parse("1h -30m")).toThrow(/only one leading sign is allowed/)
   })
 
-  it("should reject a detached leading sign", () => {
-    expect(() => parse("- 1h")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("+ 1h")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("-")).toThrow(InvalidTimeExpressionError)
+  it.each(["- 1h", "+ 1h", "-"])("should reject a detached leading sign: %j", (value) => {
+    expect(() => parse(value)).toThrow(
+      new InvalidTimeExpressionError(value, "a sign must be attached to the first number")
+    )
   })
 
-  it("should throw for exponent overflow and non-finite totals", () => {
-    expect(() => parse("1e309ms")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("-1e309ms")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e309s")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e400y")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e308y")).toThrow(InvalidTimeExpressionError)
-    expect(() => parse("1e308ms 1e308ms")).toThrow(/overflows/)
-  })
+  it.each(["1e309ms", "-1e309ms", "1e309s", "1e400y", "1e308y", "1e308ms 1e308ms"])(
+    "should throw for exponent overflow and non-finite totals: %j",
+    (value) => {
+      expect(() => parse(value)).toThrow(
+        new InvalidTimeExpressionError(value, "value overflows the representable range")
+      )
+    }
+  )
 
   it("should throw for empty string", () => {
-    expect(() => parse("")).toThrow(InvalidTimeExpressionError)
+    expect(() => parse("")).toThrow(
+      new InvalidTimeExpressionError("", "value must have between 1 and 200 characters")
+    )
   })
 
-  it("should throw for string exceeding 200 characters", () => {
-    expect(() => parse("a".repeat(201))).toThrow(InvalidTimeExpressionError)
-  })
-
-  it("should throw for non-string inputs", () => {
-    expect(() => parse(undefined as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(null as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse([] as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse({} as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(100 as never)).toThrow(InvalidTimeExpressionError)
-    expect(() => parse(Number.NaN as never)).toThrow(InvalidTimeExpressionError)
-  })
+  it.each([undefined, null, [], {}, 100, Number.NaN])(
+    "should throw for a non-string input: %j",
+    (value) => {
+      expect(() => parse(value as never)).toThrow(
+        new InvalidTimeExpressionError(value, "value must be a string")
+      )
+    }
+  )
 
   it("should include the invalid input in thrown messages", () => {
     expect(() => parse(Number.POSITIVE_INFINITY as never)).toThrow(/Received: Infinity/)

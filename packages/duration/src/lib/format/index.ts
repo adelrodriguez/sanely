@@ -7,8 +7,8 @@ interface Segment {
   value: number
 }
 
-function isNonEmptyStringArray(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "string")
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
 }
 
 function resolveUnits(names: readonly UnitName[] | undefined): readonly UnitDefinition[] {
@@ -16,7 +16,7 @@ function resolveUnits(names: readonly UnitName[] | undefined): readonly UnitDefi
     return UNITS
   }
 
-  if (!isNonEmptyStringArray(names)) {
+  if (!isStringArray(names)) {
     throw new RangeError('Option "units" must be a non-empty array of unit names.')
   }
 
@@ -112,27 +112,33 @@ function pickSingleSegment(
   units: readonly UnitDefinition[],
   smallest: UnitDefinition
 ): Segment {
-  let index = units.findIndex((unit) => abs >= unit.ms)
-  if (index === -1) {
-    index = units.length - 1
-  }
-
-  let unit = units[index] ?? smallest
+  const largerUnit = mapLargerUnits(units)
+  let unit = units.find((candidate) => abs >= candidate.ms) ?? smallest
   let value = Math.round(abs / unit.ms)
 
   // Carry upward: rounding can land exactly on the next larger unit
   // (e.g. 59_999ms rounds to 60s, which is 1m).
-  while (index > 0) {
-    const larger = units[index - 1]
-    if (larger === undefined || value < larger.ms / unit.ms) {
-      break
-    }
-    index -= 1
+  let larger = largerUnit.get(unit)
+  while (larger && value >= larger.ms / unit.ms) {
     unit = larger
     value = Math.round(abs / unit.ms)
+    larger = largerUnit.get(unit)
   }
 
   return { unit, value }
+}
+
+// Map each unit to the next larger one. The units run from the largest to the smallest, so the
+// largest unit has no entry.
+function mapLargerUnits(
+  units: readonly UnitDefinition[]
+): ReadonlyMap<UnitDefinition, UnitDefinition> {
+  const largerUnit = new Map<UnitDefinition, UnitDefinition>()
+  units.reduce((larger, unit) => {
+    largerUnit.set(unit, larger)
+    return unit
+  })
+  return largerUnit
 }
 
 // Split a value into whole units and a remainder in [0, unitMs). `%` is exact for doubles. Up to
@@ -159,10 +165,6 @@ function buildSegments(
   let remaining = abs
 
   for (const unit of units) {
-    if (segments.length >= precision) {
-      break
-    }
-
     // The last allowed segment absorbs the remainder: pick the largest unit
     // with a nonzero rounded value.
     if (segments.length === precision - 1 || unit === smallest) {
@@ -185,49 +187,42 @@ function buildSegments(
     segments.push({ unit: smallest, value: Math.round(abs / smallest.ms) })
   }
 
-  applyCarry(segments, units)
+  const carried = applyCarry(segments, units)
 
   // Drop trailing zero segments left behind by the carry pass.
-  while (segments.length > 1 && segments.at(-1)?.value === 0) {
-    segments.pop()
+  while (carried.length > 1 && carried.at(-1)?.value === 0) {
+    carried.pop()
   }
 
-  return segments
+  return carried
 }
 
 // If rounding caused a segment to overflow its unit, propagate the overflow into the next larger
-// unit (e.g. ["59m", "60s"] becomes ["1h"]).
-function applyCarry(segments: Segment[], units: readonly UnitDefinition[]): void {
-  for (let i = segments.length - 1; i >= 0; i -= 1) {
-    const segment = segments[i]
-    if (!segment) {
-      continue
-    }
+// unit (e.g. ["59m", "60s"] becomes ["1h"]). The segments run from the largest unit to the
+// smallest, so the pass starts at the end, and a carry can create a segment that carries again.
+function applyCarry(segments: readonly Segment[], units: readonly UnitDefinition[]): Segment[] {
+  const largerUnit = mapLargerUnits(units)
+  const pending = segments.map((segment) => ({ ...segment }))
+  const carried: Segment[] = []
+  let segment: Segment | undefined
 
-    const unitIndex = units.indexOf(segment.unit)
-    if (unitIndex <= 0) {
-      continue
-    }
-
-    const larger = units[unitIndex - 1]
-    if (!larger) {
-      continue
-    }
-
-    const ratio = larger.ms / segment.unit.ms
-    if (segment.value < ratio) {
-      continue
-    }
-
+  while ((segment = pending.pop())) {
+    const larger = largerUnit.get(segment.unit)
+    const ratio = larger ? larger.ms / segment.unit.ms : Number.POSITIVE_INFINITY
     const carry = Math.floor(segment.value / ratio)
-    segment.value -= carry * ratio
 
-    const previous = i > 0 ? segments[i - 1] : undefined
-    if (previous?.unit === larger) {
-      previous.value += carry
-    } else {
-      segments.splice(i, 0, { unit: larger, value: carry })
-      i += 1
+    if (larger && carry > 0) {
+      segment.value -= carry * ratio
+      const previous = pending.at(-1)
+      if (previous?.unit === larger) {
+        previous.value += carry
+      } else {
+        pending.push({ unit: larger, value: carry })
+      }
     }
+
+    carried.unshift(segment)
   }
+
+  return carried
 }
