@@ -1,6 +1,6 @@
 # Architecture
 
-`src/index.ts` selects the public exports from the library domains.
+`src/index.ts` selects the public exports from the library domains in `src/lib/`.
 The [glossary](../GLOSSARY.md) defines the Schedule model and the package language.
 
 ## Domain ownership
