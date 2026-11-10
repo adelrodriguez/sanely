@@ -8,5 +8,4 @@ export default defineConfig({
   outDir: "dist",
   platform: "node",
   sourcemap: true,
-  target: "node18",
 })
