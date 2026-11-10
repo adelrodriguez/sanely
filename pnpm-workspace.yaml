@@ -8,7 +8,7 @@ catalog:
   "@vitest/coverage-v8": 5.1.0
   fast-check: 4.10.2
   tsdown: 0.23.5
-  typescript: 7.0.2
+  typescript: 7.1.0-beta
   vitest: 5.1.0
 
 allowBuilds:
