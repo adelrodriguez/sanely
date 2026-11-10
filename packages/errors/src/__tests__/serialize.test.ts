@@ -5,24 +5,13 @@ import { describe, expect, it } from "vitest"
 import type { SerializableFault, SerializableValue } from "#types.ts"
 import { InvalidPayloadError } from "#errors.ts"
 import { Fault, fromSerializable, isSerializableFault, Tagged, toSerializable } from "#index.ts"
+import { RESERVED_FAULT_KEYS } from "#lib/wire.ts"
 
 // Test-side mirror of the internal isReservedKey rule: wire envelope keys
-// (documented in GLOSSARY.md) plus anything reachable through Fault's
-// prototype chain. The reserved-key properties below keep this mirror honest —
-// if the library's rule drifts, they fail.
-const WIRE_ENVELOPE_KEYS = new Set([
-  "__fault",
-  "_tag",
-  "cause",
-  "name",
-  "message",
-  "stack",
-  "meta",
-  "description",
-])
-
+// plus anything reachable through Fault's prototype chain. The envelope keys
+// come from their one definition, which the type checker ties to SerializableFault.
 function isReservedMirror(key: string): boolean {
-  return WIRE_ENVELOPE_KEYS.has(key) || key in Fault.prototype
+  return RESERVED_FAULT_KEYS.has(key) || key in Fault.prototype
 }
 
 // Canonicalized through one JSON round trip because the wire itself is JSON:
@@ -354,8 +343,25 @@ describe("isSerializableFault", () => {
 
 describe("fromSerializable", () => {
   it("throws InvalidPayloadError for invalid payloads", () => {
-    expect(() => fromSerializable({ __fault: false } as unknown as SerializableFault)).toThrow(
+    expect(() => fromSerializable({ __fault: false })).toThrow(
       new InvalidPayloadError({ reason: "expected __fault: true" })
+    )
+  })
+
+  it("rejects a malformed cause instead of dropping it", () => {
+    expect(() =>
+      fromSerializable(withCause({ __fault: true, _tag: "Inner", name: "Inner" }))
+    ).toThrow(
+      new InvalidPayloadError({ reason: "cause at depth 1: kind must be fault, error, or thrown" })
+    )
+    expect(() => fromSerializable(withCause({ kind: "error", message: "m" }))).toThrow(
+      new InvalidPayloadError({ reason: "cause at depth 1: name must be a string" })
+    )
+  })
+
+  it("rejects meta that is an array", () => {
+    expect(() => fromSerializable({ __fault: true, _tag: "X", meta: ["a"], name: "X" })).toThrow(
+      new InvalidPayloadError({ reason: "meta must be an object" })
     )
   })
 
@@ -365,7 +371,7 @@ describe("fromSerializable", () => {
       _tag: "CollisionError",
       name: "CollisionError",
       withCause: "payload-value",
-    } as unknown as SerializableFault)
+    })
 
     const value = deserialized as unknown as Record<string, unknown>
 
@@ -381,7 +387,7 @@ describe("fromSerializable", () => {
       _tag: "CollisionError",
       name: "CollisionError",
       withCause: "reserved-value",
-    } as unknown as SerializableFault)
+    })
 
     const value = deserialized as unknown as Record<string, unknown>
 
@@ -407,9 +413,9 @@ describe("fromSerializable", () => {
     expect(Object.hasOwn(deserialized, "__proto__")).toBe(false)
   })
 
-  it("avoids stack overflow for deeply nested cause chains", () => {
-    // A hand-built wire far deeper than MAX_CAUSE_DEPTH (100), so only the
-    // reviver's own cap (not the serializer's) bounds the result.
+  it("rejects a hand-built chain deeper than the depth limit without overflowing the stack", () => {
+    // The serializer never writes more than MAX_CAUSE_DEPTH (100) nested causes,
+    // so a deeper wire is malformed.
     let current: SerializableFault = {
       __fault: true,
       _tag: "LeafError",
@@ -426,11 +432,11 @@ describe("fromSerializable", () => {
       }
     }
 
-    const chain = faultChain(fromSerializable(current))
-
-    expect(chain).toHaveLength(101)
-    expect(chain.every((fault) => fault._tag === "WrapperError")).toBe(true)
-    expect(chain.at(-1)?.cause).toBeUndefined()
+    expect(() => fromSerializable(current)).toThrow(
+      new InvalidPayloadError({
+        reason: "cause at depth 101: exceeds the limit of 100 nested causes",
+      })
+    )
   })
 
   it("throws when meta is not an object", () => {
@@ -440,7 +446,7 @@ describe("fromSerializable", () => {
         _tag: "TestError",
         meta: "not-an-object",
         name: "TestError",
-      } as unknown as SerializableFault)
+      })
     ).toThrow("meta must be an object")
   })
 
@@ -524,7 +530,7 @@ describe("fromSerializable", () => {
         fc.constantFrom("toString", "unwrap", "withMeta", "__proto__", "constructor"),
         fc.string({ maxLength: 15, minLength: 1 }).map((key) => `__payload_${key}`)
       )
-      .filter((key) => !WIRE_ENVELOPE_KEYS.has(key))
+      .filter((key) => !RESERVED_FAULT_KEYS.has(key))
 
     fc.assert(
       fc.property(hostileKeyArb, jsonValueArb, (key, value) => {

@@ -42,15 +42,19 @@ assertExports(
   FaultErrors,
   [
     "InvalidPayloadError",
+    "RegistryConstructorError",
     "RegistryMergeConflictError",
+    "RegistryNotRecognizedError",
     "RegistryTagMismatchError",
+    "RegistryUnknownTagError",
     "ReservedFieldError",
   ],
   "@sanely/errors/errors"
 )
 assertExports(FaultTypes, [], "@sanely/errors/types")
 
-class InvalidFieldError extends Fault.Tagged("InvalidFieldError")<{ message: string }>() {}
+// An index signature skips the compile-time check, so the runtime guard runs.
+class InvalidFieldError extends Fault.Tagged("InvalidFieldError")<Record<string, string>>() {}
 
 let thrown: unknown
 try {

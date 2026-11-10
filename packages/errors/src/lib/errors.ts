@@ -44,6 +44,40 @@ export class RegistryMergeConflictError extends Fault {
   }
 }
 
+export class RegistryUnknownTagError extends Fault {
+  static readonly _tag = "RegistryUnknownTagError"
+  declare readonly _tag: typeof RegistryUnknownTagError._tag
+  readonly tag: string
+
+  constructor(args: { tag: string }) {
+    super(RegistryUnknownTagError._tag, `Unknown Fault registry tag '${args.tag}'.`)
+    this.tag = args.tag
+  }
+}
+
+export class RegistryNotRecognizedError extends Fault {
+  static readonly _tag = "RegistryNotRecognizedError"
+  declare readonly _tag: typeof RegistryNotRecognizedError._tag
+
+  constructor() {
+    super(RegistryNotRecognizedError._tag, "Expected a registry created by registry() or merge().")
+  }
+}
+
+export class RegistryConstructorError extends Fault {
+  static readonly _tag = "RegistryConstructorError"
+  declare readonly _tag: typeof RegistryConstructorError._tag
+  readonly tag: string
+
+  constructor(args: { tag: string }) {
+    super(
+      RegistryConstructorError._tag,
+      `The constructor registered for tag '${args.tag}' did not create a Fault.`
+    )
+    this.tag = args.tag
+  }
+}
+
 export class InvalidPayloadError extends Fault {
   static readonly _tag = "InvalidPayloadError"
   declare readonly _tag: typeof InvalidPayloadError._tag

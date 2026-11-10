@@ -82,10 +82,13 @@ function expectedRejection(input: unknown): string | undefined {
   const record = input as Record<string, unknown>
   if (record.__fault !== true) return "expected __fault: true"
   if (typeof record._tag !== "string") return "_tag must be a string"
+  if (typeof record.name !== "string") return "name must be a string"
+  for (const key of ["message", "description", "stack"]) {
+    if (!isOptionalString(record[key])) return `${key} must be a string`
+  }
   if (
-    "meta" in record
-    && record.meta !== undefined
-    && (typeof record.meta !== "object" || record.meta === null)
+    record.meta !== undefined
+    && (typeof record.meta !== "object" || record.meta === null || Array.isArray(record.meta))
   ) {
     return "meta must be an object"
   }
@@ -106,12 +109,13 @@ const anythingArb = fc.anything({
 
 // Arbitrary values almost never carry `__fault: true`, so mix in
 // envelope-shaped objects to exercise the revive branch and each
-// validation guard (marker, _tag, meta) in every run.
+// validation guard (marker, _tag, name, meta) in every run.
 const envelopeArb = fc.record(
   {
     __fault: fc.oneof(fc.constant(true), anythingArb),
     _tag: fc.oneof(fc.string(), anythingArb),
     meta: fc.oneof(fc.dictionary(fc.string(), fc.jsonValue()), anythingArb),
+    name: fc.oneof(fc.string(), anythingArb),
   },
   { requiredKeys: ["__fault", "_tag"] }
 )
@@ -164,7 +168,7 @@ describe("fromSerializable", () => {
     fc.assert(
       fc.property(payloadCandidateArb, (input) => {
         const rejection = expectedRejection(input)
-        const revive = () => fromSerializable(input as SerializableFault)
+        const revive = () => fromSerializable(input)
 
         if (rejection === undefined) {
           const revived = revive()

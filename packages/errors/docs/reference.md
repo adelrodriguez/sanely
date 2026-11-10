@@ -100,7 +100,7 @@ Creates a registry from an object of fault classes. Each key must be the tag of 
 function merge(a: FaultRegistry, b: FaultRegistry, ...rest: FaultRegistry[]): FaultRegistry
 ```
 
-Returns one registry with the classes of every registry. It takes at least two registries, as a list with a known length. It throws `RegistryMergeConflictError` when two registries map one tag to different classes, and `TypeError` for a value that is not a registry.
+Returns one registry with the classes of every registry. It takes at least two registries, as a list with a known length. It throws `RegistryMergeConflictError` when two registries map one tag to different classes, and `RegistryNotRecognizedError` for a value that `registry()` or `merge()` did not create, such as a spread copy of a registry.
 
 ### `FaultRegistry` members
 
@@ -110,14 +110,14 @@ Membership uses the class, not only the tag. A fault from another class with the
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                       |
 | `tags`                                     | The registered tags, in the order of the keys.                                                                                   |
-| `create(tag, fields?)`                     | Creates a fault. Throws `TypeError` for an unknown tag.                                                                          |
+| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                            |
 | `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                       |
 | `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                           |
 | `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                |
 | `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.            |
 | `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                      |
 | `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                     |
-| `fromSerializable(data)`                   | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
+| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
 
 ```ts
 const AppFault = Fault.registry({ NotFoundError, TimeoutError })
@@ -146,8 +146,8 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 | `isFault(value)`             | Returns `true` when `value` is an instance of `Fault`. It uses `instanceof`, so it does not work across realms.                                                                                     |
 | `findCause(value, Class)`    | Returns the first node of the chain, from the head and including it, that is an instance of `Class`. Returns `undefined` when `value` is not a fault.                                               |
 | `toSerializable(value)`      | Returns the wire format of any value. A fault serializes itself. A native `Error` gets the tag `UnknownError`, and any other value gets the tag `UnknownThrown`. The original value is the `cause`. |
-| `fromSerializable(data)`     | Builds a generic `Fault` from the wire format, without its subclass. Throws `InvalidPayloadError` for a malformed value.                                                                            |
-| `isSerializableFault(value)` | Returns `true` when the envelope and every cause are valid, so `fromSerializable` accepts `value`. It does not check the values of fields and `meta` deeply.                                        |
+| `fromSerializable(value)`    | Builds a generic `Fault` from the wire format, without its subclass. Accepts any value, and throws `InvalidPayloadError` when the envelope or any cause is malformed.                               |
+| `isSerializableFault(value)` | Returns `true` when `fromSerializable` accepts `value`. Both use the same check. It does not check the values of fields and `meta` deeply.                                                          |
 
 ## Wire format
 
@@ -172,7 +172,7 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 `SerializableValue` is a JSON-safe value: a string, a number, a boolean, `null`, `undefined`, an array of these values, or an object of these values. The type checks `meta` and the fields when you create a fault. The package does not check them deeply at run time. A cause that is not JSON-safe becomes a JSON-safe value during serialization.
 
-Serialization, deserialization, and chain traversal stop after 100 nested causes.
+Serialization and chain traversal stop after 100 nested causes. Deserialization throws `InvalidPayloadError` for a deeper chain.
 
 ## Reserved keys
 
@@ -181,7 +181,7 @@ A key is reserved when it is one of these:
 - A wire format key: `__fault`, `_tag`, `name`, `message`, `description`, `meta`, `stack`, or `cause`.
 - A name on the prototype chain of `Fault`: the methods of `Fault`, such as `withMeta` and `unwrap`, and the inherited names `constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and `__lookupSetter__`.
 
-A `Tagged` constructor throws `ReservedFieldError` for a reserved field name. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
+A `Tagged` class declaration with a reserved field name fails to compile. When the fields have an index signature, the constructor throws `ReservedFieldError` for a reserved field name instead. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
 
 ## Errors
 
@@ -192,6 +192,9 @@ The errors of the package are faults, and come from `@sanely/errors/errors`:
 | `ReservedFieldError`         | `field`                  | A `Tagged` constructor receives a reserved field name. |
 | `RegistryTagMismatchError`   | `registryKey`, `ctorTag` | A `registry` key is not the tag of its class.          |
 | `RegistryMergeConflictError` | `conflictingTag`         | `merge` finds one tag for two different classes.       |
+| `RegistryNotRecognizedError` |                          | `merge` receives a value that is not a registry.       |
+| `RegistryUnknownTagError`    | `tag`                    | `create` or `wrap().as` receives an unknown tag.       |
+| `RegistryConstructorError`   | `tag`                    | A registered constructor does not create a fault.      |
 | `InvalidPayloadError`        | `reason`                 | `fromSerializable` receives a malformed value.         |
 
 ## Types

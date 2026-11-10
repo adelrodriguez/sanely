@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import {
   InvalidPayloadError,
+  RegistryConstructorError,
   RegistryMergeConflictError,
+  RegistryNotRecognizedError,
   RegistryTagMismatchError,
+  RegistryUnknownTagError,
   ReservedFieldError,
 } from "#lib/errors.ts"
 
@@ -43,6 +46,40 @@ describe("RegistryMergeConflictError", () => {
     expect(error.name).toBe("RegistryMergeConflictError")
     expect(error.conflictingTag).toBe("ConflictError")
     expect(error.message).toBe("Registry merge conflict for tag 'ConflictError'.")
+  })
+})
+
+describe("RegistryUnknownTagError", () => {
+  it("exposes its tag, name, field, and message", () => {
+    const error = new RegistryUnknownTagError({ tag: "Nope" })
+
+    expect(error._tag).toBe("RegistryUnknownTagError")
+    expect(error.name).toBe("RegistryUnknownTagError")
+    expect(error.tag).toBe("Nope")
+    expect(error.message).toBe("Unknown Fault registry tag 'Nope'.")
+  })
+})
+
+describe("RegistryNotRecognizedError", () => {
+  it("exposes its tag, name, and message", () => {
+    const error = new RegistryNotRecognizedError()
+
+    expect(error._tag).toBe("RegistryNotRecognizedError")
+    expect(error.name).toBe("RegistryNotRecognizedError")
+    expect(error.message).toBe("Expected a registry created by registry() or merge().")
+  })
+})
+
+describe("RegistryConstructorError", () => {
+  it("exposes its tag, name, field, and message", () => {
+    const error = new RegistryConstructorError({ tag: "NotAFault" })
+
+    expect(error._tag).toBe("RegistryConstructorError")
+    expect(error.name).toBe("RegistryConstructorError")
+    expect(error.tag).toBe("NotAFault")
+    expect(error.message).toBe(
+      "The constructor registered for tag 'NotAFault' did not create a Fault."
+    )
   })
 })
 

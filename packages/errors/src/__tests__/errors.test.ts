@@ -6,8 +6,11 @@ describe("errors", () => {
   it("exposes only library errors", () => {
     expect(Object.keys(FaultErrors).toSorted()).toEqual([
       "InvalidPayloadError",
+      "RegistryConstructorError",
       "RegistryMergeConflictError",
+      "RegistryNotRecognizedError",
       "RegistryTagMismatchError",
+      "RegistryUnknownTagError",
       "ReservedFieldError",
     ])
   })

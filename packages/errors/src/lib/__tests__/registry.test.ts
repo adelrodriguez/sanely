@@ -2,7 +2,14 @@ import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 import type { SerializableFault } from "#lib/wire.ts"
-import { RegistryMergeConflictError, RegistryTagMismatchError } from "#lib/errors.ts"
+import {
+  InvalidPayloadError,
+  RegistryConstructorError,
+  RegistryMergeConflictError,
+  RegistryNotRecognizedError,
+  RegistryTagMismatchError,
+  RegistryUnknownTagError,
+} from "#lib/errors.ts"
 import { Fault, toSerializable } from "#lib/fault.ts"
 import { merge, registry } from "#lib/registry.ts"
 import { Tagged } from "#lib/tagged.ts"
@@ -170,7 +177,7 @@ describe("registry", () => {
       _tag: "TimeoutError",
       name: "TimeoutError",
       withCause: "reserved-value",
-    } as unknown as SerializableFault)
+    })
 
     const value = restored as unknown as Record<string, unknown>
 
@@ -199,7 +206,7 @@ describe("registry", () => {
         __fault: false,
         _tag: "ValidatedError",
         name: "ValidatedError",
-      } as unknown as SerializableFault)
+      })
     ).toThrow("Invalid fault payload")
 
     expect(() =>
@@ -208,10 +215,32 @@ describe("registry", () => {
         _tag: "ValidatedError",
         meta: "not-an-object",
         name: "ValidatedError",
-      } as unknown as SerializableFault)
+      })
     ).toThrow("meta must be an object")
 
     expect(constructorCalls).toBe(0)
+  })
+
+  it("keeps what a Tagged subclass constructor assigns after super during revival", () => {
+    class AmountError extends Tagged("AmountError")<{ cents: number }>() {
+      override readonly cents: number
+
+      constructor(fields: { cents: number }) {
+        super(fields)
+        this.cents = Math.round(fields.cents)
+      }
+    }
+
+    const Faults = registry({ AmountError })
+    const restored = Faults.fromSerializable({
+      __fault: true,
+      _tag: "AmountError",
+      cents: 10.4,
+      name: "AmountError",
+    })
+
+    expect(new AmountError({ cents: 10.4 }).cents).toBe(10)
+    expect((restored as AmountError).cents).toBe(10)
   })
 
   it("preserves constructor normalization during registry deserialization", () => {
@@ -331,14 +360,14 @@ describe("registry", () => {
     expect(Faults.wrap(new Error("root")).as(1)).toBeInstanceOf(NumericError)
   })
 
-  it("throws a TypeError naming the tag when create receives an unregistered tag", () => {
+  it("throws RegistryUnknownTagError naming the tag when create receives an unregistered tag", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     // @ts-expect-error -- exercises the runtime guard for a tag the registry does not know
-    expect(() => Faults.create("Nope")).toThrow(new TypeError("Unknown Fault registry tag 'Nope'."))
+    expect(() => Faults.create("Nope")).toThrow(new RegistryUnknownTagError({ tag: "Nope" }))
     // @ts-expect-error -- an inherited Object.prototype key is not a registered tag
     expect(() => Faults.create("toString")).toThrow(
-      new TypeError("Unknown Fault registry tag 'toString'.")
+      expect.objectContaining({ _tag: "RegistryUnknownTagError", tag: "toString" })
     )
   })
 
@@ -412,7 +441,7 @@ describe("registry", () => {
     expect(restored.message).toBe("other")
   })
 
-  it("caps deep nested registry cause chains during deserialization", () => {
+  it("rejects a registry cause chain deeper than the depth limit", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     let current: SerializableFault = {
@@ -431,20 +460,11 @@ describe("registry", () => {
       }
     }
 
-    const restored = Faults.fromSerializable(current)
-    expect(restored).toBeInstanceOf(NotFoundError)
-
-    let node = restored
-    let depth = 0
-    while (node.cause instanceof Fault) {
-      depth += 1
-      node = node.cause
-    }
-
-    expect(depth).toBe(100)
-    expect(node).toBeInstanceOf(NotFoundError)
-    expect((node as NotFoundError).id).toBe("49")
-    expect(node.cause).toBeUndefined()
+    expect(() => Faults.fromSerializable(current)).toThrow(
+      new InvalidPayloadError({
+        reason: "cause at depth 101: exceeds the limit of 100 nested causes",
+      })
+    )
   })
 
   it("throws when constructor does not produce a Fault instance", () => {
@@ -457,7 +477,10 @@ describe("registry", () => {
 
     expect(() =>
       (Faults as never as { create: (tag: string) => unknown }).create("NotAFault")
-    ).toThrow("Invalid Fault constructor")
+    ).toThrow(expect.objectContaining({ _tag: "RegistryConstructorError", tag: "NotAFault" }))
+    expect(() =>
+      Faults.fromSerializable({ __fault: true, _tag: "NotAFault", name: "NotAFault" })
+    ).toThrow(RegistryConstructorError)
   })
 })
 
@@ -515,7 +538,7 @@ describe("merge", () => {
     const DbFault = registry({ DatabaseError })
     const forged = { ...AppFault }
 
-    expect(() => merge(forged, DbFault)).toThrow("Invalid Fault registry")
+    expect(() => merge(forged, DbFault)).toThrow(RegistryNotRecognizedError)
   })
 
   it("behaves like a normal registry", () => {

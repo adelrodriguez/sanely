@@ -30,7 +30,7 @@ The check covers the signature, not the behavior. After deserialization, an inst
 
 Fields become own properties of the fault, and serialized fields sit next to the envelope keys. A field called `message` or `withMeta` would hide a real property or method. So one predicate decides which keys are reserved, and every part of the package uses it.
 
-The rule has two policies. Construction rejects a reserved field with `ReservedFieldError`, because your own code can choose another name. Deserialization cannot reject wire data that another service sent, and it must not drop the data either. So it renames a colliding key with the prefix `__payload_`, and repeats the prefix until the name is unique.
+The rule has two policies. Construction rejects a reserved field, because your own code can choose another name. The type checker rejects the class declaration, and the constructor throws `ReservedFieldError` for a key the types cannot see. Deserialization cannot reject wire data that another service sent, and it must not drop the data either. So it renames a colliding key with the prefix `__payload_`, and repeats the prefix until the name is unique.
 
 ## Why chains stop at 100 causes
 

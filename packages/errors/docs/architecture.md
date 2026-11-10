@@ -30,9 +30,9 @@ Registry closures own their constructor maps, and `registry.ts` owns the registr
 - Standalone matching accepts a typed Fault union. Registry matching accepts `unknown`, checks membership, then uses the same tag dispatch.
 - `Fault.toSerializable()` encodes a fault. `fromSerializable()` reconstructs a generic Fault, while `registry.fromSerializable()` restores registered subclasses when possible.
 - Registry reconstruction calls the registered constructor with the payload fields object. `registry()` therefore rejects, at the type level, constructors that do not take the fields object as their only parameter; call-site sugar belongs in static factories.
-- Generic and registry reconstruction share validation, payload restoration, cause recursion, and depth accounting. A malformed envelope throws `InvalidPayloadError`. `isSerializableFault()` is stricter: it also checks the typed envelope fields and every cause reconstruction visits, so `true` means `fromSerializable()` will accept the value.
+- Generic and registry reconstruction share one validator, payload restoration, and cause recursion. Both accept `unknown` and check the envelope and every cause before they build anything. A malformed value throws `InvalidPayloadError`, whose reason names the depth of a bad cause. `isSerializableFault()` uses the same validator, so `true` means `fromSerializable()` accepts the value.
 - Reserved keys follow one rule with two policies: `Tagged` construction rejects them (`ReservedFieldError`), while deserialization renames colliding wire keys with repeated `__payload_` prefixes until safe and unique (wire data must not be dropped).
-- Cause traversal, serialization, and deserialization stop after 100 nested fault edges.
+- Cause traversal and serialization stop after 100 nested fault edges. Deserialization rejects a deeper chain, because the serializer never writes one.
 - `unwrap()` and related helpers order chains from head to leaf. Metadata merging gives the head precedence. `findCause()` and `registry.findCause()` return the first match from the head, which includes the head itself.
 - Cause traversal and the wire format follow native `Error.cause` links as well as Fault causes, so Faults below a native error stay visible. Both kinds of edge share the 100-edge budget.
 

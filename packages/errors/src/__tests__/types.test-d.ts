@@ -1,6 +1,12 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
 import { expectTypeOf } from "vitest"
-import type { RegistryMergeConflictError, RegistryTagMismatchError } from "#errors.ts"
+import type {
+  RegistryConstructorError,
+  RegistryMergeConflictError,
+  RegistryNotRecognizedError,
+  RegistryTagMismatchError,
+  RegistryUnknownTagError,
+} from "#errors.ts"
 import type {
   ByTag,
   FaultRegistry,
@@ -131,6 +137,11 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   if (isSerializableFault(value)) {
     expectTypeOf(value).toEqualTypeOf<SerializableFault>()
   }
+  // Received data parses without a cast.
+  expectTypeOf(fromSerializable(value)).toEqualTypeOf<Fault>()
+  expectTypeOf(AppFault.fromSerializable(value)).toEqualTypeOf<
+    NotFoundError | TimeoutError | Fault
+  >()
   expectTypeOf(findCause(value, TypeError)).toEqualTypeOf<TypeError | undefined>()
 
   expectTypeOf(tags).toEqualTypeOf<ReadonlyArray<"NotFoundError" | "TimeoutError">>()
@@ -218,16 +229,32 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 {
   const err = new ReservedFieldError({ field: "_tag" }) as
     | InvalidPayloadError
+    | RegistryConstructorError
     | RegistryMergeConflictError
+    | RegistryNotRecognizedError
     | RegistryTagMismatchError
+    | RegistryUnknownTagError
     | ReservedFieldError
 
   expectTypeOf(err._tag).toEqualTypeOf<
     | "InvalidPayloadError"
+    | "RegistryConstructorError"
     | "RegistryMergeConflictError"
+    | "RegistryNotRecognizedError"
     | "RegistryTagMismatchError"
+    | "RegistryUnknownTagError"
     | "ReservedFieldError"
   >()
+
+  matchTag(err, "RegistryUnknownTagError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>()
+    expectTypeOf(e.tag).toEqualTypeOf<string>()
+  })
+
+  matchTag(err, "RegistryConstructorError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryConstructorError>()
+    expectTypeOf(e.tag).toEqualTypeOf<string>()
+  })
 
   matchTag(err, "ReservedFieldError", (e) => {
     expectTypeOf(e).toEqualTypeOf<ReservedFieldError>()
@@ -246,8 +273,11 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   matchTags(err, {
     InvalidPayloadError: (e) => expectTypeOf(e).toEqualTypeOf<InvalidPayloadError>(),
+    RegistryConstructorError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryConstructorError>(),
     RegistryMergeConflictError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryMergeConflictError>(),
+    RegistryNotRecognizedError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryNotRecognizedError>(),
     RegistryTagMismatchError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>(),
+    RegistryUnknownTagError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>(),
     ReservedFieldError: (e) => expectTypeOf(e).toEqualTypeOf<ReservedFieldError>(),
   })
 }
@@ -449,6 +479,25 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 // ── Negative type tests ──────────────────────────────────────────────────────
 // These verify that invalid usage produces compile-time errors.
 // The function bodies never execute — only the type checker matters.
+
+// ── Reserved Tagged field names ──────────────────────────────────────────────
+// A Tagged constructor throws ReservedFieldError for these keys, so the class
+// declaration fails to compile instead.
+{
+  // @ts-expect-error -- `name` is a wire envelope key
+  class NameField extends Tagged("NameField")<{ id: string; name: string }>() {}
+  // @ts-expect-error -- `withMeta` is a Fault method
+  class MethodField extends Tagged("MethodField")<{ withMeta: string }>() {}
+  // @ts-expect-error -- `toString` is inherited from Object
+  class ObjectField extends Tagged("ObjectField")<{ toString: string }>() {}
+  // @ts-expect-error -- `__proto__` would replace the prototype
+  class ProtoField extends Tagged("ProtoField")<{ __proto__: string }>() {}
+
+  // Fields with an index signature have no known keys, so the runtime check covers them.
+  class OpenFields extends Tagged("OpenFields")<Record<string, string>>() {}
+
+  void [NameField, MethodField, ObjectField, ProtoField, OpenFields]
+}
 
 // ── Registered constructor contract (#66) ────────────────────────────────────
 // registry.fromSerializable revives through `new Class(payloadFields)`, so a

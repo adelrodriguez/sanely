@@ -11,27 +11,17 @@ This guide shows you how to send a fault from a server to a client, or between p
 
    `toSerializable` accepts any caught value. A native `Error` becomes a fault with the tag `UnknownError`, and any other value becomes a fault with the tag `UnknownThrown`.
 
-2. On the receiving side, check the value before you read it, if it comes from a source that you do not control:
+2. On the receiving side, build the fault again with the same registry:
 
    ```ts
-   import * as Fault from "@sanely/errors"
-
-   if (!Fault.isSerializableFault(payload)) {
-     throw new Error("The response is not a serialized fault")
-   }
-   ```
-
-   When `isSerializableFault` returns `true`, `fromSerializable` accepts the value.
-
-3. Build the fault again with the same registry:
-
-   ```ts
-   const fault = AppFault.fromSerializable(payload)
+   const fault = AppFault.fromSerializable(await response.json())
 
    fault instanceof NotFoundError // true, when the tag is NotFoundError
    ```
 
-   A tag that the registry does not have becomes a generic `Fault`. A malformed value throws `InvalidPayloadError` from `@sanely/errors/errors`, and its `reason` names the check that failed.
+   `fromSerializable` accepts any value and checks it before it builds the fault. A tag that the registry does not have becomes a generic `Fault`. A malformed value throws `InvalidPayloadError` from `@sanely/errors/errors`, and its `reason` names the check that failed.
+
+   To check a value without throwing, call `Fault.isSerializableFault(value)`. It returns `true` exactly when `fromSerializable` accepts the value.
 
 ## If the receiver has no registry
 
