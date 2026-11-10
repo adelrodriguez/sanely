@@ -1,8 +1,8 @@
+export type { AllSettledResult } from "#lib/orchestration/task-graph.ts"
 export type {
-  AllSettledResult,
   SettledFulfilled,
   SettledRejected,
   SettledResult,
-} from "#lib/orchestration/task-graph.ts"
+} from "#lib/orchestration/settlement.ts"
 export type { AsyncDisposer } from "#lib/disposal/index.ts"
 export type { FlowExit } from "#lib/orchestration/flow.ts"

@@ -1,15 +1,8 @@
 import type { AsyncDisposer } from "#lib/disposal/index.ts"
-import type { BuilderConfig } from "#lib/policies/options.ts"
 import { disposer, defineAsyncDisposeAlias } from "#lib/disposal/index.ts"
-import { BaseExecution } from "#lib/execution/base.ts"
-import {
-  type CancellationError,
-  Panic,
-  type TimeoutError,
-  UnhandledException,
-  isPanic,
-} from "#lib/shared/errors.ts"
-import { checkIsPromiseLike, invariant, resolveWithAbort } from "#lib/shared/utils.ts"
+import { Panic, UnhandledException, isPanic } from "#lib/shared/errors.ts"
+import { invariant, resolveWithAbort } from "#lib/shared/utils.ts"
+import type { Settlement, SettledResult, TaskEvent } from "./settlement.ts"
 
 const TASK_RACE_ABORTED = Symbol("taskRaceAborted")
 
@@ -37,12 +30,12 @@ export type TaskValidation<T extends TaskRecord> = {
 // oxlint-disable-next-line no-explicit-any -- Required for function compatibility with contextual `this`
 export type TaskResult<T> = T extends (...args: any[]) => infer R ? Awaited<R> : never
 
-export type ResultProxy<T extends TaskRecord> = {
-  readonly [K in keyof T]: Promise<TaskResult<T[K]>>
-}
-
-export interface TaskContext<T extends TaskRecord> {
-  readonly $result: ResultProxy<T>
+export type InferredTaskContext<T extends TaskRecord> = {
+  readonly $result: {
+    readonly [K in keyof T]: ReturnType<T[K]> extends Promise<infer R>
+      ? Promise<R>
+      : Promise<ReturnType<T[K]>>
+  }
   readonly $signal: AbortSignal
   readonly $disposer: AsyncDisposer
   /**
@@ -52,19 +45,12 @@ export interface TaskContext<T extends TaskRecord> {
   readonly $race: <V>(promise: PromiseLike<V>) => Promise<V>
 }
 
-export type InferredTaskContext<T extends TaskRecord> = {
-  readonly $result: {
-    readonly [K in keyof T]: ReturnType<T[K]> extends Promise<infer R>
-      ? Promise<R>
-      : Promise<ReturnType<T[K]>>
-  }
-  readonly $signal: AbortSignal
-  readonly $disposer: AsyncDisposer
-  readonly $race: <V>(promise: PromiseLike<V>) => Promise<V>
-}
-
 export type AllValue<T extends TaskRecord> = {
   [K in keyof T]: TaskResult<T[K]>
+}
+
+export type AllSettledResult<T extends TaskRecord> = {
+  [K in keyof T]: SettledResult<TaskResult<T[K]>>
 }
 
 /**
@@ -99,301 +85,253 @@ export interface CatchOptions<V, C> {
   catch: (error: unknown, ctx: CatchContext<V>) => C | Promise<C>
 }
 
+type GraphState = { status: "running" } | { status: "stopped"; event: TaskEvent }
+
 /**
- * A task graph that can describe itself to a `catch` handler.
+ * The abort reason that `$exit` throws to stop the rest of its task. It is an Error, so a sibling
+ * that reads the exited task's `$result` gets an Error, but it is never a task failure: the exit is
+ * recorded before it is thrown.
  */
-interface CatchableTaskGraph {
-  readonly panic: Panic | undefined
-  createCatchContext(): CatchContext<Record<string, unknown>>
-}
+class ExitSignalError extends Error {
+  /**
+   * The graph whose task exited, so a graph recognizes only its own exits.
+   */
+  readonly graph: TaskGraph
 
-export interface SettledFulfilled<T> {
-  status: "fulfilled"
-  value: T
-}
-
-export interface SettledRejected {
-  status: "rejected"
-  reason: unknown
-}
-
-export type SettledResult<T> = SettledFulfilled<T> | SettledRejected
-
-export type AllSettledResult<T extends TaskRecord> = {
-  [K in keyof T]: SettledResult<TaskResult<T[K]>>
-}
-
-interface TaskGraphRun<R> extends AsyncDisposable {
-  readonly panic: Panic | undefined
-  execute(): Promise<R>
-  waitForTasksToSettle(): Promise<void>
+  constructor(graph: TaskGraph) {
+    super("Flow exited")
+    this.name = "ExitSignalError"
+    this.graph = graph
+  }
 }
 
 /**
- * The outcome of a task graph before control state and Panics are applied.
+ * Runs a task graph under one {@link Settlement}. The graph owns every piece of state that changes
+ * during a run: the state of the graph, each task's outcome, the `$result` deferreds, the first
+ * Panic, the task signal, and the cleanup stack.
  */
-export type TaskGraphOutcome<R> = { mapped: R } | { thrown: unknown } | { panic: Panic }
-
-interface TaskGraphOptions<R> {
-  mapFailure?: (error: unknown) => TaskGraphOutcome<R> | Promise<TaskGraphOutcome<R>>
-}
-
-export type ControlFailure = CancellationError | TimeoutError
-
-export abstract class OrchestrationExecution<TResult> extends BaseExecution<
-  Promise<TResult | ControlFailure>
-> {
-  protected constructor(config: BuilderConfig) {
-    invariant(
-      config.retry === undefined,
-      new Panic("ORCHESTRATION_UNSUPPORTED_POLICY", {
-        message: "Orchestration does not support retry policies.",
-      })
-    )
-
-    super(config)
-  }
-
-  protected override async executeCore(): Promise<TResult | ControlFailure> {
-    // Orchestration executions still share outer wraps/cancellation checks even
-    // though their task execution strategies differ.
-    const controlBeforeExecution = this.checkDidControlFail()
-
-    if (controlBeforeExecution) {
-      return controlBeforeExecution
-    }
-
-    return await this.executeTasks()
-  }
-
-  /**
-   * Shared task-graph lifecycle: race execution against cancellation and the graph deadline, let
-   * `mapFailure` turn a failure into a mapped result, wait for in-flight tasks to settle before
-   * resolving (so no task code is still running once the orchestration returns), and report the
-   * outcome as a value, the same way `run()` does:
-   *
-   * - A Panic throws, and wins over everything else.
-   * - This call's own cancellation, then its deadline, win over the result or the failure.
-   * - A mapped result is returned as is.
-   * - An unmapped task failure becomes an {@link UnhandledException} with the failure as `cause`.
-   */
-  protected async executeTaskGraph<R>(
-    graph: TaskGraphRun<R>,
-    options: TaskGraphOptions<R> = {}
-  ): Promise<R | UnhandledException | ControlFailure> {
-    await using execution = graph
-    const { mapFailure = (error): TaskGraphOutcome<R> => ({ thrown: error }) } = options
-    let outcome: TaskGraphOutcome<R>
-
-    try {
-      outcome = { mapped: (await this.race(execution.execute())) as R }
-    } catch (error) {
-      outcome = await mapFailure(error)
-    } finally {
-      await execution.waitForTasksToSettle()
-    }
-
-    // A Panic is programmer misuse, so it overrides any result or failure, as in run(): even one
-    // that settled after catch mapped an earlier failure, or after cancellation or the deadline.
-    if (execution.panic) {
-      throw execution.panic
-    }
-
-    // A catch handler that throws or rejects is misuse too, so its Panic also wins over this call's
-    // own cancellation or deadline, even one that the handler itself triggered.
-    if ("panic" in outcome) {
-      throw outcome.panic
-    }
-
-    // Control state may have changed while tasks ran or settled, and it takes priority over the
-    // outcome; the shared chain reports cancellation over the graph deadline when both fired.
-    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
-
-    if (controlError) {
-      return controlError
-    }
-
-    if ("mapped" in outcome) {
-      return outcome.mapped
-    }
-
-    // A Panic from the graph itself, such as FLOW_NO_EXIT, comes after control state: a deadline
-    // or cancellation that stopped every task also explains why no task exited.
-    if (isPanic(outcome.thrown)) {
-      throw outcome.thrown
-    }
-
-    return new UnhandledException(undefined, { cause: outcome.thrown })
-  }
-
-  /**
-   * Maps a task failure through an orchestration `catch`, with the same rules as `run()`: this
-   * call's own policy failures and Panics never reach `catch`, and a `catch` that throws or rejects
-   * reports a Panic.
-   */
-  protected async mapCatch<V, C>(
-    catchFn: CatchOptions<V, C>["catch"] | undefined,
-    graph: CatchableTaskGraph,
-    error: unknown
-  ): Promise<TaskGraphOutcome<C>> {
-    const controlAfterFailure = this.checkDidControlFail(error)
-
-    if (controlAfterFailure) {
-      return { thrown: controlAfterFailure }
-    }
-
-    // Defects never pass through catch, the same as in run(). A task Panic is recorded on the graph,
-    // and a Panic from the graph itself, such as FLOW_NO_EXIT, arrives as `error`.
-    if (!catchFn || graph.panic || isPanic(error)) {
-      return { thrown: error }
-    }
-
-    // The graph records task results without their types; `V` names them.
-    const context = graph.createCatchContext() as CatchContext<V>
-
-    try {
-      const mapped = catchFn(error, context)
-
-      if (!checkIsPromiseLike(mapped)) {
-        return { mapped }
-      }
-
-      try {
-        const raced = (await this.raceWithCancellation(
-          Promise.resolve(mapped).catch((catchError: unknown) => {
-            throw new Panic("CATCH_HANDLER_REJECT", { cause: catchError })
-          }),
-          error
-        )) as C
-
-        return { mapped: raced }
-      } catch (mappedError) {
-        return isPanic(mappedError) ? { panic: mappedError } : { thrown: mappedError }
-      }
-    } catch (catchError) {
-      return { panic: new Panic("CATCH_HANDLER_THROW", { cause: catchError }) }
-    }
-  }
-
-  protected abstract executeTasks(): Promise<TResult | UnhandledException | ControlFailure>
-}
-
-export abstract class TaskGraphExecutionBase<
-  T extends TaskRecord,
-  TContext extends TaskContext<T>,
-> implements AsyncDisposable {
-  protected readonly tasks: T
-  protected readonly taskNames: Array<keyof T & string>
-  readonly #settlements = new Map<keyof T, PromiseWithResolvers<unknown>>()
-  protected readonly internalController: AbortController = new AbortController()
-  protected readonly taskSignal: AbortSignal
-  protected readonly disposer: AsyncDisposer = disposer()
-  /**
-   * The first task failure as the task threw it, and the task that threw it.
-   */
-  protected firstFailure: { error: unknown; taskName: (keyof T & string) | undefined } | undefined
-  readonly #results: Record<string, unknown> = {}
+export class TaskGraph implements AsyncDisposable {
+  readonly #tasks: TaskRecord
+  readonly #settlement: Settlement
+  readonly #controller = new AbortController()
+  readonly #signal: AbortSignal
+  readonly #disposer = disposer()
+  readonly #resultDeferreds = new Map<string, PromiseWithResolvers<unknown>>()
+  readonly #values: Record<string, unknown> = {}
+  readonly #outcomes: Record<string, SettledResult<unknown>> = {}
+  readonly #stopped = Promise.withResolvers<true>()
+  #state: GraphState = { status: "running" }
   #panic: Panic | undefined
+  #settled: Promise<unknown> = Promise.resolve()
   declare [Symbol.asyncDispose]: () => Promise<void>
 
-  constructor(signal: AbortSignal | undefined, tasks: T) {
-    this.tasks = tasks
-    this.taskNames = Object.keys(tasks)
-    this.taskSignal = signal
-      ? AbortSignal.any([signal, this.internalController.signal])
-      : this.internalController.signal
+  constructor(tasks: TaskRecord, settlement: Settlement, signal: AbortSignal | undefined) {
+    this.#tasks = tasks
+    this.#settlement = settlement
+    this.#signal = signal
+      ? AbortSignal.any([signal, this.#controller.signal])
+      : this.#controller.signal
   }
 
+  /**
+   * The first Panic that a task threw. It wins over every other outcome.
+   */
   get panic(): Panic | undefined {
     return this.#panic
   }
 
   /**
-   * The results of the tasks that resolved so far, by task name.
+   * Starts every task and resolves with the graph's value when an exit stops it or every task
+   * settles. It rejects with the task failure that stopped the graph, as the task threw it, or with
+   * a Panic from the settlement, such as `FLOW_NO_EXIT`.
    */
-  protected get results(): Record<string, unknown> {
-    return this.#results
+  async run(): Promise<unknown> {
+    this.#settled = Promise.allSettled(
+      Object.keys(this.#tasks).map(async (task) => this.#runTask(task))
+    )
+
+    await Promise.race([this.#settled, this.#stopped.promise])
+
+    if (this.#state.status === "stopped") {
+      const { event } = this.#state
+
+      if (event.kind === "rejected") {
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Report the raw task failure.
+        throw event.error
+      }
+
+      return event.value
+    }
+
+    return this.#settlement.settle({ outcomes: this.#outcomes, values: this.#values })
+  }
+
+  /**
+   * Resolves when every task has settled, so no task code still runs.
+   */
+  async waitForTasksToSettle(): Promise<void> {
+    await this.#settled
   }
 
   createCatchContext(): CatchContext<Record<string, unknown>> {
+    const { failedTask } = this
     // Siblings keep settling while an async catch runs, so read from a snapshot.
-    const snapshot = { ...this.#results }
+    const snapshot = { ...this.#values }
 
     return Object.freeze({
-      failedTask: this.firstFailure?.taskName,
+      failedTask,
       result: (task: string) => (Object.hasOwn(snapshot, task) ? snapshot[task] : undefined),
-      signal: this.taskSignal,
+      signal: this.#signal,
     })
   }
 
   async dispose(): Promise<void> {
-    await this.disposer.dispose()
+    await this.#disposer.dispose()
   }
 
-  protected getTaskHandler(taskName: keyof T) {
-    const taskFn = this.tasks[taskName]
+  get failedTask(): string | undefined {
+    return this.#state.status === "stopped" && this.#state.event.kind === "rejected"
+      ? this.#state.event.task
+      : undefined
+  }
+
+  async #runTask(task: string): Promise<void> {
+    const deferred = this.#resultDeferred(task)
+
+    try {
+      const value = await this.#handler(task).call(this.#createContext(task))
+
+      deferred.resolve(value)
+      setTaskResult(this.#values, task, value)
+      setTaskResult(this.#outcomes, task, { status: "fulfilled", value })
+      this.#record({ kind: "fulfilled", task, value })
+    } catch (error) {
+      // The exit was recorded when `$exit` ran. Its throw only stopped the rest of the task.
+      if (error instanceof ExitSignalError && error.graph === this) {
+        deferred.reject(error)
+        return
+      }
+
+      // Siblings observe the failure as an abort reason and a `$result` rejection, and neither may
+      // be undefined: abort(undefined) would make the platform substitute a default AbortError.
+      const reason =
+        error instanceof Error ? error : new UnhandledException(undefined, { cause: error })
+
+      deferred.reject(reason)
+
+      if (isPanic(error)) {
+        this.#panic ??= error
+        this.#stop({ error, kind: "rejected", task }, reason)
+        return
+      }
+
+      setTaskResult(this.#outcomes, task, { reason: error, status: "rejected" })
+      this.#record({ error, kind: "rejected", task }, reason)
+    }
+  }
+
+  #record(event: TaskEvent, abortReason?: Error): void {
+    if (this.#settlement.stops(event)) {
+      this.#stop(event, abortReason)
+    }
+  }
+
+  #stop(event: TaskEvent, abortReason: Error | undefined): void {
+    if (this.#state.status !== "running") {
+      return
+    }
+
+    this.#state = { event, status: "stopped" }
+
+    if (!this.#controller.signal.aborted) {
+      this.#controller.abort(abortReason)
+    }
+
+    this.#stopped.resolve(true)
+  }
+
+  #exit(task: string, value: unknown): never {
+    // Record the exit before throwing, so a task that catches the throw, or a nested run() that
+    // maps it, still ends the flow. The throw only stops the rest of the task.
+    const exit = new ExitSignalError(this)
+    this.#record({ kind: "exited", task, value }, exit)
+    throw exit
+  }
+
+  #createContext(task: string): object {
+    const context: Record<string, unknown> = {
+      $disposer: this.#disposer,
+      $race: <V>(promise: PromiseLike<V>) => this.#raceTaskSignal(promise),
+      $result: this.#createResultProxy(task),
+      $signal: this.#signal,
+    }
+
+    if (this.#settlement.exits) {
+      context.$exit = (value: unknown) => this.#exit(task, value)
+    }
+
+    return Object.freeze(context)
+  }
+
+  #handler(task: string): (this: object) => unknown {
+    const handler: unknown = this.#tasks[task]
 
     invariant(
-      typeof taskFn === "function",
+      typeof handler === "function",
       new Panic("TASK_INVALID_HANDLER", {
-        message: `Task "${String(taskName)}" is not a function`,
+        message: `Task "${task}" is not a function`,
       })
     )
 
-    return taskFn as (this: TContext) => unknown
+    return handler as (this: object) => unknown
   }
 
-  protected createResultProxy(requesterTaskName: keyof T): ResultProxy<T> {
-    return new Proxy({} as ResultProxy<T>, {
-      get: (_, referencedTaskName: string) =>
-        this.waitForResult(referencedTaskName, requesterTaskName),
-    })
+  #createResultProxy(requester: string): object {
+    return new Proxy(
+      {},
+      {
+        get: (_, referenced: string) => this.#waitForResult(referenced, requester),
+      }
+    )
   }
 
-  protected waitForResult(taskName: keyof T, requesterTaskName?: keyof T): Promise<unknown> {
-    if (requesterTaskName === taskName) {
+  #waitForResult(task: string, requester: string): Promise<unknown> {
+    if (requester === task) {
       return Promise.reject(
         new Panic("TASK_SELF_REFERENCE", {
-          message: `Task "${String(taskName)}" cannot await its own result`,
+          message: `Task "${task}" cannot await its own result`,
         })
       )
     }
 
-    if (!Object.hasOwn(this.tasks, taskName)) {
+    if (!Object.hasOwn(this.#tasks, task)) {
       return Promise.reject(
         new Panic("TASK_UNKNOWN_REFERENCE", {
-          message: `Unknown task "${String(taskName)}"`,
+          message: `Unknown task "${task}"`,
         })
       )
     }
 
-    return this.taskSettlement(taskName).promise
+    return this.#resultDeferred(task).promise
   }
 
   /**
-   * Memoized per-task settlement: `$result` reads and `runTask` share one deferred per task, so the
-   * promise itself broadcasts and caches the outcome. A task may synchronously read a sibling that
-   * has not started yet, which is why the deferred is created on first access rather than derived
-   * from the task's own execution promise.
+   * Memoized per-task result deferred: `$result` reads and the task run share one deferred per
+   * task, so the promise itself broadcasts and caches the outcome. A task may synchronously read a
+   * sibling that has not started yet, which is why the deferred is created on first access.
    */
-  private taskSettlement(taskName: keyof T): PromiseWithResolvers<unknown> {
-    let settlement = this.#settlements.get(taskName)
+  #resultDeferred(task: string): PromiseWithResolvers<unknown> {
+    let deferred = this.#resultDeferreds.get(task)
 
-    if (!settlement) {
-      settlement = Promise.withResolvers<unknown>()
-      // Keep a task failure from surfacing as an unhandled rejection when no
-      // sibling reads its `$result`; failures still propagate via `runTask`.
-      void settlement.promise.catch((error: unknown) => void error)
-      this.#settlements.set(taskName, settlement)
+    if (!deferred) {
+      deferred = Promise.withResolvers<unknown>()
+      // Keep a task failure from surfacing as an unhandled rejection when no sibling reads its
+      // `$result`; the graph still records the failure.
+      void deferred.promise.catch((error: unknown) => void error)
+      this.#resultDeferreds.set(task, deferred)
     }
 
-    return settlement
-  }
-
-  protected abortInternal(error: unknown): void {
-    if (!this.internalController.signal.aborted) {
-      this.internalController.abort(error)
-    }
+    return deferred
   }
 
   /**
@@ -401,156 +339,14 @@ export abstract class TaskGraphExecutionBase<
    * abort reason if the signal fires first. The abandoned promise stays observed inside
    * `resolveWithAbort`, so a late rejection cannot become an unhandled rejection.
    */
-  protected async raceTaskSignal<V>(promise: PromiseLike<V>): Promise<V> {
-    const raced = await resolveWithAbort(this.taskSignal, promise, () => TASK_RACE_ABORTED)
+  async #raceTaskSignal<V>(promise: PromiseLike<V>): Promise<V> {
+    const raced = await resolveWithAbort(this.#signal, promise, () => TASK_RACE_ABORTED)
 
     if (raced === TASK_RACE_ABORTED) {
-      throw this.taskSignal.reason
+      throw this.#signal.reason
     }
 
     return raced as V
   }
-
-  /**
-   * Optional observation hooks: subclasses implement these to record task outcomes. These method
-   * signatures are erased at compile time, so the base class leaves them undefined without emitting
-   * fields that would shadow subclass prototype methods.
-   */
-  protected onTaskResult?(taskName: keyof T, value: unknown): void
-  protected onTaskError?(taskName: keyof T, error: unknown): void
-
-  // The two methods below are polymorphic defaults overridden by
-  // subclasses (template-method pattern); they must stay instance methods
-  // even though the base implementations do not touch `this`.
-
-  // oxlint-disable-next-line class-methods-use-this -- polymorphic default
-  protected mapStoredError(error: unknown): Error {
-    return error instanceof Error ? error : new UnhandledException(undefined, { cause: error })
-  }
-
-  // oxlint-disable-next-line class-methods-use-this -- polymorphic default
-  protected shouldRethrowTaskError(_error: unknown): boolean {
-    return true
-  }
-
-  protected setFirstFailure(error: unknown, taskName?: keyof T & string): void {
-    // Wrap the error: a task can throw `null` or `undefined`, and a bare value would let a later
-    // failure replace the first one.
-    this.firstFailure ??= { error, taskName }
-  }
-
-  protected abstract shouldAbortOnTaskError(error: unknown): boolean
-  protected abstract createTaskContext(resultProxy: ResultProxy<T>): TContext
-
-  protected async runTask(taskName: keyof T): Promise<void> {
-    try {
-      const taskFn = this.getTaskHandler(taskName)
-      const resultProxy = this.createResultProxy(taskName)
-      const context = this.createTaskContext(resultProxy)
-      const result = await taskFn.call(context)
-
-      this.taskSettlement(taskName).resolve(result)
-      setTaskResult(this.#results, taskName as string, result)
-      this.onTaskResult?.(taskName, result)
-    } catch (error) {
-      const mappedError = this.mapStoredError(error)
-
-      if (isPanic(error)) {
-        this.#panic ??= error
-      }
-
-      this.setFirstFailure(error, taskName as keyof T & string)
-      this.taskSettlement(taskName).reject(mappedError)
-      this.onTaskError?.(taskName, error)
-
-      if (this.shouldAbortOnTaskError(error)) {
-        // Abort with the mapped error so the signal reason siblings observe
-        // (directly or via $race) is never undefined — abort(undefined) would
-        // make the platform substitute a default AbortError.
-        this.abortInternal(mappedError)
-      }
-
-      if (this.shouldRethrowTaskError(error)) {
-        throw error
-      }
-    }
-  }
 }
-defineAsyncDisposeAlias(TaskGraphExecutionBase.prototype)
-
-abstract class TaskExecution<T extends TaskRecord> extends TaskGraphExecutionBase<
-  T,
-  TaskContext<T>
-> {
-  #settledPromise: Promise<Array<PromiseSettledResult<void>>> | undefined
-
-  async waitForTasksToSettle(): Promise<void> {
-    await this.#settledPromise
-  }
-
-  /**
-   * Starts every task eagerly and captures the allSettled tracker up front so
-   * `waitForTasksToSettle` works and task rejections are always observed.
-   */
-  protected startTasks(): Array<Promise<void>> {
-    const promises = this.taskNames.map(async (name) => this.runTask(name))
-    this.#settledPromise = Promise.allSettled(promises)
-    return promises
-  }
-
-  protected override createTaskContext(resultProxy: ResultProxy<T>): TaskContext<T> {
-    return Object.freeze({
-      $disposer: this.disposer,
-      $race: <V>(promise: PromiseLike<V>) => this.raceTaskSignal(promise),
-      $result: resultProxy,
-      $signal: this.taskSignal,
-    })
-  }
-}
-
-export class FailFastTaskExecution<T extends TaskRecord> extends TaskExecution<T> {
-  async execute(): Promise<AllValue<T>> {
-    try {
-      await Promise.all(this.startTasks())
-    } catch (error) {
-      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Report the raw task failure.
-      throw this.firstFailure ? this.firstFailure.error : error
-    }
-
-    return this.results as AllValue<T>
-  }
-
-  // oxlint-disable-next-line class-methods-use-this -- polymorphic override
-  protected override shouldAbortOnTaskError(): boolean {
-    return true
-  }
-}
-
-export class SettledTaskExecution<T extends TaskRecord> extends TaskExecution<T> {
-  readonly #returnValue: Record<string, unknown> = {}
-
-  async execute(): Promise<AllSettledResult<T>> {
-    void this.startTasks()
-    await this.waitForTasksToSettle()
-
-    return this.#returnValue as AllSettledResult<T>
-  }
-
-  protected override onTaskResult(taskName: keyof T, value: unknown): void {
-    setTaskResult(this.#returnValue, taskName as string, { status: "fulfilled", value })
-  }
-
-  protected override onTaskError(taskName: keyof T, error: unknown): void {
-    setTaskResult(this.#returnValue, taskName as string, { reason: error, status: "rejected" })
-  }
-
-  // oxlint-disable-next-line class-methods-use-this -- polymorphic override
-  protected override shouldAbortOnTaskError(error: unknown): boolean {
-    return isPanic(error)
-  }
-
-  // oxlint-disable-next-line class-methods-use-this -- polymorphic override
-  protected override shouldRethrowTaskError(): boolean {
-    return false
-  }
-}
+defineAsyncDisposeAlias(TaskGraph.prototype)
