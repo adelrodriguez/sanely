@@ -106,6 +106,8 @@ const workspaceImports: Record<string, { group: string[]; message: string }> = {
   },
   cron: timeImports,
   duration: timeImports,
+  ratelimit: timeImports,
+  skew: timeImports,
 }
 
 function packageImports(name: string) {
@@ -301,7 +303,7 @@ export default defineConfig({
     //                                                <- limiter
     //
     // These rules follow the generic `src/lib` rules above, because a later override replaces the
-    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` for that reason. A
+    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` and `timeImports` for that reason. A
     // folder without a rule of its own may import nothing else in lib. The last rule lets tests
     // cross these lines.
     {
@@ -312,6 +314,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/**"],
                 message:
@@ -333,6 +336,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/**"],
                 message: "options and expiring-map import nothing else in lib.",
@@ -350,6 +354,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/**", "!#lib/options/**"],
                 message: "algorithms import only options.",
@@ -367,6 +372,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**"],
                 message: "The store contract imports only algorithms.",
@@ -384,6 +390,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**", "!#lib/store/**"],
                 message: "transitions import only algorithms and the store contract.",
@@ -401,6 +408,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/stores/**", "#lib/limiter/**"],
                 message:
@@ -419,6 +427,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
+              timeImports,
               {
                 group: ["#lib/stores/**", "#lib/transitions/**"],
                 message:
@@ -437,7 +446,8 @@ export default defineConfig({
     // protocol, then the runtime, then integrations. Adapters import only the protocol and
     // `adapters/shared.ts`, and an integration never imports an adapter. These rules follow the
     // generic `src/lib` rules above, because a later override replaces the rule options of an
-    // earlier one. The last rule lets tests cross these lines.
+    // earlier one. Each rule repeats `timeImports` for that reason. The last rule lets tests cross
+    // these lines.
     {
       files: ["packages/skew/src/lib/protocol/**/*.ts"],
       rules: {
@@ -449,6 +459,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
+              timeImports,
               {
                 group: ["#lib/runtime/**", "#integrations/**", "#adapters/**"],
                 message: "protocol imports nothing else in skew.",
@@ -469,6 +480,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
+              timeImports,
               {
                 group: ["#integrations/**", "#adapters/**"],
                 message: "runtime imports only the protocol.",
@@ -489,6 +501,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
+              timeImports,
               {
                 group: ["#adapters/**"],
                 message: "An integration never imports an adapter.",
@@ -509,6 +522,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
+              timeImports,
               {
                 group: [
                   "#lib/**",

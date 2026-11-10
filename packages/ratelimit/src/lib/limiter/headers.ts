@@ -1,3 +1,4 @@
+import { MS_PER_SECOND } from "@sanely/core/time"
 import type { LimitResult } from "./build-limiter.ts"
 
 /**
@@ -9,11 +10,11 @@ export function headers(result: LimitResult): Record<string, string> {
   if (result.reason === "storeError" || (result.success && result.mode === "dryRun")) return {}
 
   const name = `"${result.name.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
-  const resetSeconds = Math.ceil(result.retryAfter / 1000)
+  const resetSeconds = Math.ceil(result.retryAfter / MS_PER_SECOND)
 
   return {
     RateLimit: `${name};r=${result.remaining};t=${resetSeconds}`,
-    "RateLimit-Policy": `${name};q=${result.limit};w=${Math.ceil(result.window / 1000)}`,
+    "RateLimit-Policy": `${name};q=${result.limit};w=${Math.ceil(result.window / MS_PER_SECOND)}`,
     ...(result.success ? {} : { "Retry-After": String(resetSeconds) }),
   }
 }

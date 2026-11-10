@@ -16,7 +16,7 @@ Month and year multipliers are fixed lengths. Cron uses the minute and hour voca
 
 ## Dependency boundaries
 
-Cron and duration import core through `@sanely/core/time`. Core does not import either library.
+Cron, duration, ratelimit, and skew import core through `@sanely/core/time`. Core does not import any of these libraries.
 Package exports keep implementation paths private. Oxlint checks the package direction and prevents implementation modules from importing their own entry point.
 The core build rejects third-party bundles and external package imports.
 

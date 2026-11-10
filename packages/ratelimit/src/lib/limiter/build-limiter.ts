@@ -1,3 +1,4 @@
+import { MS_PER_SECOND } from "@sanely/core/time"
 import type { Algorithm } from "#lib/algorithms/index.ts"
 import type { Store, StoreResult } from "#lib/store/index.ts"
 import { capacityOf, windowOf } from "#lib/algorithms/index.ts"
@@ -8,7 +9,7 @@ import { StoreError } from "./errors.ts"
 import { keyOf } from "./identity.ts"
 import { storeTimer } from "./store-timer.ts"
 
-const DEFAULT_TIMEOUT = 1000
+const DEFAULT_TIMEOUT = MS_PER_SECOND
 
 /**
  * `"enforce"` refuses denied requests. `"dryRun"` counts normally but lets them through.

@@ -1,3 +1,4 @@
+import { MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
 import type { RuntimeEnvironment, RuntimeEvent, RuntimeEventType, TimerHandle } from "./environment"
 
 export interface DeploymentSchedule {
@@ -8,13 +9,13 @@ export interface DeploymentSchedule {
 }
 
 export const DEFAULT_DEPLOYMENT_SCHEDULE: DeploymentSchedule = {
-  checkInterval: 5 * 60_000,
+  checkInterval: 5 * MS_PER_MINUTE,
   checkOnReconnect: true,
   checkOnSubscribe: true,
   checkOnVisible: true,
 }
 
-export const MINIMUM_CHECK_INTERVAL = 10_000
+export const MINIMUM_CHECK_INTERVAL = 10 * MS_PER_SECOND
 
 export class DeploymentScheduler {
   readonly #environment: RuntimeEnvironment

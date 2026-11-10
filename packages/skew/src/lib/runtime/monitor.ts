@@ -1,3 +1,4 @@
+import { MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
 import type { Deployment, DeploymentSource, IsDeploymentCurrent } from "#lib/protocol/types.ts"
 import type { RuntimeEnvironment, TimerHandle } from "./environment"
 import type { DeploymentSchedule } from "./scheduler"
@@ -46,10 +47,10 @@ interface ReloadMarker {
   readonly to: string
 }
 
-export const DEFAULT_CHECK_TIMEOUT = 30_000
+export const DEFAULT_CHECK_TIMEOUT = 30 * MS_PER_SECOND
 
 const RELOAD_MARKER_KEY = "deployment-check:reload"
-const RELOAD_COOLDOWN = 10 * 60_000
+const RELOAD_COOLDOWN = 10 * MS_PER_MINUTE
 
 export interface DeploymentMonitorOptions {
   readonly checkTimeout?: number

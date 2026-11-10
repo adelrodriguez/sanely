@@ -27,7 +27,7 @@ Migrated packages contain their source libraries. The other packages still conta
 
 The private [`@sanely/core`](packages/core) workspace holds shared definitions.
 Libraries can reuse internal workspaces without adding third-party runtime dependencies.
-Cron and duration bundle core's JavaScript and types, so consumers install each library on its own.
+Cron, duration, ratelimit, and skew bundle core's JavaScript and types, so consumers install each library on its own.
 
 ## Add a package
 

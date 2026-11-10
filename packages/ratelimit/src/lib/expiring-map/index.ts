@@ -1,4 +1,6 @@
-const SWEEP_INTERVAL = 60_000
+import { MS_PER_MINUTE } from "@sanely/core/time"
+
+const SWEEP_INTERVAL = MS_PER_MINUTE
 
 type Expiring = { readonly expiresAt: number }
 

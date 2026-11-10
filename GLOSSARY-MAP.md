@@ -16,5 +16,5 @@ Each package is its own context. A package gets its glossary at `packages/<name>
 
 ## Relationships
 
-Cron and duration share time units and aliases from core. Core does not depend on either package.
+Cron and duration share time units and aliases from core. Ratelimit and skew use its millisecond conversion constants. Core depends on none of these packages.
 Other terms keep the meaning defined by the glossary of their package.
