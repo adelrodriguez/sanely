@@ -77,6 +77,16 @@ class InternalError extends Error {
   expectTypeOf(result).toEqualTypeOf<Promise<number | "err">>()
 }
 
+// Infers a union from run() when a sync catch returns several failures.
+{
+  const result = try$.run({
+    catch: (error) => (error instanceof TypeError ? new BusyError() : new InternalError()),
+    try: () => Promise.resolve(1),
+  })
+
+  expectTypeOf(result).toEqualTypeOf<Promise<number | BusyError | InternalError>>()
+}
+
 // Infers a union from run() when an async catch returns several failures.
 {
   const result = try$.run({
