@@ -425,6 +425,18 @@ export const GRAMMAR = [
     strict: false,
   },
   {
+    error: "an hour interval cannot have a window",
+    lenient: false,
+    phrase: "every 2 hours on weekdays between 9:00 and 17:00",
+    strict: false,
+  },
+  {
+    error: 'expected a time after "every 15 minutes between"',
+    lenient: false,
+    phrase: "every 15 minutes between",
+    strict: false,
+  },
+  {
     error: `an hour interval cannot have an "at" clause`,
     lenient: false,
     phrase: "every 2 hours at 9:30",

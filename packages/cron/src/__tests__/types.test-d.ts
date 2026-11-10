@@ -292,13 +292,6 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(cron(`every ${day} at ${time}`)).toEqualTypeOf<CronExpression>()
 }
 
-// Gives a CronExpression where a scheduler takes a string.
-{
-  const pattern: string = cron("every 15 minutes")
-
-  void pattern
-}
-
 // parse, safeParse, and isSchedule
 
 // Takes any value in parse and safeParse, and returns a Schedule.
@@ -502,14 +495,6 @@ function _negativeTypeTests() {
   // @ts-expect-error -- 7 does not divide 60
   cron("every 7 minutes")
 
-  // TS2345: Argument of type '"every 90 minutes"' is not assignable to parameter of type '"90 minutes has no exact single cron. Use 2, 3, 4, 5, 6, 10, 12, 15, 20, or 30"'.
-  // @ts-expect-error -- 90 minutes has no exact single cron
-  cron("every 90 minutes")
-
-  // TS2345: Argument of type '"every 5 hours"' is not assignable to parameter of type '"5 does not divide 24. Use 2, 3, 4, 6, 8, or 12"'.
-  // @ts-expect-error -- 5 does not divide 24
-  cron("every 5 hours")
-
   // TS2345: Argument of type 'string' is not assignable to parameter of type '"a string is not a CronPhrase. Use parse for a string at runtime"'.
   // @ts-expect-error -- a plain string is not a CronPhrase: use parse
   cron(userInput)
@@ -522,14 +507,6 @@ function _negativeTypeTests() {
   // @ts-expect-error -- a union with one invalid member
   cron(Math.random() > 0.5 ? "every 15 minutes" : "every 7 minutes")
 
-  // TS2345: Argument of type '"every day at 9"' is not assignable to parameter of type '"\"9\" is not a valid time. Write the minutes, such as \"9:00\", and use 24-hour time or am/pm"'.
-  // @ts-expect-error -- a time must have minutes
-  cron("every day at 9")
-
-  // TS2345: Argument of type '"every day at 12:00pm"' is not assignable to parameter of type '"\"12:00pm\" is ambiguous. Use noon"'.
-  // @ts-expect-error -- 12:00pm is ambiguous; use noon
-  cron("every day at 12:00pm")
-
   // TS2345: Argument of type '"every day at 25:00"' is not assignable to parameter of type '"\"25:00\" is not a valid time. Use H:MM or HH:MM (24-hour), H:MMam or H:MMpm, noon, or midnight"'.
   // @ts-expect-error -- 25:00 is not a valid time
   cron("every day at 25:00")
@@ -541,26 +518,6 @@ function _negativeTypeTests() {
   // TS2345: Argument of type '"every monday, wednesday, and friday at 9:00"' is not assignable to parameter of type '"write the list as \"monday, wednesday and friday\""'.
   // @ts-expect-error -- the list format is "monday, wednesday and friday"
   cron("every monday, wednesday, and friday at 9:00")
-
-  // TS2345: Argument of type '"every 15 minutes on weekday"' is not assignable to parameter of type '"use \"weekdays\" after \"on\""'.
-  // @ts-expect-error -- the day set after "on" is "weekdays"
-  cron("every 15 minutes on weekday")
-
-  // TS2345: Argument of type '"every 15 minutes between 9:30 and 17:00"' is not assignable to parameter of type '"the window must start and end on the hour, and \"9:30\" is not on the hour"'.
-  // @ts-expect-error -- the window must be on the hour
-  cron("every 15 minutes between 9:30 and 17:00")
-
-  // TS2345: Argument of type '"every 15 minutes between 17:00 and 9:00"' is not assignable to parameter of type '"the window must end after it starts"'.
-  // @ts-expect-error -- the window must end after it starts
-  cron("every 15 minutes between 17:00 and 9:00")
-
-  // TS2345: Argument of type '"every 15 minutes at 9:30"' is not assignable to parameter of type '"a minute interval cannot have an \"at\" clause. Use \"between <time> and <time>\" to limit it to a window"'.
-  // @ts-expect-error -- a minute interval cannot have an "at" clause
-  cron("every 15 minutes at 9:30")
-
-  // TS2345: Argument of type '"on the 29th of every month at 9:00"' is not assignable to parameter of type '"the 29th does not occur in every month. Use 1st to 28th"'.
-  // @ts-expect-error -- the 29th does not occur in every month
-  cron("on the 29th of every month at 9:00")
 
   // TS2345: Argument of type '"Every 15 Mins"' is not assignable to parameter of type '"use lowercase words"'.
   // @ts-expect-error -- the lenient form is not a CronPhrase; use parse

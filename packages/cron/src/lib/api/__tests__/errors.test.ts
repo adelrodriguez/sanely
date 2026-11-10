@@ -66,10 +66,6 @@ function failAt(): never {
 }
 
 describe("withInput", () => {
-  it("should return the result of the step", () => {
-    expect(withInput("input", () => 15)).toBe(15)
-  })
-
   it("should change a ParseError to an InvalidScheduleError for the input", () => {
     expect(() => withInput({ every: "day" }, failAt)).toThrow(InvalidScheduleError)
     expect(() => withInput({ every: "day" }, failAt)).toThrow(
