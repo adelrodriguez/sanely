@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { defineRule } from "adamantite/rules"
+import { defineRule } from "adamantite/rules/plugin"
 
 // Clock ratios and the millisecond sizes that `@sanely/core/time` defines.
 const RATIOS: ReadonlyMap<number, string> = new Map([

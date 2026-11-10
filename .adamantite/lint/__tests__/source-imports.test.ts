@@ -1,17 +1,6 @@
-import { describe, it } from "node:test"
-import { RuleTester } from "oxlint/plugins-dev"
+import { RuleTester } from "adamantite/rules/testing"
 import rule from "../source-imports.ts"
 import { fixture } from "./fixtures.ts"
-
-RuleTester.describe = (name, run) => {
-  void describe(name, run)
-}
-RuleTester.it = (name, run) => {
-  void it(name, run)
-}
-RuleTester.itOnly = (name, run) => {
-  void it.only(name, run)
-}
 
 new RuleTester().run("source-imports", rule, {
   invalid: [

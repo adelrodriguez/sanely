@@ -25,7 +25,7 @@
     "release": "changeset publish",
     "test": "pnpm run test:rules && turbo run test",
     "test:compat": "turbo run test:compat",
-    "test:rules": "node --test .adamantite/rules/__tests__/*.test.ts",
+    "test:rules": "node --test .adamantite/lint/__tests__/*.test.ts",
     "version": "changeset version && pnpm run fix"
   },
   "devDependencies": {
@@ -33,13 +33,14 @@
     "@tooling/tsconfig": "workspace:*",
     "@turbo/gen": "2.11.10",
     "@types/node": "catalog:",
-    "adamantite": "0.45.0",
+    "adamantite": "0.46.0",
     "knip": "6.42.0",
-    "oxfmt": "0.73.0",
-    "oxlint": "1.88.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxfmt": "0.76.0",
+    "oxlint": "1.91.0",
+    "oxlint-plugin-react-doctor": "0.9.18",
     "packref": "0.3.7",
     "sherif": "1.13.0",
+    "tsrs": "0.21.0-ts7.1.0-beta",
     "turbo": "2.11.10",
     "typescript": "catalog:"
   },
