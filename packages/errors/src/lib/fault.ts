@@ -21,9 +21,14 @@ const originalStacks = new WeakMap<Fault, string | undefined>()
 
 const CAUSE_BLOCK_MARKER = "\nCaused by: "
 
-function stripCauseBlock(stack: string | undefined): string | undefined {
-  const index = stack?.indexOf(CAUSE_BLOCK_MARKER) ?? -1
-  return index === -1 ? stack : stack?.slice(0, index)
+// Cuts a serialized cause block from a stack. The search starts after the stack's header,
+// `${name}: ${message}`, because a multiline message can contain the marker too.
+function stripCauseBlock(stack: string | undefined, header: string): string | undefined {
+  if (stack === undefined) return undefined
+
+  const start = stack.startsWith(header) ? header.length : 0
+  const index = stack.indexOf(CAUSE_BLOCK_MARKER, start)
+  return index === -1 ? stack : stack.slice(0, index)
 }
 
 function defaultTrimFormatter(value: string): string {
@@ -145,7 +150,10 @@ export abstract class Fault<
     // must not read it: a subclass sets its message after super(). Save the pre-cause stack
     // on the first withCause() call instead. A revived stack can already hold a serialized
     // cause block, which the new cause replaces.
-    if (!originalStacks.has(this)) originalStacks.set(this, stripCauseBlock(this.stack))
+    if (!originalStacks.has(this)) {
+      const header = this.message === "" ? this.name : `${this.name}: ${this.message}`
+      originalStacks.set(this, stripCauseBlock(this.stack, header))
+    }
     const originalStack = originalStacks.get(this)
 
     // Rebuild stack from the original (pre-cause) stack on every call,

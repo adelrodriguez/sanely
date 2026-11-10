@@ -118,3 +118,20 @@ describe("revived fault stack", () => {
     expect(stack.split("\n")[0]).toBe("LookupError: LookupError")
   })
 })
+
+describe("stack with a multiline message", () => {
+  class LookupError extends Tagged("LookupError")() {
+    constructor() {
+      super()
+      this.message = "Lookup failed\nCaused by: stale config"
+    }
+  }
+
+  it("keeps a cause marker that is part of the message", () => {
+    const stack = new LookupError().withCause(new Error("db down")).stack ?? ""
+
+    expect(stack.startsWith("LookupError: Lookup failed\nCaused by: stale config\n")).toBe(true)
+    expect(stack).toMatch(/\n {4}at /)
+    expect(stack).toContain("\nCaused by: Error: db down")
+  })
+})
