@@ -25,6 +25,8 @@ Read the local `packref` skill. If it is missing, install it with:
 npx -y skills add https://github.com/adelrodriguez/packref/tree/v0.3.7 --skill packref --yes
 ```
 
+Packref is a root devDependency. Run it as `pnpm packref <command>` in place of the skill's `npx -y packref <command>`, so every command uses the version in `package.json`.
+
 Run `remove`, `prune`, `clean`, or `clean --global` only when the user requests that removal scope, because these commands delete state.
 
 <!-- PACKREF:END -->
