@@ -38,6 +38,16 @@ class PermissionDeniedError extends Error {
   override name = "PermissionDeniedError"
 }
 
+class BusyError extends Error {
+  readonly kind = "busy"
+  override name = "BusyError"
+}
+
+class InternalError extends Error {
+  readonly kind = "internal"
+  override name = "InternalError"
+}
+
 // ── Positive type-level tests ────────────────────────────────────────────────
 // Returns T | UnhandledException from runSync() with a sync function.
 {
@@ -65,6 +75,65 @@ class PermissionDeniedError extends Error {
   const result = try$.run({ catch: () => "err" as const, try: () => Promise.resolve(42) })
 
   expectTypeOf(result).toEqualTypeOf<Promise<number | "err">>()
+}
+
+// Infers a union from run() when a sync catch returns several failures.
+{
+  const result = try$.run({
+    catch: (error) => (error instanceof TypeError ? new BusyError() : new InternalError()),
+    try: () => Promise.resolve(1),
+  })
+
+  expectTypeOf(result).toEqualTypeOf<Promise<number | BusyError | InternalError>>()
+}
+
+// Infers a union from run() when an async catch returns several failures.
+{
+  const result = try$.run({
+    catch: (cause) =>
+      Promise.resolve(cause instanceof TypeError ? new BusyError() : new InternalError()),
+    try: () => Promise.resolve(1),
+  })
+
+  expectTypeOf(result).toEqualTypeOf<Promise<number | BusyError | InternalError>>()
+}
+
+// Infers a union from run() when a sync try returns several values.
+{
+  const flag = Math.random() > 0.5
+  const result = try$.run({ catch: () => "err" as const, try: () => (flag ? "a" : 1) })
+
+  expectTypeOf(result).toEqualTypeOf<Promise<"a" | 1 | "err">>()
+}
+
+// Infers a union from run() when a try function returns several values.
+{
+  const flag = Math.random() > 0.5
+  const result = try$.run(() => (flag ? "a" : 1))
+
+  expectTypeOf(result).toEqualTypeOf<Promise<"a" | 1 | UnhandledException>>()
+}
+
+// Unwraps a returned promise in run() try and catch.
+{
+  const result = try$.run({
+    catch: () => Promise.resolve("err" as const),
+    try: () => Promise.resolve(42),
+  })
+
+  expectTypeOf(result).toEqualTypeOf<Promise<number | "err">>()
+}
+
+// Unwraps explicit promise type arguments in run() try and catch.
+{
+  const tryResult = try$.run<Promise<number>>(() => Promise.resolve(42))
+  const catchResult = try$.run<number, Promise<"err">>({
+    catch: () => Promise.resolve("err" as const),
+    try: () => 42,
+  })
+
+  expectTypeOf(tryResult).toEqualTypeOf<Promise<number | UnhandledException>>()
+  expectTypeOf(catchResult).toEqualTypeOf<Promise<number | "err">>()
 }
 
 // Returns AsyncDisposer from disposer().
@@ -771,6 +840,16 @@ class PermissionDeniedError extends Error {
 // The function bodies never execute — only the type checker matters.
 
 function _negativeTypeTests() {
+  // Rejects a runSync() try or catch that returns a promise.
+  {
+    // @ts-expect-error -- runSync() try must not return a promise
+    void try$.runSync(() => Promise.resolve(42))
+    // @ts-expect-error -- runSync() try must not return a promise
+    void try$.runSync({ catch: () => "err" as const, try: () => Promise.resolve(42) })
+    // @ts-expect-error -- runSync() catch must not return a promise
+    void try$.runSync({ catch: () => Promise.resolve("err" as const), try: () => 42 })
+  }
+
   // Rejects non-callable values in disposer.defer().
   {
     const disposer = try$.disposer()

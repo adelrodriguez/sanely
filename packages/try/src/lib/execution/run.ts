@@ -1,14 +1,11 @@
 import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
-import type { NonPromise } from "#lib/shared/utils.ts"
 import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
 import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 import { BaseExecution, RetryDirective, type RunnerError } from "./base"
 
-export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (
-  ctx: Ctx
-) => NonPromise<T> | Promise<T>
+export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (ctx: Ctx) => T | Promise<T>
 
-type RunCatchFn<E> = (error: unknown) => NonPromise<E> | Promise<E>
+type RunCatchFn<E> = (error: unknown) => E | Promise<E>
 
 interface RunAsyncOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
   try: RunTryFn<T, Ctx>
@@ -132,11 +129,11 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
 export function executeRun<T, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: RunTryFn<T, Ctx>
-): Promise<T | UnhandledException>
+): Promise<Awaited<T> | UnhandledException>
 export function executeRun<T, E, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: AsyncRunInput<T, E, Ctx>
-): Promise<T | E | RunnerError>
+): Promise<Awaited<T> | Awaited<E> | RunnerError>
 export async function executeRun<T, E, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: AsyncRunInput<T, E, Ctx>
