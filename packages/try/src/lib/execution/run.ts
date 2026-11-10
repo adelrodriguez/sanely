@@ -1,14 +1,11 @@
 import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
-import type { NonPromise } from "#lib/shared/utils.ts"
 import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
 import { checkIsPromiseLike } from "#lib/shared/utils.ts"
 import { BaseExecution, RetryDirective, type RunnerError } from "./base"
 
-export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (
-  ctx: Ctx
-) => NonPromise<T> | Promise<T>
+export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (ctx: Ctx) => T | Promise<T>
 
-type RunCatchFn<E> = (error: unknown) => NonPromise<E> | Promise<E>
+type RunCatchFn<E> = (error: unknown) => E | Promise<E>
 
 interface RunAsyncOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
   try: RunTryFn<T, Ctx>
