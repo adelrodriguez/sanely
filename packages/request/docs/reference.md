@@ -87,11 +87,11 @@ geo(request, { platform: "vercel" })
 | Field         | Type          | Description                                                                                                                                            |
 | ------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `city`        | `string`      | City name, percent-decoded.                                                                                                                            |
-| `continent`   | `string`      | Continent code: `AF`, `AN`, `AS`, `EU`, `NA`, `OC`, or `SA`.                                                                                           |
-| `country`     | `string`      | ISO 3166-1 alpha-2 country code, such as `US`.                                                                                                         |
+| `continent`   | `Continent`   | Continent code: `AF`, `AN`, `AS`, `EU`, `NA`, `OC`, or `SA`. Any other value reads as `undefined`.                                                     |
+| `country`     | `CountryCode` | ISO 3166-1 alpha-2 country code, such as `US`.                                                                                                         |
 | `coordinates` | `Coordinates` | `{ latitude, longitude }`, with the latitude between -90 and 90 and the longitude between -180 and 180. Both are present, or the field is `undefined`. |
 | `postalCode`  | `string`      | Postal code near the client.                                                                                                                           |
-| `region`      | `string`      | First-level ISO 3166-2 subdivision code without the country, such as `CA`.                                                                             |
+| `region`      | `RegionCode`  | First-level ISO 3166-2 subdivision code without the country, such as `CA`.                                                                             |
 | `timezone`    | `string`      | IANA time zone name, such as `America/Los_Angeles`.                                                                                                    |
 
 `geo` reads platform markers for an unknown value as `undefined`: an unknown country (`XX` or `ZZ`), Cloudflare's Tor marker (`T1`), App Engine's `?` city, the coordinates `0,0`, and a pair with one coordinate missing or out of range.
@@ -148,3 +148,11 @@ interface Coordinates {
 ```
 
 The client's position, as `Geo` reports it.
+
+```ts
+type Continent = "AF" | "AN" | "AS" | "EU" | "NA" | "OC" | "SA"
+type CountryCode = string & { readonly [countryCode]: true }
+type RegionCode = string & { readonly [regionCode]: true }
+```
+
+The location codes `geo` reads. `CountryCode` and `RegionCode` are strings, so they compare with string literals, such as `geo(request, options).country === "US"`. Each is branded, so a region code cannot stand in for a country code. As a region, `CA` is California, and as a country, it is Canada.

@@ -6,7 +6,11 @@ function headers(entries: Record<string, string>) {
   return { headers: new Headers(entries) }
 }
 
-const UNKNOWN: Geo = {
+// Every field of `Geo` with the value `geo` should read. The values are plain, because a test
+// cannot make the branded codes that only `geo` creates.
+type Expected = Readonly<Record<keyof Geo, unknown>>
+
+const UNKNOWN: Expected = {
   city: undefined,
   continent: undefined,
   coordinates: undefined,
@@ -17,7 +21,7 @@ const UNKNOWN: Geo = {
 }
 
 // Each platform's headers for one location, and what `geo` reads from them.
-const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Geo]> = [
+const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Expected]> = [
   [
     "vercel",
     {
@@ -144,6 +148,12 @@ describe("geo", () => {
     ).toBeUndefined()
     expect(
       geo(headers({ "x-appengine-country": value }), { platform: "app-engine" }).country
+    ).toBeUndefined()
+  })
+
+  it.each(["XY", "ZZ", "EUR", ""])("reads %o as an unknown continent", (value) => {
+    expect(
+      geo(headers({ "x-vercel-ip-continent": value }), { platform: "vercel" }).continent
     ).toBeUndefined()
   })
 

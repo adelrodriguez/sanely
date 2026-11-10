@@ -1,10 +1,19 @@
 import type { IncomingMessage } from "node:http"
 import { describe, expectTypeOf, it } from "vitest"
-import type { Coordinates, Geo, GeoPlatform, IpPlatform } from "#index.ts"
+import type {
+  Continent,
+  Coordinates,
+  CountryCode,
+  Geo,
+  GeoPlatform,
+  IpPlatform,
+  RegionCode,
+} from "#index.ts"
 import { geo, ip } from "#index.ts"
 
 declare const request: Request
 declare const incoming: IncomingMessage
+declare function currencyOf(country: CountryCode): string
 
 describe("ip", () => {
   it("returns a string or undefined", () => {
@@ -39,12 +48,30 @@ describe("ip", () => {
 describe("geo", () => {
   it("returns a location", () => {
     expectTypeOf(geo(request, { platform: "vercel" })).toEqualTypeOf<Geo>()
-    expectTypeOf<Geo["country"]>().toEqualTypeOf<string | undefined>()
     expectTypeOf<Geo["coordinates"]>().toEqualTypeOf<Coordinates | undefined>()
     expectTypeOf<Coordinates>().toEqualTypeOf<{
       readonly latitude: number
       readonly longitude: number
     }>()
+  })
+
+  it("types each location code so one cannot stand in for another", () => {
+    expectTypeOf<Geo["continent"]>().toEqualTypeOf<Continent | undefined>()
+    expectTypeOf<Continent>().toEqualTypeOf<"AF" | "AN" | "AS" | "EU" | "NA" | "OC" | "SA">()
+    expectTypeOf<Geo["country"]>().toEqualTypeOf<CountryCode | undefined>()
+    expectTypeOf<Geo["region"]>().toEqualTypeOf<RegionCode | undefined>()
+    expectTypeOf<CountryCode>().toExtend<string>()
+    expectTypeOf<RegionCode>().toExtend<string>()
+  })
+
+  it("rejects a region code where a country code belongs", () => {
+    const location = geo(request, { platform: "vercel" })
+
+    if (location.country !== undefined) currencyOf(location.country)
+    // @ts-expect-error -- "CA" as a region is California. As a country, it is Canada.
+    if (location.region !== undefined) currencyOf(location.region)
+    // @ts-expect-error -- a plain string is not a parsed country code.
+    currencyOf("US")
   })
 
   it("accepts a Node.js request", () => {

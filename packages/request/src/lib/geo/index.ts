@@ -1,6 +1,29 @@
 import type { RequestLike } from "#lib/request/index.ts"
 import { checkPlatform, readHeader } from "#lib/request/index.ts"
 
+const CONTINENTS = ["AF", "AN", "AS", "EU", "NA", "OC", "SA"] as const
+
+/**
+ * A continent code: Africa, Antarctica, Asia, Europe, North America, Oceania, or South America.
+ */
+export type Continent = (typeof CONTINENTS)[number]
+
+declare const countryCode: unique symbol
+
+/**
+ * An ISO 3166-1 alpha-2 country code that `geo` read, such as `US`. It is a `string`, so it
+ * compares with string literals, but a region code or another string is not a country code.
+ */
+export type CountryCode = string & { readonly [countryCode]: true }
+
+declare const regionCode: unique symbol
+
+/**
+ * An ISO 3166-2 first-level subdivision code without the country, such as `CA` for California. It
+ * is a `string`, but a country code or another string is not a region code.
+ */
+export type RegionCode = string & { readonly [regionCode]: true }
+
 /**
  * A latitude between -90 and 90 and a longitude between -180 and 180.
  */
@@ -18,14 +41,11 @@ export interface Geo {
    * City name, such as `San Francisco`.
    */
   readonly city: string | undefined
-  /**
-   * Continent code: `AF`, `AN`, `AS`, `EU`, `NA`, `OC`, or `SA`.
-   */
-  readonly continent: string | undefined
+  readonly continent: Continent | undefined
   /**
    * ISO 3166-1 alpha-2 country code, such as `US`.
    */
-  readonly country: string | undefined
+  readonly country: CountryCode | undefined
   /**
    * Where the client is on the map. Both coordinates are present, or neither.
    */
@@ -35,7 +55,7 @@ export interface Geo {
    * ISO 3166-2 code of the first-level subdivision without the country, such as `CA` for
    * California.
    */
-  readonly region: string | undefined
+  readonly region: RegionCode | undefined
   /**
    * IANA time zone name, such as `America/Los_Angeles`.
    */
@@ -102,19 +122,30 @@ export interface GeoOptions {
 }
 
 // Two-letter codes, which also rejects Cloudflare's Tor marker, `T1`.
-const CODE = /^[A-Z]{2}$/
+const COUNTRY = /^[A-Z]{2}$/
 // Cloudflare and App Engine send these for an unknown country.
-const UNKNOWN_CODES = new Set(["XX", "ZZ"])
+const UNKNOWN_COUNTRIES = new Set(["XX", "ZZ"])
 const REGION = /^[\dA-Z]{1,3}$/
 
-function parseCode(value: string | undefined) {
-  const code = value?.toUpperCase()
-  return code !== undefined && CODE.test(code) && !UNKNOWN_CODES.has(code) ? code : undefined
+function isCountryCode(code: string): code is CountryCode {
+  return COUNTRY.test(code) && !UNKNOWN_COUNTRIES.has(code)
 }
 
-function parseRegion(value: string | undefined) {
-  const region = value?.toUpperCase()
-  return region !== undefined && REGION.test(region) ? region : undefined
+function isRegionCode(code: string): code is RegionCode {
+  return REGION.test(code)
+}
+
+function parseCode<Code extends string>(
+  value: string | undefined,
+  isCode: (code: string) => code is Code
+) {
+  const code = value?.toUpperCase()
+  return code !== undefined && isCode(code) ? code : undefined
+}
+
+function parseContinent(value: string | undefined) {
+  const code = value?.toUpperCase()
+  return CONTINENTS.find((continent) => continent === code)
 }
 
 // Vercel and CloudFront percent-encode city names. App Engine sends `?` for an unknown city.
@@ -167,11 +198,11 @@ export function geo(request: RequestLike, options: GeoOptions): Geo {
 
   return {
     city: parseCity(read("city")),
-    continent: parseCode(read("continent")),
+    continent: parseContinent(read("continent")),
     coordinates,
-    country: parseCode(read("country")),
+    country: parseCode(read("country"), isCountryCode),
     postalCode: read("postalCode"),
-    region: parseRegion(read("region")),
+    region: parseCode(read("region"), isRegionCode),
     timezone: read("timezone"),
   }
 }
