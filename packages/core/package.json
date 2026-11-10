@@ -1,5 +1,6 @@
 {
   "name": "@sanely/core",
+  "version": "0.0.1",
   "private": true,
   "description": "Shared internal definitions for the Sanely libraries",
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/core#readme",
