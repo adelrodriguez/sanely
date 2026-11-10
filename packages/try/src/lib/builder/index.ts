@@ -1,3 +1,4 @@
+import type { FlowResult, FlowValue, InferredFlowTaskContext } from "#lib/orchestration/flow.ts"
 import type {
   InferredTaskContext,
   TaskRecord,
@@ -24,14 +25,7 @@ import type {
 } from "#lib/shared/errors.ts"
 import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "#lib/execution/run-sync.ts"
 import { executeRun, type AsyncRunInput, type RunTryFn } from "#lib/execution/run.ts"
-import { executeAllSettled } from "#lib/orchestration/all-settled.ts"
-import { executeAll } from "#lib/orchestration/all.ts"
-import {
-  executeFlow,
-  type FlowResult,
-  type FlowValue,
-  type InferredFlowTaskContext,
-} from "#lib/orchestration/flow.ts"
+import { orchestrate } from "#lib/orchestration/orchestrate.ts"
 import { retryOptions } from "#lib/policies/retry.ts"
 import { assertValidTimeout } from "#lib/policies/timeout.ts"
 
@@ -123,9 +117,9 @@ export class RunBuilder<
    * Applies one total deadline to the next terminal call. When the chain already has a deadline,
    * the tighter one applies. For `run`, the deadline spans attempts, delays, and catch handling,
    * and surfaces typed as {@link TimeoutError}. For orchestration (`all`/`allSettled`/`flow`), it is
-   * a whole-graph deadline: the task signal aborts when it fires and the orchestration rejects with
-   * {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative —
-   * orchestration waits for in-flight tasks to settle before rejecting, so tasks must observe
+   * a whole-graph deadline: the task signal aborts when it fires and the orchestration resolves
+   * with {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative:
+   * orchestration waits for in-flight tasks to settle before it resolves, so tasks must observe
    * `$signal` for it to bound wall-clock time.
    */
   timeout(
@@ -201,7 +195,7 @@ export class RunBuilder<
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
     options?: CatchOptions<AllValue<T>, C>
   ) {
-    return executeAll(this.config, tasks, options)
+    return orchestrate(this.config, "all", tasks, options)
   }
 
   /**
@@ -214,7 +208,7 @@ export class RunBuilder<
   allSettled<T extends TaskRecord>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
   ) {
-    return executeAllSettled(this.config, tasks)
+    return orchestrate(this.config, "allSettled", tasks)
   }
 
   /**
@@ -234,6 +228,6 @@ export class RunBuilder<
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
     options?: CatchOptions<FlowValue<T>, C>
   ) {
-    return executeFlow(this.config, tasks, options)
+    return orchestrate(this.config, "flow", tasks, options)
   }
 }
