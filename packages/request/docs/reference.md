@@ -76,29 +76,29 @@ import { geo } from "@sanely/request"
 
 geo(request, { platform: "vercel" })
 // {
-//   city: "San Francisco", continent: "NA", country: "US", latitude: 37.7749,
-//   longitude: -122.4194, postalCode: "94107", region: "CA", timezone: "America/Los_Angeles",
+//   city: "San Francisco", continent: "NA", country: "US",
+//   coordinates: { latitude: 37.7749, longitude: -122.4194 },
+//   postalCode: "94107", region: "CA", timezone: "America/Los_Angeles",
 // }
 ```
 
 `platform` is required, and `geo` throws a `TypeError` for an unknown one. Location headers have no common form, and a client can send any header that its platform does not replace.
 
-| Field        | Type     | Description                                                                |
-| ------------ | -------- | -------------------------------------------------------------------------- |
-| `city`       | `string` | City name, percent-decoded.                                                |
-| `continent`  | `string` | Continent code: `AF`, `AN`, `AS`, `EU`, `NA`, `OC`, or `SA`.               |
-| `country`    | `string` | ISO 3166-1 alpha-2 country code, such as `US`.                             |
-| `latitude`   | `number` | Between -90 and 90.                                                        |
-| `longitude`  | `number` | Between -180 and 180.                                                      |
-| `postalCode` | `string` | Postal code near the client.                                               |
-| `region`     | `string` | First-level ISO 3166-2 subdivision code without the country, such as `CA`. |
-| `timezone`   | `string` | IANA time zone name, such as `America/Los_Angeles`.                        |
+| Field         | Type          | Description                                                                                                                                            |
+| ------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `city`        | `string`      | City name, percent-decoded.                                                                                                                            |
+| `continent`   | `string`      | Continent code: `AF`, `AN`, `AS`, `EU`, `NA`, `OC`, or `SA`.                                                                                           |
+| `country`     | `string`      | ISO 3166-1 alpha-2 country code, such as `US`.                                                                                                         |
+| `coordinates` | `Coordinates` | `{ latitude, longitude }`, with the latitude between -90 and 90 and the longitude between -180 and 180. Both are present, or the field is `undefined`. |
+| `postalCode`  | `string`      | Postal code near the client.                                                                                                                           |
+| `region`      | `string`      | First-level ISO 3166-2 subdivision code without the country, such as `CA`.                                                                             |
+| `timezone`    | `string`      | IANA time zone name, such as `America/Los_Angeles`.                                                                                                    |
 
-`geo` reads platform markers for an unknown value as `undefined`: an unknown country (`XX` or `ZZ`), Cloudflare's Tor marker (`T1`), App Engine's `?` city, and the coordinates `0,0`.
+`geo` reads platform markers for an unknown value as `undefined`: an unknown country (`XX` or `ZZ`), Cloudflare's Tor marker (`T1`), App Engine's `?` city, the coordinates `0,0`, and a pair with one coordinate missing or out of range.
 
 | `platform`     | Fields                                                   | Setup                                                                                        |
 | -------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `"app-engine"` | `country`, `region`, `city`, `latitude`, `longitude`     | None.                                                                                        |
+| `"app-engine"` | `country`, `region`, `city`, `coordinates`               | None.                                                                                        |
 | `"cloudflare"` | `country`. The others need the visitor location headers. | Turn on the "Add visitor location headers" managed transform for the fields after `country`. |
 | `"cloudfront"` | Every field except `continent`.                          | Add the `CloudFront-Viewer-*` headers to an origin request policy.                           |
 | `"vercel"`     | Every field.                                             | None.                                                                                        |
@@ -139,3 +139,12 @@ type GeoPlatform = "app-engine" | "cloudflare" | "cloudfront" | "vercel"
 ```
 
 The platforms each function supports. `GeoPlatform` leaves out platforms that send no location, so `geo(request, { platform: "fly-io" })` is a type error.
+
+```ts
+interface Coordinates {
+  readonly latitude: number
+  readonly longitude: number
+}
+```
+
+The client's position, as `Geo` reports it.

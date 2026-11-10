@@ -2,6 +2,14 @@ import type { RequestLike } from "#lib/request/index.ts"
 import { checkPlatform, readHeader } from "#lib/request/index.ts"
 
 /**
+ * A latitude between -90 and 90 and a longitude between -180 and 180.
+ */
+export interface Coordinates {
+  readonly latitude: number
+  readonly longitude: number
+}
+
+/**
  * Where the client of a request is, as its platform reports it. Each field is `undefined` when
  * unknown.
  */
@@ -18,8 +26,10 @@ export interface Geo {
    * ISO 3166-1 alpha-2 country code, such as `US`.
    */
   readonly country: string | undefined
-  readonly latitude: number | undefined
-  readonly longitude: number | undefined
+  /**
+   * Where the client is on the map. Both coordinates are present, or neither.
+   */
+  readonly coordinates: Coordinates | undefined
   readonly postalCode: string | undefined
   /**
    * ISO 3166-2 code of the first-level subdivision without the country, such as `CA` for
@@ -32,8 +42,9 @@ export interface Geo {
   readonly timezone: string | undefined
 }
 
-// The header that holds each field. App Engine sends both coordinates in one header as `lat,long`.
-type FieldHeaders = Partial<Record<keyof Geo | "coordinates", string>>
+// The header that holds each field. Most platforms send each coordinate in its own header, and App
+// Engine sends both in one header as `lat,long`.
+type FieldHeaders = Partial<Record<keyof Geo | "latitude" | "longitude", string>>
 
 // The headers each platform sets for every request, replacing any value the client sent.
 const PLATFORMS = {
@@ -149,14 +160,16 @@ export function geo(request: RequestLike, options: GeoOptions): Geo {
   const latitude = parseCoordinate(latitudeText, 90)
   const longitude = parseCoordinate(longitudeText, 180)
   // Platforms report 0,0 when they cannot place the client.
-  const located = latitude !== 0 || longitude !== 0
+  const coordinates =
+    latitude === undefined || longitude === undefined || (latitude === 0 && longitude === 0)
+      ? undefined
+      : { latitude, longitude }
 
   return {
     city: parseCity(read("city")),
     continent: parseCode(read("continent")),
+    coordinates,
     country: parseCode(read("country")),
-    latitude: located ? latitude : undefined,
-    longitude: located ? longitude : undefined,
     postalCode: read("postalCode"),
     region: parseRegion(read("region")),
     timezone: read("timezone"),

@@ -9,9 +9,8 @@ function headers(entries: Record<string, string>) {
 const UNKNOWN: Geo = {
   city: undefined,
   continent: undefined,
+  coordinates: undefined,
   country: undefined,
-  latitude: undefined,
-  longitude: undefined,
   postalCode: undefined,
   region: undefined,
   timezone: undefined,
@@ -34,9 +33,8 @@ const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Ge
     {
       city: "São Paulo",
       continent: "SA",
+      coordinates: { latitude: -23.5475, longitude: -46.6361 },
       country: "BR",
-      latitude: -23.5475,
-      longitude: -46.6361,
       postalCode: "01000-000",
       region: "SP",
       timezone: "America/Sao_Paulo",
@@ -57,9 +55,8 @@ const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Ge
     {
       city: "Lisbon",
       continent: "EU",
+      coordinates: { latitude: 38.7167, longitude: -9.1333 },
       country: "PT",
-      latitude: 38.7167,
-      longitude: -9.1333,
       postalCode: "1100-148",
       region: "11",
       timezone: "Europe/Lisbon",
@@ -79,9 +76,8 @@ const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Ge
     {
       city: "Köln",
       continent: undefined,
+      coordinates: { latitude: 50.9333, longitude: 6.95 },
       country: "DE",
-      latitude: 50.9333,
-      longitude: 6.95,
       postalCode: "50667",
       region: "NW",
       timezone: "Europe/Berlin",
@@ -98,9 +94,8 @@ const PLATFORMS: ReadonlyArray<readonly [GeoPlatform, Record<string, string>, Ge
     {
       ...UNKNOWN,
       city: "mountain view",
+      coordinates: { latitude: 37.386051, longitude: -122.083851 },
       country: "US",
-      latitude: 37.386051,
-      longitude: -122.083851,
       region: "CA",
     },
   ],
@@ -175,6 +170,12 @@ describe("geo", () => {
     expect(geo(request, { platform: "app-engine" })).toEqual(UNKNOWN)
   })
 
+  it("reads half a pair of coordinates as unknown", () => {
+    const request = headers({ "x-vercel-ip-latitude": "37.7", "x-vercel-ip-longitude": "n/a" })
+
+    expect(geo(request, { platform: "vercel" }).coordinates).toBeUndefined()
+  })
+
   it("keeps a city name that is not valid percent-encoding", () => {
     expect(geo(headers({ "x-vercel-ip-city": "100%" }), { platform: "vercel" }).city).toBe("100%")
   })
@@ -189,10 +190,7 @@ describe("geo", () => {
       "x-vercel-ip-longitude": longitude,
     })
 
-    expect(geo(request, { platform: "vercel" })).toMatchObject({
-      latitude: undefined,
-      longitude: undefined,
-    })
+    expect(geo(request, { platform: "vercel" }).coordinates).toBeUndefined()
   })
 
   it("throws a TypeError naming the problem for an unknown platform", () => {

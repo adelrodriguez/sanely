@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http"
 import { describe, expectTypeOf, it } from "vitest"
-import type { Geo, GeoPlatform, IpPlatform } from "#index.ts"
+import type { Coordinates, Geo, GeoPlatform, IpPlatform } from "#index.ts"
 import { geo, ip } from "#index.ts"
 
 declare const request: Request
@@ -40,7 +40,11 @@ describe("geo", () => {
   it("returns a location", () => {
     expectTypeOf(geo(request, { platform: "vercel" })).toEqualTypeOf<Geo>()
     expectTypeOf<Geo["country"]>().toEqualTypeOf<string | undefined>()
-    expectTypeOf<Geo["latitude"]>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<Geo["coordinates"]>().toEqualTypeOf<Coordinates | undefined>()
+    expectTypeOf<Coordinates>().toEqualTypeOf<{
+      readonly latitude: number
+      readonly longitude: number
+    }>()
   })
 
   it("accepts a Node.js request", () => {
