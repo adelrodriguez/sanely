@@ -1,3 +1,4 @@
+import { HOURS_PER_DAY } from "@sanely/core/time"
 import type { ByKind, CronPhrase, DaySet, Schedule, Time, Window } from "#lib/schedule/index.ts"
 import type { Weekday } from "#lib/vocabulary/words.ts"
 import { match } from "#lib/schedule/index.ts"
@@ -10,7 +11,7 @@ function writeTime({ hour, minute }: Time): string {
 
 // The window end is not included, and 24 is the end of the day.
 function writeWindow({ from, to }: Window): string {
-  return `${from}:00 and ${to === 24 ? "midnight" : `${to}:00`}`
+  return `${from}:00 and ${to === HOURS_PER_DAY ? "midnight" : `${to}:00`}`
 }
 
 const byCalendarOrder = (a: Weekday, b: Weekday) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b)
