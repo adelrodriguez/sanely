@@ -96,10 +96,10 @@ const UNIT_BY_NAME: ReadonlyMap<string, UnitDefinition> = new Map(
 )
 
 /**
- * Look up the millisecond multiplier for a lowercase unit alias.
+ * Look up the millisecond multiplier for a unit alias in any casing, such as `"h"` or `"Hours"`.
  */
 export function getUnitMs(alias: string): number | undefined {
-  return UNIT_MS_BY_ALIAS.get(alias)
+  return UNIT_MS_BY_ALIAS.get(alias.toLowerCase())
 }
 
 /**

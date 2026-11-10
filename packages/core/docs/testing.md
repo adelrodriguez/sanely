@@ -2,6 +2,8 @@
 
 The unit table suite lives in `src/lib/time/__tests__/table.test.ts`.
 It checks conversion values, unknown aliases and names, unique alias ownership, and the size order needed by duration formatting.
+The type suite in `src/__tests__/types.test-d.ts` checks that each unit lists its `long`, `longPlural`, and `short` spellings among its aliases, so duration's formatted output stays parseable.
+`pnpm run check` enforces the type suite, and Vitest never runs it.
 
 Duration's public type suite checks the shared alias types through its existing exports.
 Cron's public type suite checks schedule ranges derived from the shared clock ratios.

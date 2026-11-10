@@ -18,7 +18,18 @@ describe("getUnitMs", () => {
     expect(getUnitMs(alias)).toBe(expected)
   })
 
-  it.each(["", "M", "HOURS", "parsec", "toString", "__proto__"])(
+  it.each([
+    ["M", 60_000],
+    ["Mo", 2_629_800_000],
+    ["H", 3_600_000],
+    ["Hours", 3_600_000],
+    ["HOURS", 3_600_000],
+    ["MiLliSeCondS", 1],
+  ])("should resolve %s in any casing to %d milliseconds", (alias, expected) => {
+    expect(getUnitMs(alias)).toBe(expected)
+  })
+
+  it.each(["", "parsec", "PARSEC", "toString", "__proto__", "__PROTO__"])(
     "should reject an unsupported alias: %j",
     (alias) => {
       expect(getUnitMs(alias)).toBeUndefined()

@@ -111,7 +111,7 @@ export function parse(value: string): number {
     }
 
     const n = Number.parseFloat(numberToken)
-    const multiplier = unitToken ? getUnitMs(unitToken.toLowerCase()) : 1
+    const multiplier = unitToken ? getUnitMs(unitToken) : 1
 
     if (multiplier === undefined) {
       throw new InvalidTimeExpressionError(value, "value is not a valid time expression")

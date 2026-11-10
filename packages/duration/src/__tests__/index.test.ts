@@ -30,7 +30,7 @@ function getLastUnitMs(expr: string): number {
   const unit = token.match(/[a-zA-Z]+$/)?.[0]
   if (!unit) throw new Error(`Cannot determine unit suffix for expression: ${expr}`)
 
-  const unitMs = getUnitMs(unit.toLowerCase())
+  const unitMs = getUnitMs(unit)
   if (unitMs === undefined) throw new Error(`Unsupported unit suffix in expression: ${expr}`)
 
   return unitMs
