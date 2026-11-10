@@ -11,7 +11,7 @@ Use the package's contributor guide for its runtime behavior and tests.
 
 The generator uses the same starter as the keel template.
 Each library lives in `packages/<name>` and publishes as `@sanely/<name>`.
-The shared `@sanely/core` workspace stays private.
+Libraries bundle the shared `@sanely/core` package instead of depending on it.
 
 ## Share internal code
 
@@ -29,7 +29,7 @@ To use core in a library:
 
 Turborepo builds core before its consumers, including when starting development watchers.
 Published libraries contain the shared implementation and declarations.
-They do not declare core as a runtime dependency, because npm cannot install a private workspace.
+They do not declare core as a runtime dependency, so each library installs without core and keeps the core version it was built with.
 See the [core architecture](packages/core/docs/architecture.md) for ownership and dependency boundaries.
 
 ## Change workspace configuration
@@ -60,8 +60,8 @@ CI runs each package's compatibility script on the Node.js floor in its `engines
 2. Create the entry with `pnpm exec changeset --empty`, then describe the change and select its package version bump.
 3. Use a major bump only when the user requests it. Alert the user if a breaking change affects a package at version `1.0.0` or higher.
 
-When a core change affects consumers, add a changeset for each affected published library.
-Core is private and has no release of its own; its bundled consumers need new versions to ship the change.
+When you change core, add a changeset for each library whose behavior or types change. Once core is published, add one for core too.
+A library ships a core change only in a new version of its own, because it bundles core.
 
 For a package's first publication, follow [Add a package](README.md#add-a-package).
 New packages start private at `0.0.1`. Remove `private` without a changeset when the package is ready.

@@ -1,6 +1,6 @@
 # Architecture
 
-Core is a private workspace with one entry point, `src/time.ts`, exported as `@sanely/core/time`.
+Core has one entry point, `src/time.ts`, exported as `@sanely/core/time`.
 The [glossary](../GLOSSARY.md) defines the shared time vocabulary.
 
 ## Module ownership
@@ -37,5 +37,5 @@ These checks enforce the boundaries:
 - The core build rejects bundled third-party code and every external package import.
 - Each library bundles core's JavaScript and declarations, so its build output never imports `@sanely/core`. Cron, duration, and ratelimit allow no external imports. Skew allows only its framework peer dependencies.
 
-Core has no npm publication or release lifecycle.
+Core stays private until its first publication, and changesets version it only after that. A library ships a core change only in a new version of its own, because it bundles core.
 See [Share internal code](../../../CONTRIBUTING.md#share-internal-code) for consumer setup and the [testing guide](testing.md) for verification.

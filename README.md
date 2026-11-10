@@ -25,7 +25,7 @@ Migrated packages contain their source libraries. The other packages still conta
 | [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Migrated |
 | [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Migrated |
 
-The private [`@sanely/core`](packages/core) workspace holds shared definitions.
+[`@sanely/core`](packages/core) holds the time definitions that the libraries share.
 Libraries can reuse internal workspaces without adding third-party runtime dependencies.
 Cron, duration, ratelimit, and skew bundle core's JavaScript and types, so consumers install each library on its own.
 
