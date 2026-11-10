@@ -64,6 +64,7 @@ const url = try$.runSync(() => new URL(link))
 | `all(tasks, { catch })`          | `Results \| C`                    |
 | `allSettled(tasks)`              | `SettledResults`                  |
 | `flow(tasks)`                    | `ExitValue \| UnhandledException` |
+| `flow(tasks, { catch })`         | `ExitValue \| C`                  |
 | `timeout(...)` in the chain      | Adds `TimeoutError`.              |
 | `signal(...)` in the chain       | Adds `CancellationError`.         |
 
@@ -195,13 +196,14 @@ allSettled<T>(tasks: T): Promise<AllSettledResult<T> | PolicyErrors>
 
 Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. When this call's own deadline or signal fires, it resolves with the `TimeoutError` or `CancellationError` instead. A `Panic` is never an outcome. The call throws it after every task settles.
 
-### `flow(tasks)`
+### `flow(tasks, options?)`
 
 ```ts
 flow<T>(tasks: T): Promise<FlowResult<T> | UnhandledException | PolicyErrors>
+flow<T, C>(tasks: T, options: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<FlowResult<T> | C | PolicyErrors>
 ```
 
-Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. A task failure before the first exit resolves the call with an `UnhandledException` whose `cause` is the error. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
+Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. When a task fails before the first exit, every other `this.$signal` aborts. Without `catch`, the call resolves with an `UnhandledException` whose `cause` is the error. With `catch`, `catch` receives the error and the same context as the `catch` of `all`, and the call resolves with the value of `catch`. `catch` follows the same rules as in `all`. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
 
 ## Composition and cleanup
 

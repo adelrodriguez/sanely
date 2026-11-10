@@ -497,6 +497,113 @@ describe("flow", () => {
     expect(siblingReason).toBe(failure)
   })
 
+  it("maps a task failure through catch with the failed task, partial results, and aborted signal", async () => {
+    const boom = new Error("boom")
+    const catchErrors: unknown[] = []
+
+    const result = await try$.flow(
+      {
+        a() {
+          return 1
+        },
+        async b() {
+          await this.$result.a
+          throw boom
+        },
+        async c() {
+          await waitForAbort(this.$signal)
+          throw this.$signal.reason
+        },
+      },
+      {
+        catch: (error, ctx) => {
+          catchErrors.push(error)
+
+          return {
+            aborted: ctx.signal.aborted,
+            failedTask: ctx.failedTask,
+            partial: { ...ctx.partial },
+            reason: ctx.signal.reason as unknown,
+          }
+        },
+      }
+    )
+
+    expect(result).toEqual({
+      aborted: true,
+      failedTask: "b",
+      partial: { a: 1 },
+      reason: boom,
+    })
+    expect(catchErrors).toEqual([boom])
+  })
+
+  it("does not call catch for an exit, a Panic, or the graph deadline", async () => {
+    const catchErrors: unknown[] = []
+    const mapError = (error: unknown) => {
+      catchErrors.push(error)
+      return "mapped" as const
+    }
+
+    const exited = await try$.flow(
+      {
+        a() {
+          return this.$exit("done")
+        },
+      },
+      { catch: mapError }
+    )
+    const timedOut = await try$.timeout(1).flow(
+      {
+        async a() {
+          await waitForAbort(this.$signal)
+          throw this.$signal.reason
+        },
+      },
+      { catch: mapError }
+    )
+    const panicked = await try$
+      .flow(
+        {
+          async a(): Promise<number> {
+            return await this.$result.a
+          },
+        },
+        { catch: mapError }
+      )
+      .catch((error: unknown) => error)
+
+    expect(exited).toBe("done")
+    expect(timedOut).toBeInstanceOf(TimeoutError)
+    expectPanic(panicked, "TASK_SELF_REFERENCE")
+    expect(catchErrors).toEqual([])
+  })
+
+  it("throws CATCH_HANDLER_THROW and CATCH_HANDLER_REJECT when flow catch fails", async () => {
+    const failure = new Error("catch failed")
+    const tasks = {
+      a() {
+        throw new Error("boom")
+      },
+    }
+
+    const thrown = await try$
+      .flow(tasks, {
+        catch: () => {
+          throw failure
+        },
+      })
+      .catch((error: unknown) => error)
+    const rejected = await try$
+      .flow(tasks, { catch: () => Promise.reject(failure) })
+      .catch((error: unknown) => error)
+
+    expectPanic(thrown, "CATCH_HANDLER_THROW")
+    expect((thrown as Error).cause).toBe(failure)
+    expectPanic(rejected, "CATCH_HANDLER_REJECT")
+    expect((rejected as Error).cause).toBe(failure)
+  })
+
   it("surfaces a task that throws undefined as UnhandledException", async () => {
     const error = await try$.flow({
       a() {

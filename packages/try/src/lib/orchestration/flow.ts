@@ -1,6 +1,7 @@
 import type { BuilderConfig } from "#lib/policies/options.ts"
 import { Panic, type UnhandledException } from "#lib/shared/errors.ts"
 import type {
+  CatchOptions,
   ControlFailure,
   InferredTaskContext,
   ResultProxy,
@@ -31,6 +32,13 @@ export type InferredFlowTaskContext<T extends TaskRecord> = InferredTaskContext<
 }
 
 export type FlowResult<T extends TaskRecord> = FlowExitValue<T>
+
+/**
+ * The value each flow task resolves with when it does not exit.
+ */
+export type FlowValue<T extends TaskRecord> = {
+  [K in keyof T]: Exclude<TaskResult<T[K]>, FlowExit<unknown>>
+}
 
 class FlowExitSignalError extends Error {
   readonly value: unknown
@@ -73,12 +81,12 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
     await this.#settledPromise
   }
 
-  protected override setFirstFailure(error: unknown): void {
+  protected override setFirstFailure(error: unknown, taskName?: keyof T & string): void {
     if (this.firstFailure !== undefined) {
       return
     }
 
-    super.setFirstFailure(error)
+    super.setFirstFailure(error, taskName)
 
     for (const resolve of this.#firstFailureWaiters) {
       resolve()
@@ -128,23 +136,34 @@ class FlowExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, Flow
   }
 }
 
-class FlowRunnerExecution<T extends TaskRecord> extends OrchestrationExecution<FlowResult<T>> {
+class FlowRunnerExecution<T extends TaskRecord, C> extends OrchestrationExecution<
+  FlowResult<T> | C
+> {
   readonly #tasks: T
+  readonly #options: CatchOptions<FlowValue<T>, C> | undefined
 
-  constructor(config: BuilderConfig, tasks: T) {
+  constructor(config: BuilderConfig, tasks: T, options?: CatchOptions<FlowValue<T>, C>) {
     super(config)
     this.#tasks = tasks
+    this.#options = options
   }
 
-  protected override executeTasks(): Promise<FlowResult<T> | UnhandledException | ControlFailure> {
-    return this.executeTaskGraph(new FlowExecution(this.executionSignal, this.#tasks))
+  protected override executeTasks(): Promise<
+    FlowResult<T> | C | UnhandledException | ControlFailure
+  > {
+    const execution = new FlowExecution(this.executionSignal, this.#tasks)
+
+    return this.executeTaskGraph<FlowResult<T> | C>(execution, {
+      mapFailure: (error) => this.mapCatch(this.#options?.catch, execution, error),
+    })
   }
 }
 
-export async function executeFlow<T extends TaskRecord>(
+export async function executeFlow<T extends TaskRecord, C = never>(
   config: BuilderConfig,
-  tasks: T & ThisType<InferredFlowTaskContext<T>>
-): Promise<FlowResult<T> | UnhandledException | ControlFailure> {
-  using execution = new FlowRunnerExecution(config, tasks)
+  tasks: T & ThisType<InferredFlowTaskContext<T>>,
+  options?: CatchOptions<FlowValue<T>, C>
+): Promise<FlowResult<T> | C | UnhandledException | ControlFailure> {
+  using execution = new FlowRunnerExecution(config, tasks, options)
   return await execution.execute()
 }

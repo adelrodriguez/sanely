@@ -844,6 +844,31 @@ class InternalError extends Error {
   expectTypeOf(result).toEqualTypeOf<Promise<42 | "stop" | UnhandledException>>()
 }
 
+// Replaces UnhandledException with the catch value in flow(), and keeps policy failures.
+{
+  const result = try$.timeout(100).flow(
+    {
+      a() {
+        return 1 as const
+      },
+      b() {
+        return this.$exit("done" as const)
+      },
+    },
+    {
+      catch: (_error, ctx) => {
+        expectTypeOf(ctx.failedTask).toEqualTypeOf<"a" | "b" | undefined>()
+        expectTypeOf(ctx.partial.a).toEqualTypeOf<1 | undefined>()
+        expectTypeOf(ctx.signal).toEqualTypeOf<AbortSignal>()
+
+        return "fallback" as const
+      },
+    }
+  )
+
+  expectTypeOf(result).toEqualTypeOf<Promise<"done" | "fallback" | TimeoutError>>()
+}
+
 // Infers only UnhandledException from flow() when no task calls $exit().
 {
   const result = try$.flow({

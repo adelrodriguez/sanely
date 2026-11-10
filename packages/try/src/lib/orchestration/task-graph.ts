@@ -9,7 +9,7 @@ import {
   UnhandledException,
   isPanic,
 } from "#lib/shared/errors.ts"
-import { invariant, resolveWithAbort } from "#lib/shared/utils.ts"
+import { checkIsPromiseLike, invariant, resolveWithAbort } from "#lib/shared/utils.ts"
 
 const TASK_RACE_ABORTED = Symbol("taskRaceAborted")
 
@@ -67,19 +67,35 @@ export type AllValue<T extends TaskRecord> = {
   [K in keyof T]: TaskResult<T[K]>
 }
 
-interface AllCatchContext<T extends TaskRecord> {
-  readonly failedTask: (keyof T & string) | undefined
-  readonly partial: Readonly<Partial<AllValue<T>>>
+/**
+ * What an orchestration `catch` receives about the task graph. `V` maps each task to the value it
+ * resolves with.
+ */
+export interface CatchContext<V> {
+  /**
+   * The task whose failure `catch` receives, or `undefined`.
+   */
+  readonly failedTask: (keyof V & string) | undefined
+  /**
+   * A snapshot of the tasks that resolved before the failure.
+   */
+  readonly partial: Readonly<Partial<V>>
+  /**
+   * The task signal, already aborted by the failure.
+   */
   readonly signal: AbortSignal
 }
 
-type AllCatchFn<T extends TaskRecord, C> = (
-  error: unknown,
-  ctx: AllCatchContext<T>
-) => C | Promise<C>
+export interface CatchOptions<V, C> {
+  catch: (error: unknown, ctx: CatchContext<V>) => C | Promise<C>
+}
 
-export interface AllOptions<T extends TaskRecord, C> {
-  catch: AllCatchFn<T, C>
+/**
+ * A task graph that can describe itself to a `catch` handler.
+ */
+interface CatchableTaskGraph {
+  readonly panic: Panic | undefined
+  createCatchContext(): CatchContext<Record<string, unknown>>
 }
 
 export interface SettledFulfilled<T> {
@@ -194,6 +210,55 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<
     return new UnhandledException(undefined, { cause: outcome.thrown })
   }
 
+  /**
+   * Maps a task failure through an orchestration `catch`, with the same rules as `run()`: this
+   * call's own policy failures and Panics never reach `catch`, and a `catch` that throws or rejects
+   * reports a Panic.
+   */
+  protected async mapCatch<V, C>(
+    catchFn: CatchOptions<V, C>["catch"] | undefined,
+    graph: CatchableTaskGraph,
+    error: unknown
+  ): Promise<TaskGraphOutcome<C>> {
+    const controlAfterFailure = this.checkDidControlFail(error)
+
+    if (controlAfterFailure) {
+      return { thrown: controlAfterFailure }
+    }
+
+    // Defects never pass through catch, the same as in run().
+    // Check the recorded Panic, not `error`: `error` may already wrap a cross-realm Panic.
+    if (!catchFn || graph.panic) {
+      return { thrown: error }
+    }
+
+    // The graph records task results without their types; `V` names them.
+    const context = graph.createCatchContext() as CatchContext<V>
+
+    try {
+      const mapped = catchFn(error, context)
+
+      if (!checkIsPromiseLike(mapped)) {
+        return { mapped }
+      }
+
+      try {
+        const raced = (await this.raceWithCancellation(
+          Promise.resolve(mapped).catch((catchError: unknown) => {
+            throw new Panic("CATCH_HANDLER_REJECT", { cause: catchError })
+          }),
+          error
+        )) as C
+
+        return { mapped: raced }
+      } catch (mappedError) {
+        return { thrown: mappedError }
+      }
+    } catch (catchError) {
+      return { thrown: new Panic("CATCH_HANDLER_THROW", { cause: catchError }) }
+    }
+  }
+
   protected abstract executeTasks(): Promise<TResult | UnhandledException | ControlFailure>
 }
 
@@ -208,9 +273,10 @@ export abstract class TaskGraphExecutionBase<
   protected readonly taskSignal: AbortSignal
   protected readonly disposer: AsyncDisposer = disposer()
   /**
-   * The first task failure, as the task threw it.
+   * The first task failure as the task threw it, and the task that threw it.
    */
-  protected firstFailure: { error: unknown } | undefined
+  protected firstFailure: { error: unknown; taskName: (keyof T & string) | undefined } | undefined
+  readonly #results: Record<string, unknown> = {}
   #panic: Panic | undefined
   declare [Symbol.asyncDispose]: () => Promise<void>
 
@@ -224,6 +290,22 @@ export abstract class TaskGraphExecutionBase<
 
   get panic(): Panic | undefined {
     return this.#panic
+  }
+
+  /**
+   * The results of the tasks that resolved so far, by task name.
+   */
+  protected get results(): Record<string, unknown> {
+    return this.#results
+  }
+
+  createCatchContext(): CatchContext<Record<string, unknown>> {
+    return Object.freeze({
+      failedTask: this.firstFailure?.taskName,
+      // Siblings keep settling while an async catch runs, so pass a snapshot.
+      partial: Object.freeze({ ...this.#results }),
+      signal: this.taskSignal,
+    })
   }
 
   async dispose(): Promise<void> {
@@ -333,10 +415,10 @@ export abstract class TaskGraphExecutionBase<
     return true
   }
 
-  protected setFirstFailure(error: unknown): void {
+  protected setFirstFailure(error: unknown, taskName?: keyof T & string): void {
     // Wrap the error: a task can throw `null` or `undefined`, and a bare value would let a later
     // failure replace the first one.
-    this.firstFailure ??= { error }
+    this.firstFailure ??= { error, taskName }
   }
 
   protected abstract shouldAbortOnTaskError(error: unknown): boolean
@@ -350,6 +432,7 @@ export abstract class TaskGraphExecutionBase<
       const result = await taskFn.call(context)
 
       this.taskSettlement(taskName).resolve(result)
+      setTaskResult(this.#results, taskName as string, result)
       this.onTaskResult?.(taskName, result)
     } catch (error) {
       const mappedError = this.mapStoredError(error)
@@ -358,7 +441,7 @@ export abstract class TaskGraphExecutionBase<
         this.#panic ??= error
       }
 
-      this.setFirstFailure(error)
+      this.setFirstFailure(error, taskName as keyof T & string)
       this.taskSettlement(taskName).reject(mappedError)
       this.onTaskError?.(taskName, error)
 
@@ -408,21 +491,6 @@ abstract class TaskExecution<T extends TaskRecord> extends TaskGraphExecutionBas
 }
 
 export class FailFastTaskExecution<T extends TaskRecord> extends TaskExecution<T> {
-  readonly #returnValue: Record<string, unknown> = {}
-  #failedTask: (keyof T & string) | undefined
-
-  get failedTask(): (keyof T & string) | undefined {
-    return this.#failedTask
-  }
-
-  get signal(): AbortSignal {
-    return this.taskSignal
-  }
-
-  get returnValue(): Record<string, unknown> {
-    return this.#returnValue
-  }
-
   async execute(): Promise<AllValue<T>> {
     try {
       await Promise.all(this.startTasks())
@@ -431,15 +499,7 @@ export class FailFastTaskExecution<T extends TaskRecord> extends TaskExecution<T
       throw this.firstFailure ? this.firstFailure.error : error
     }
 
-    return this.#returnValue as AllValue<T>
-  }
-
-  protected override onTaskResult(taskName: keyof T, value: unknown): void {
-    setTaskResult(this.#returnValue, taskName as string, value)
-  }
-
-  protected override onTaskError(taskName: keyof T): void {
-    this.#failedTask ??= taskName as keyof T & string
+    return this.results as AllValue<T>
   }
 
   // oxlint-disable-next-line class-methods-use-this -- polymorphic override

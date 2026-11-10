@@ -3,8 +3,9 @@ import type {
   TaskRecord,
   TaskResult,
   TaskValidation,
-  AllOptions,
   AllSettledResult,
+  AllValue,
+  CatchOptions,
 } from "#lib/orchestration/task-graph.ts"
 import type {
   BuilderConfig,
@@ -28,6 +29,7 @@ import { executeAll } from "#lib/orchestration/all.ts"
 import {
   executeFlow,
   type FlowResult,
+  type FlowValue,
   type InferredFlowTaskContext,
 } from "#lib/orchestration/flow.ts"
 import { retryOptions } from "#lib/policies/retry.ts"
@@ -193,11 +195,11 @@ export class RunBuilder<
   ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | UnhandledException | E>
   all<T extends TaskRecord, C>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
-    options: AllOptions<T, C>
+    options: CatchOptions<AllValue<T>, C>
   ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C | E>
   all<T extends TaskRecord, C>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
-    options?: AllOptions<T, C>
+    options?: CatchOptions<AllValue<T>, C>
   ) {
     return executeAll(this.config, tasks, options)
   }
@@ -217,13 +219,21 @@ export class RunBuilder<
 
   /**
    * Runs a task graph until a task calls `$exit`, and resolves with the exit value. Like `run`, it
-   * never rejects except with a `Panic`. A task failure resolves as {@link UnhandledException} with
-   * the failure as `cause`, and this call's own policy outcomes surface typed in the union.
+   * never rejects except with a `Panic`. Without `catch`, a task failure resolves as
+   * {@link UnhandledException} with the failure as `cause`. This call's own policy outcomes surface
+   * typed in the result union.
    */
   flow<T extends TaskRecord>(
     tasks: T & ThisType<InferredFlowTaskContext<T>>
   ): Promise<FlowResult<T> | UnhandledException | E>
-  flow<T extends TaskRecord>(tasks: T & ThisType<InferredFlowTaskContext<T>>) {
-    return executeFlow(this.config, tasks)
+  flow<T extends TaskRecord, C>(
+    tasks: T & ThisType<InferredFlowTaskContext<T>>,
+    options: CatchOptions<FlowValue<T>, C>
+  ): Promise<FlowResult<T> | C | E>
+  flow<T extends TaskRecord, C>(
+    tasks: T & ThisType<InferredFlowTaskContext<T>>,
+    options?: CatchOptions<FlowValue<T>, C>
+  ) {
+    return executeFlow(this.config, tasks, options)
   }
 }
