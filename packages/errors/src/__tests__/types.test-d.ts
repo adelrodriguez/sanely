@@ -480,6 +480,25 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 // These verify that invalid usage produces compile-time errors.
 // The function bodies never execute — only the type checker matters.
 
+// ── Reserved Tagged field names ──────────────────────────────────────────────
+// A Tagged constructor throws ReservedFieldError for these keys, so the class
+// declaration fails to compile instead.
+{
+  // @ts-expect-error -- `name` is a wire envelope key
+  class NameField extends Tagged("NameField")<{ id: string; name: string }>() {}
+  // @ts-expect-error -- `withMeta` is a Fault method
+  class MethodField extends Tagged("MethodField")<{ withMeta: string }>() {}
+  // @ts-expect-error -- `toString` is inherited from Object
+  class ObjectField extends Tagged("ObjectField")<{ toString: string }>() {}
+  // @ts-expect-error -- `__proto__` would replace the prototype
+  class ProtoField extends Tagged("ProtoField")<{ __proto__: string }>() {}
+
+  // Fields with an index signature have no known keys, so the runtime check covers them.
+  class OpenFields extends Tagged("OpenFields")<Record<string, string>>() {}
+
+  void [NameField, MethodField, ObjectField, ProtoField, OpenFields]
+}
+
 // ── Registered constructor contract (#66) ────────────────────────────────────
 // registry.fromSerializable revives through `new Class(payloadFields)`, so a
 // registered constructor must take the fields object as its only parameter.

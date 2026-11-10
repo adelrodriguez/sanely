@@ -27,7 +27,8 @@ describe("Tagged", () => {
   })
 
   it("throws ReservedFieldError for reserved field keys", () => {
-    class InvalidFieldError extends Tagged("InvalidFieldError")<{ message: string }>() {}
+    // An index signature skips the compile-time check, so the runtime guard runs.
+    class InvalidFieldError extends Tagged("InvalidFieldError")<Record<string, string>>() {}
 
     expect(() => new InvalidFieldError({ message: "nope" })).toThrow(ReservedFieldError)
     expect(() => new InvalidFieldError({ message: "nope" })).toThrow("Reserved field key: message")

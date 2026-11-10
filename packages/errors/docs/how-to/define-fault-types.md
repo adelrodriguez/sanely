@@ -14,7 +14,7 @@ This guide shows you how to declare the errors of your app as fault classes, and
 
    Leave the type argument out when the fault has no fields. Field types must be JSON-safe values. Use a type alias or an inline type for the fields, not an interface.
 
-2. Make sure that no field name is reserved, such as `message`, `cause`, or a method name like `withMeta`. A reserved field name throws `ReservedFieldError` when you create the fault. Refer to [Reserved keys](../reference.md#reserved-keys) for the full list.
+2. Make sure that no field name is reserved, such as `message`, `cause`, or a method name like `withMeta`. The class declaration fails to compile when a field name is reserved. With an index signature, such as `Record<string, string>`, the fault throws `ReservedFieldError` when you create it instead. Refer to [Reserved keys](../reference.md#reserved-keys) for the full list.
 
 3. Group the classes in a registry. Each key must be the tag of its class:
 

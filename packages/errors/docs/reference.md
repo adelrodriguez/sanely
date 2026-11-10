@@ -181,7 +181,7 @@ A key is reserved when it is one of these:
 - A wire format key: `__fault`, `_tag`, `name`, `message`, `description`, `meta`, `stack`, or `cause`.
 - A name on the prototype chain of `Fault`: the methods of `Fault`, such as `withMeta` and `unwrap`, and the inherited names `constructor`, `toString`, `toLocaleString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and `__lookupSetter__`.
 
-A `Tagged` constructor throws `ReservedFieldError` for a reserved field name. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
+A `Tagged` class declaration with a reserved field name fails to compile. When the fields have an index signature, the constructor throws `ReservedFieldError` for a reserved field name instead. `fromSerializable` keeps a wire field with a reserved name, and adds the prefix `__payload_` to its name. It adds the prefix again until the name is unique.
 
 ## Errors
 
