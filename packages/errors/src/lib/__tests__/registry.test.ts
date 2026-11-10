@@ -319,6 +319,17 @@ describe("registry", () => {
     expect(Faults.toSerializable("boom")).toStrictEqual(toSerializable("boom"))
   })
 
+  it("serializes a member with its registry tag and its fields, and omits empty fields", () => {
+    const Faults = registry({ NotFoundError, TimeoutError })
+
+    const notFound = Faults.toSerializable(Faults.create("NotFoundError", { id: "123" }))
+    const timeout = Faults.toSerializable(Faults.create("TimeoutError"))
+
+    expect(notFound).toMatchObject({ _tag: "NotFoundError", fields: { id: "123" } })
+    expect(timeout._tag).toBe("TimeoutError")
+    expect(Object.hasOwn(timeout, "fields")).toBe(false)
+  })
+
   it("finds a registered fault in the cause chain by tag", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
     const leaf = Faults.create("NotFoundError", { id: "123" })

@@ -137,6 +137,21 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf(fault.fields.id).toEqualTypeOf<string>()
 }
 
+// Types a registry member's wire format by tag, and keeps unknown values on the open type.
+{
+  const member: typeof AppFault.Type = AppFault.create("NotFoundError", { id: "123" })
+  const caught: unknown = member
+  const wire = AppFault.toSerializable(member)
+
+  expectTypeOf(wire._tag).toEqualTypeOf<"NotFoundError" | "TimeoutError">()
+  if (wire._tag === "NotFoundError") {
+    expectTypeOf(wire.fields).toEqualTypeOf<Readonly<{ id: string }>>()
+  } else {
+    expectTypeOf(wire.fields).toEqualTypeOf<undefined>()
+  }
+  expectTypeOf(AppFault.toSerializable(caught)).toEqualTypeOf<SerializableFault>()
+}
+
 // Types registry guards, tags, and serialization contracts.
 {
   const value: unknown = AppFault.create("TimeoutError")
@@ -169,7 +184,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   expectTypeOf(tags).toEqualTypeOf<ReadonlyArray<"NotFoundError" | "TimeoutError">>()
   expectTypeOf(serialized).toEqualTypeOf<SerializableFault>()
-  expectTypeOf(registrySerialized).toEqualTypeOf<SerializableFault>()
+  expectTypeOf(registrySerialized).toExtend<SerializableFault>()
   expectTypeOf(standaloneSerialized).toEqualTypeOf<SerializableFault>()
   expectTypeOf(generic).toEqualTypeOf<Base>()
   expectTypeOf(restored).toEqualTypeOf<Base | NotFoundError | TimeoutError>()

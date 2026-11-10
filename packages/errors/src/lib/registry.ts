@@ -28,6 +28,21 @@ type CreateArgs<Ctor extends AnyFaultCtor> =
 // JavaScript stores a numeric object key as a string, so the registry key 1 holds the tag "1".
 type RegistryTag<M extends Record<string, AnyFaultCtor>> = `${Extract<keyof M, string | number>}`
 
+// The wire format of one registered fault. The serializer omits empty fields, so a fault
+// without fields has none on the wire, and one whose fields are all optional may have none.
+type MemberWire<Tag extends string, Fields> = Omit<SerializableFault, "_tag" | "fields"> & {
+  _tag: Tag
+} & (keyof Fields extends never
+    ? { fields?: undefined }
+    : Partial<Fields> extends Fields
+      ? { fields?: Fields }
+      : { fields: Fields })
+
+// The wire formats of a registry's members, as a union that narrows by `_tag`.
+type RegistryWire<M extends Record<string, AnyFaultCtor>> = {
+  [K in keyof M]: MemberWire<`${Extract<K, string | number>}`, InstanceType<M[K]>["fields"]>
+}[keyof M]
+
 type RegistryMatchHandlers<M extends Record<string, AnyFaultCtor>> = Partial<{
   [K in keyof M]: (fault: InstanceType<M[K]>) => unknown
 }>
@@ -88,7 +103,11 @@ export type FaultRegistry<M extends Record<string, AnyFaultCtor>> = {
     handlers: H,
     fallback: (err: unknown) => RF
   ): HandlerResult<H> | RF
-  toSerializable(err: unknown): SerializableFault
+  /**
+   * Serializes a member with its tag and fields typed. Any other value gets the open wire type.
+   */
+  toSerializable(fault: InstanceType<M[keyof M]>): RegistryWire<M>
+  toSerializable(value: unknown): SerializableFault
   fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault
 }
 
@@ -204,7 +223,9 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
 
     matchTags,
 
-    toSerializable,
+    // Safe: a member's tag is its registry key and its fields are its constructor's fields, so
+    // the standalone wire format already has the member's typed shape.
+    toSerializable: toSerializable as FaultRegistry<M>["toSerializable"],
 
     fromSerializable(value: unknown): InstanceType<M[keyof M]> | Fault {
       return deserializeFault(value, (tag, fields) => {

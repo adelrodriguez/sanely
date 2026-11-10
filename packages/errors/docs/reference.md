@@ -115,7 +115,7 @@ Membership uses the class, not only the tag. A fault from another class with the
 | `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                                                               |
 | `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                           |
 | `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                                     |
-| `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                                                                    |
+| `toSerializable(value)`                    | The same wire format as the standalone `toSerializable`. For a member, the result type narrows by `_tag` to that member's `fields`.                                             |
 | `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class, with the fields its constructor received. Any other tag becomes a generic `Fault.Base`. |
 
 ```ts
