@@ -9,7 +9,13 @@ after(() => {
   rmSync(root, { force: true, recursive: true })
 })
 
-export function fixture(path: string, siblings: string[] = []) {
+const DEFAULT_MANIFEST = { exports: { ".": "./dist/index.js", "./errors": "./dist/errors.js" } }
+
+export function fixture(
+  path: string,
+  siblings: string[] = [],
+  manifest: object = DEFAULT_MANIFEST
+) {
   const packageRoot = join(root, String(next), "packages/example")
   next += 1
   const filename = join(packageRoot, "src", path)
@@ -18,9 +24,6 @@ export function fixture(path: string, siblings: string[] = []) {
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, "export {}\n")
   }
-  writeFileSync(
-    join(packageRoot, "package.json"),
-    JSON.stringify({ exports: { ".": "./dist/index.js", "./errors": "./dist/errors.js" } })
-  )
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(manifest))
   return { code: "export {}", filename }
 }

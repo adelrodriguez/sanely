@@ -17,6 +17,7 @@ Oxlint enforces this direction, including type imports. Implementation modules d
 ## Shared time definitions
 
 Core owns the unit table, aliases, conversion constants, and derived unit types.
+The `project/clock-ratios` lint rule rejects a clock ratio, such as `60` or `1000`, written as a literal in source.
 Duration owns its parsing and formatting behavior, input validation, and errors.
 The public constants, types, and import paths stay compatible.
 
