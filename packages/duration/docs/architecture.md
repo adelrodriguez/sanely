@@ -10,8 +10,9 @@ The [glossary](../GLOSSARY.md) defines the time expression language.
 | `expression/` | Strict and lenient grammars, parsing, guards, and `InvalidTimeExpressionError`. |
 | `convert/`    | Unit conversion and the public unit functions.                                  |
 | `format/`     | Formatting numeric durations as time expressions.                               |
+| `shared/`     | The `Duration` type and `toDuration`, the only function that creates one.       |
 
-Convert depends on expression. Each domain imports the unit definitions or derived types it needs from core.
+Convert depends on expression. Every domain depends on shared. Each domain imports the unit definitions or derived types it needs from core.
 Oxlint enforces this direction, including type imports. Implementation modules do not import the public entry point.
 
 ## Shared time definitions

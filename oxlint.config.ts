@@ -36,9 +36,10 @@ const dependencies: Record<string, Record<string, string[]>> = {
     vocabulary: [],
   },
   duration: {
-    convert: ["expression"],
-    expression: [],
-    format: [],
+    convert: ["expression", "shared"],
+    expression: ["shared"],
+    format: ["shared"],
+    shared: [],
   },
   flags: {
     changes: [],

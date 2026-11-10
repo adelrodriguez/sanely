@@ -34,15 +34,17 @@ To check the input without its value, use `isValidTimeExpression(input)`.
 
 ## Accept one time expression for a unit function
 
-The unit functions, such as `ms` and `seconds`, take a `TimeExpression`. A `string` from user input is not a `TimeExpression`, so narrow it first with `isTimeExpression`:
+The unit functions, such as `ms` and `seconds`, take a literal or a `TimeExpression`. A `string` from user input is not a `TimeExpression`, so narrow it first with `isTimeExpression`:
 
 ```ts
-import { isTimeExpression, seconds } from "@sanely/duration"
+import { isTimeExpression, ms } from "@sanely/duration"
 
 if (isTimeExpression(input)) {
-  seconds(input) // TypeScript knows that input is a TimeExpression
+  ms(input) // TypeScript knows that input is a TimeExpression
 }
 ```
+
+A narrowed `TimeExpression` can be a bare number, which means milliseconds. So only `ms` takes it. For another unit, use `convert(input, "seconds")`, which throws `InvalidTimeExpressionError` for a bare number.
 
 `isTimeExpression` accepts only the strict form, with at most one space, such as `"1 hour"`, and units in lowercase, Capitalized, or UPPERCASE. It rejects `"1h 30m"` and `"1   HOUR"`. To accept those, use `safeParse` as above, or `convert(input, "seconds")`.
 

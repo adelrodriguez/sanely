@@ -5,17 +5,25 @@ The package has one entry point, `@sanely/duration`. Every export is a named exp
 ## Unit functions
 
 ```ts
-function ms(value: TimeExpression): number
-function seconds(value: TimeExpression): number
-function minutes(value: TimeExpression): number
-function hours(value: TimeExpression): number
-function days(value: TimeExpression): number
-function weeks(value: TimeExpression): number
-function months(value: TimeExpression): number
-function years(value: TimeExpression): number
+function ms<const T extends string>(value: ValidateTimeExpression<T>): Duration<"milliseconds">
+function seconds<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"seconds">
+function minutes<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"minutes">
+function hours<const T extends string>(value: ValidateTimeExpression<T, "unit">): Duration<"hours">
+function days<const T extends string>(value: ValidateTimeExpression<T, "unit">): Duration<"days">
+function weeks<const T extends string>(value: ValidateTimeExpression<T, "unit">): Duration<"weeks">
+function months<const T extends string>(
+  value: ValidateTimeExpression<T, "unit">
+): Duration<"months">
+function years<const T extends string>(value: ValidateTimeExpression<T, "unit">): Duration<"years">
 ```
 
-Each unit function takes one time expression and returns its value in the unit of the function name. A bare number is milliseconds. A compound time expression is a type error. Use `convert` or `parse` for it.
+Each unit function takes one time expression and returns its value in the unit of the function name, as a `Duration` in that unit. The type checker checks the grammar of a literal and gives the reason for an invalid one. A compound time expression is a type error. Use `convert` or `parse` for it.
+
+A bare number means milliseconds. `ms` accepts one, and the other unit functions need a unit, so `seconds("30")` is a type error. A `TimeExpression` that `isTimeExpression` narrowed works with `ms`. For another unit, use `convert` on a string at run time.
 
 ```ts
 import { days, hours, minutes, months, ms, seconds, weeks, years } from "@sanely/duration"
@@ -31,8 +39,10 @@ weeks("1y") // 52.17857142857143
 months("1y") // 12
 years("365.25d") // 1
 ms("100") // 100
-seconds("1000") // 1, because "1000" is 1000 milliseconds
-ms("hello") // Type error: "hello" is not a TimeExpression
+seconds("1000") // Type error: a number without a unit means milliseconds
+ms("1.h") // Type error: a decimal point needs a digit after it
+ms("1M") // Type error: "M" is ambiguous. Use "m" for minutes or "mo" for months
+ms("hello") // Type error: a time expression starts with a number
 ms("1h 30m") // Type error: use convert or parse for a compound time expression
 ```
 
@@ -41,10 +51,10 @@ The unit functions throw `InvalidTimeExpressionError` for a value that `parse` r
 ## `convert(value, unit)`
 
 ```ts
-function convert(value: string, unit: UnitName): number
+function convert<U extends UnitName>(value: string, unit: U): Duration<U>
 ```
 
-Returns the value of a time expression or a compound time expression in `unit`. `unit` is a unit name: `"milliseconds"`, `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`, `"months"`, or `"years"`.
+Returns the value of a time expression or a compound time expression in `unit`, as a `Duration` in that unit. A bare number means milliseconds, so it is valid only when `unit` is `"milliseconds"`. `unit` is a unit name: `"milliseconds"`, `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`, `"months"`, or `"years"`.
 
 ```ts
 import { convert } from "@sanely/duration"
@@ -54,12 +64,12 @@ convert("1h 30m", "minutes") // 90
 convert("1 day, 6 hours", "hours") // 30
 ```
 
-Throws `InvalidTimeExpressionError` for a value that `parse` rejects, and `RangeError` for an unknown unit name.
+Throws `InvalidTimeExpressionError` for a value that `parse` rejects or for a bare number in a unit other than milliseconds, and `RangeError` for an unknown unit name.
 
 ## `parse(value)`
 
 ```ts
-function parse(value: string): number
+function parse(value: string): Duration<"milliseconds">
 ```
 
 Returns the value of a time expression or a compound time expression in milliseconds. `parse` accepts the lenient form. See [Grammar](#grammar).
@@ -77,7 +87,7 @@ Throws `InvalidTimeExpressionError` for invalid input.
 ## `safeParse(value)`
 
 ```ts
-function safeParse(value: string): number | null
+function safeParse(value: string): Duration<"milliseconds"> | null
 ```
 
 Returns the same value as `parse`, or `null` for invalid input. It never throws.
@@ -92,10 +102,13 @@ safeParse("hello") // null
 ## `format(milliseconds, options?)`
 
 ```ts
-function format(milliseconds: number, options?: FormatOptions): string
+function format<const T extends number>(
+  milliseconds: MillisecondsOnly<T>,
+  options?: FormatOptions
+): string
 ```
 
-Writes milliseconds as a time expression. `parse` accepts every value that `format` returns.
+Writes milliseconds as a time expression. `parse` accepts every value that `format` returns. `format` takes a plain number or a `Duration` in milliseconds. A `Duration` in another unit is a type error, so `format(seconds("1h"))` fails to compile instead of giving `"4s"`.
 
 | Option      | Type         | Default   | Description                            |
 | ----------- | ------------ | --------- | -------------------------------------- |
@@ -195,12 +208,14 @@ A space between the number and the unit is optional. A number can have decimals 
 | `"months"`       | `mo`  | `months`, `month`                              |
 | `"years"`        | `y`   | `years`, `year`, `yrs`, `yr`                   |
 
+`M` is not a unit in any form, because other notations, such as ISO 8601, use it for months. Write `m` for minutes or `mo` for months.
+
 ### Strict and lenient forms
 
-| Form    | Used by                                         | Unit case                            | Whitespace                                |
-| ------- | ----------------------------------------------- | ------------------------------------ | ----------------------------------------- |
-| Strict  | `isTimeExpression`, `TimeExpression`            | Lowercase, Capitalized, or UPPERCASE | At most one space between number and unit |
-| Lenient | `parse`, `safeParse`, `convert`, unit functions | Any case                             | Flexible, such as `"1   HOUR"`            |
+| Form    | Used by                            | Unit case                            | Whitespace                                |
+| ------- | ---------------------------------- | ------------------------------------ | ----------------------------------------- |
+| Strict  | `isTimeExpression`, unit functions | Lowercase, Capitalized, or UPPERCASE | At most one space between number and unit |
+| Lenient | `parse`, `safeParse`, `convert`    | Any case                             | Flexible, such as `"1   HOUR"`            |
 
 `parse` accepts every expression in the strict form.
 
@@ -245,7 +260,9 @@ parse("- 1h") // Throws, because the sign is not attached to the number
 - is not a string,
 - is empty,
 - has more than 200 characters,
-- does not match the grammar, or
+- does not match the grammar,
+- uses the unit `M`,
+- is a bare number in `convert` with a unit other than milliseconds, or
 - is out of the range that a number can hold.
 
 The `value` property holds the invalid input. The message has the form `Invalid time expression: <reason>. Received: "<input>"`.
@@ -266,15 +283,18 @@ try {
 
 ## Types
 
-| Type                                                                              | Describes                                                                                                                                          |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TimeExpression`                                                                  | One time expression in the strict form, as a template literal type. Some strings, such as `"0x10h"`, satisfy the type and still throw at run time. |
-| `FormatOptions`                                                                   | The `long`, `precision`, and `units` options of `format`.                                                                                          |
-| `Unit`                                                                            | Every unit alias, such as `"hours"`, `"h"`, and `"hr"`.                                                                                            |
-| `UnitAnyCase`                                                                     | A `Unit` in lowercase, Capitalized, or UPPERCASE.                                                                                                  |
-| `UnitName`                                                                        | The unit names that `convert` and the `units` option of `format` use.                                                                              |
-| `Milliseconds`, `Seconds`, `Minutes`, `Hours`, `Days`, `Weeks`, `Months`, `Years` | The aliases of one unit.                                                                                                                           |
+| Type                                                                              | Describes                                                                                                                                              |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TimeExpression`                                                                  | One time expression in the strict form, as a template literal type. Some strings, such as `"0x10h"`, satisfy the type. The unit functions reject them. |
+| `TimeExpressionWithUnit`                                                          | A `TimeExpression` with a unit.                                                                                                                        |
+| `ValidateTimeExpression<T, Rule>`                                                 | Checks a literal against the strict form, and gives the reason when it is invalid. `Rule` is `"bare"` or `"unit"`.                                     |
+| `Duration<U>`                                                                     | A number of the unit `U`, such as the result of `seconds()`. It is a `number`, and arithmetic on it gives a plain `number`.                            |
+| `FormatOptions`                                                                   | The `long`, `precision`, and `units` options of `format`.                                                                                              |
+| `Unit`                                                                            | Every unit alias, such as `"hours"`, `"h"`, and `"hr"`.                                                                                                |
+| `UnitAnyCase`                                                                     | A `Unit` in lowercase, Capitalized, or UPPERCASE, except `M`.                                                                                          |
+| `UnitName`                                                                        | The unit names that `convert` and the `units` option of `format` use.                                                                                  |
+| `Milliseconds`, `Seconds`, `Minutes`, `Hours`, `Days`, `Weeks`, `Months`, `Years` | The aliases of one unit.                                                                                                                               |
 
 ```ts
-import type { FormatOptions, TimeExpression, Unit, UnitName } from "@sanely/duration"
+import type { Duration, FormatOptions, TimeExpression, Unit, UnitName } from "@sanely/duration"
 ```

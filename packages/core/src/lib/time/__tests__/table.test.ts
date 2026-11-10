@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { getUnitByName, getUnitMs, UNITS } from "#lib/time/table.ts"
+import { findUnit, getAmbiguousUnitHint, getUnitByName, UNITS } from "#lib/time/table.ts"
 
-describe("getUnitMs", () => {
+describe("findUnit", () => {
   it.each([
     ["ms", 1],
     ["msec", 1],
@@ -14,25 +14,37 @@ describe("getUnitMs", () => {
     ["w", 604_800_000],
     ["mo", 2_629_800_000],
     ["y", 31_557_600_000],
-  ])("should resolve %s to %d milliseconds", (alias, expected) => {
-    expect(getUnitMs(alias)).toBe(expected)
+  ])("should resolve %s to %d milliseconds", (token, expected) => {
+    expect(findUnit(token)?.ms).toBe(expected)
   })
 
   it.each([
-    ["M", 60_000],
-    ["Mo", 2_629_800_000],
-    ["H", 3_600_000],
-    ["Hours", 3_600_000],
-    ["HOURS", 3_600_000],
-    ["MiLliSeCondS", 1],
-  ])("should resolve %s in any casing to %d milliseconds", (alias, expected) => {
-    expect(getUnitMs(alias)).toBe(expected)
+    ["HOURS", "hours"],
+    ["Hour", "hours"],
+    ["MiNs", "minutes"],
+    ["MO", "months"],
+    ["Mo", "months"],
+    ["MS", "milliseconds"],
+    ["H", "hours"],
+    ["Hours", "hours"],
+    ["MiLliSeCondS", "milliseconds"],
+  ])("should ignore the case of %s", (token, name) => {
+    expect(findUnit(token)?.longPlural).toBe(name)
   })
 
-  it.each(["", "parsec", "PARSEC", "toString", "__proto__", "__PROTO__"])(
-    "should reject an unsupported alias: %j",
-    (alias) => {
-      expect(getUnitMs(alias)).toBeUndefined()
+  it("should reject M, which reads as months in other notations", () => {
+    expect(findUnit("M")).toBeUndefined()
+    expect(getAmbiguousUnitHint("M")).toBe('use "m" for minutes or "mo" for months')
+  })
+
+  it.each(["m", "MO", "h", "hasOwnProperty"])("should give no hint for %j", (token) => {
+    expect(getAmbiguousUnitHint(token)).toBeUndefined()
+  })
+
+  it.each(["", "parsec", "PARSEC", "toString", "__proto__", "__PROTO__", "hasOwnProperty"])(
+    "should reject an unsupported token: %j",
+    (token) => {
+      expect(findUnit(token)).toBeUndefined()
     }
   )
 })

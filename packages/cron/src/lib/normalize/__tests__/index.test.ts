@@ -46,6 +46,16 @@ describe("normalize", () => {
     expect(normalize(input)).toBe(expected)
   })
 
+  it.each([
+    ["every 15 MINUTES", "every 15 minutes"],
+    ["every 15 Min", "every 15 minutes"],
+    ["Every 2 HRS", "every 2 hours"],
+    ["every 15M", "every 15M"],
+    ["every 15 M", "every 15 M"],
+  ])("should map a unit alias in any case except the ambiguous M: %j", (input, expected) => {
+    expect(normalize(input)).toBe(expected)
+  })
+
   it("should not split a word that is not a unit alias", () => {
     expect(normalize("on the 1st of every month at 8:00")).toBe("on the 1st of every month at 8:00")
     expect(normalize("every 2mo")).toBe("every 2mo")

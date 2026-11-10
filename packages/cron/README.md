@@ -153,7 +153,7 @@ These phrases are not valid:
 | Lists                 | `mon,wed,fri` spacing, and a comma before `and`                             |
 | Times                 | `9:30 PM`, `9:30PM`                                                         |
 
-The unit aliases mean the same units as in [`@sanely/duration`](../duration): `m` is minutes, and `mo` (months) is not an interval unit.
+The unit aliases mean the same units as in [`@sanely/duration`](../duration): `m` is minutes, and `mo` (months) is not an interval unit. `M` is not a unit in any case, because other notations use it for months, so `parse("every 5 M")` throws.
 
 ## API
 

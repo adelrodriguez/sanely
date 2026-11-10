@@ -59,7 +59,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check type-check performance
-        run: pnpm turbo run test:types-perf --filter @sanely/cron
+        run: pnpm turbo run test:types-perf
 
   # Lists the packages to check and the `engines.node` floor of each.
   compat-packages:

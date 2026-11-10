@@ -20,10 +20,16 @@ export type {
   Weeks,
   Years,
 } from "@sanely/core/time"
+export type { Duration } from "#lib/shared/duration.ts"
 export * from "#lib/expression/errors.ts"
 export * from "#lib/expression/guards.ts"
-export * from "#lib/expression/parse.ts"
-export type * from "#lib/expression/types.ts"
+export { parse, safeParse } from "#lib/expression/parse.ts"
+export type {
+  TimeExpression,
+  TimeExpressionWithUnit,
+  UnitRule,
+  ValidateTimeExpression,
+} from "#lib/expression/types.ts"
 export * from "#lib/convert/index.ts"
 export * from "#lib/format/index.ts"
 export type * from "#lib/format/types.ts"

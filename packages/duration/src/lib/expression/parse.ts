@@ -1,4 +1,5 @@
-import { getUnitMs } from "@sanely/core/time"
+import { findUnit, getAmbiguousUnitHint } from "@sanely/core/time"
+import { type Duration, toDuration } from "#lib/shared/duration.ts"
 import { InvalidTimeExpressionError } from "./errors"
 import { LENIENT_UNIT_PATTERN, NUMBER_PATTERN } from "./grammar"
 
@@ -51,7 +52,22 @@ function isValidGap(gap: string, isFirstSegment: boolean): boolean {
  * @throws {InvalidTimeExpressionError} If the input is not a string, is empty, exceeds 200
  *   characters, or cannot be parsed as a time expression
  */
-export function parse(value: string): number {
+export function parse(value: string): Duration<"milliseconds"> {
+  return parseExpression(value).milliseconds
+}
+
+/**
+ * A parsed time expression, and whether it was a bare number. A bare number means milliseconds.
+ */
+export interface ParsedExpression {
+  readonly isBare: boolean
+  readonly milliseconds: Duration<"milliseconds">
+}
+
+/**
+ * Parse a time expression like `parse`, and also report whether it was a bare number.
+ */
+export function parseExpression(value: string): ParsedExpression {
   if (typeof value !== "string") {
     throw new InvalidTimeExpressionError(value, "value must be a string")
   }
@@ -111,10 +127,14 @@ export function parse(value: string): number {
     }
 
     const n = Number.parseFloat(numberToken)
-    const multiplier = unitToken ? getUnitMs(unitToken) : 1
+    const multiplier = unitToken ? findUnit(unitToken)?.ms : 1
 
     if (multiplier === undefined) {
-      throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
+      const hint = unitToken ? getAmbiguousUnitHint(unitToken) : undefined
+      throw new InvalidTimeExpressionError(
+        value,
+        hint ? `"${unitToken}" is ambiguous: ${hint}` : "value is not a valid time expression"
+      )
     }
 
     total += n * multiplier
@@ -145,7 +165,7 @@ export function parse(value: string): number {
     throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
   }
 
-  return sign * total
+  return { isBare: hasBareSegment, milliseconds: toDuration(sign * total) }
 }
 
 /**
@@ -159,7 +179,7 @@ export function parse(value: string): number {
  *
  * @returns The total value in milliseconds, or `null` if the input is not a valid time expression
  */
-export function safeParse(value: string): number | null {
+export function safeParse(value: string): Duration<"milliseconds"> | null {
   try {
     return parse(value)
   } catch {

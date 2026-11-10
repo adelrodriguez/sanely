@@ -4,6 +4,7 @@ import {
   convert,
   days,
   type Days,
+  type Duration,
   format,
   type FormatOptions,
   hours,
@@ -40,6 +41,8 @@ import {
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 declare const userInput: string
+declare const start: number
+declare const choice: "1h" | "30m"
 
 // ── Positive type-level tests ────────────────────────────────────────────────
 // Derives each unit alias type from the UNITS table.
@@ -71,9 +74,11 @@ declare const userInput: string
   expectTypeOf<UnitName>().toExtend<Unit>()
 }
 
-// Makes UnitAnyCase cover lowercase, Capitalized, and UPPERCASE units.
+// Makes UnitAnyCase cover lowercase, Capitalized, and UPPERCASE units, except the ambiguous "M".
 {
-  expectTypeOf<UnitAnyCase>().toEqualTypeOf<Unit | Capitalize<Unit> | Uppercase<Unit>>()
+  expectTypeOf<UnitAnyCase>().toEqualTypeOf<
+    Exclude<Unit | Capitalize<Unit> | Uppercase<Unit>, "M">
+  >()
   expectTypeOf<"ms">().toExtend<UnitAnyCase>()
   expectTypeOf<"Hour">().toExtend<UnitAnyCase>()
   expectTypeOf<"HOURS">().toExtend<UnitAnyCase>()
@@ -95,7 +100,8 @@ declare const userInput: string
   void [bare, compact, spaced, long, signed, positive, fractional, exponent, capitalized, uppercase]
 }
 
-// Documents known limitation: `${number}` lets some strings the runtime rejects through.
+// The TimeExpression type alone still lets some strings the runtime rejects through, because it is
+// built on `${number}`. The unit functions check the grammar of a literal, so these fail there.
 {
   expectTypeOf<"0x10h">().toExtend<TimeExpression>()
   expectTypeOf<"0b1s">().toExtend<TimeExpression>()
@@ -103,10 +109,10 @@ declare const userInput: string
   expectTypeOf<" 1h">().toExtend<TimeExpression>()
 }
 
-// Returns number from parse and number | null from safeParse.
+// Returns a millisecond Duration from parse, or null from safeParse.
 {
-  expectTypeOf(parse(userInput)).toEqualTypeOf<number>()
-  expectTypeOf(safeParse(userInput)).toEqualTypeOf<number | null>()
+  expectTypeOf(parse(userInput)).toEqualTypeOf<Duration<"milliseconds">>()
+  expectTypeOf(safeParse(userInput)).toEqualTypeOf<Duration<"milliseconds"> | null>()
   expectTypeOf(parse).parameters.toEqualTypeOf<[value: string]>()
   expectTypeOf(safeParse).parameters.toEqualTypeOf<[value: string]>()
 }
@@ -131,24 +137,71 @@ declare const userInput: string
   }
 }
 
-// Accepts any string and a UnitName in convert, and returns number.
+// Accepts any string and a UnitName in convert, and returns a Duration in that unit.
 {
-  expectTypeOf(convert(userInput, "minutes")).toEqualTypeOf<number>()
-  expectTypeOf(convert).parameters.toEqualTypeOf<[value: string, unit: UnitName]>()
+  expectTypeOf(convert(userInput, "minutes")).toEqualTypeOf<Duration<"minutes">>()
+  expectTypeOf(convert).parameter(0).toEqualTypeOf<string>()
+  expectTypeOf(convert).parameter(1).toEqualTypeOf<UnitName>()
 }
 
-// Types each unit helper as (value: TimeExpression) => number.
+// Returns a Duration in each unit helper's own unit.
 {
-  type UnitHelper = (value: TimeExpression) => number
+  expectTypeOf(ms("1h")).toEqualTypeOf<Duration<"milliseconds">>()
+  expectTypeOf(seconds("1h")).toEqualTypeOf<Duration<"seconds">>()
+  expectTypeOf(minutes("1h")).toEqualTypeOf<Duration<"minutes">>()
+  expectTypeOf(hours("1h")).toEqualTypeOf<Duration<"hours">>()
+  expectTypeOf(days("1h")).toEqualTypeOf<Duration<"days">>()
+  expectTypeOf(weeks("1h")).toEqualTypeOf<Duration<"weeks">>()
+  expectTypeOf(months("1h")).toEqualTypeOf<Duration<"months">>()
+  expectTypeOf(years("1h")).toEqualTypeOf<Duration<"years">>()
+}
 
-  expectTypeOf(ms).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(seconds).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(minutes).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(hours).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(days).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(weeks).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(months).toEqualTypeOf<UnitHelper>()
-  expectTypeOf(years).toEqualTypeOf<UnitHelper>()
+// Keeps a Duration usable as a number, and arithmetic gives a plain number.
+{
+  const timeoutMs: number = ms("30s")
+  const total = seconds("1m") + seconds("30s")
+
+  expectTypeOf(total).toEqualTypeOf<number>()
+  void timeoutMs
+}
+
+// Accepts every number form of the strict grammar in a literal.
+{
+  ms("500")
+  ms(".5h")
+  ms("-1.5d")
+  ms("+1h")
+  ms("1e3ms")
+  ms("2.5E-1 hours")
+  seconds("1 Hour")
+  minutes("1HOUR")
+  days("1d")
+}
+
+// Accepts a TimeExpression that isTimeExpression narrowed, and a union of valid literals.
+{
+  ms(choice)
+  seconds(choice)
+
+  if (isTimeExpression(userInput)) {
+    ms(userInput)
+  }
+}
+
+// Accepts a bare number only where the result is milliseconds.
+{
+  ms("500")
+  convert("500", "milliseconds")
+}
+
+// Accepts plain numbers and millisecond Durations in format.
+{
+  format(5_400_000)
+  format(Date.now() - start)
+  format(ms("1h"))
+  format(parse("1h 30m"))
+  format(convert("1h", "milliseconds"))
+  format(MS_PER_HOUR * 2)
 }
 
 // Types format options and returns string from format.
@@ -156,7 +209,7 @@ declare const userInput: string
   const units: readonly UnitName[] = ["hours", "minutes"]
 
   expectTypeOf(format(5_400_000, { long: true, precision: 2, units })).toEqualTypeOf<string>()
-  expectTypeOf(format).parameters.toEqualTypeOf<[milliseconds: number, options?: FormatOptions]>()
+  expectTypeOf(format).parameter(1).toEqualTypeOf<FormatOptions | undefined>()
   expectTypeOf<FormatOptions["long"]>().toEqualTypeOf<boolean | undefined>()
   expectTypeOf<FormatOptions["precision"]>().toEqualTypeOf<number | undefined>()
   expectTypeOf<FormatOptions["units"]>().toEqualTypeOf<readonly UnitName[] | undefined>()
@@ -220,6 +273,30 @@ function _negativeTypeTests() {
   // @ts-expect-error -- Infinity is not a finite number
   years("Infinityy")
 
+  // @ts-expect-error -- "M" is ambiguous: "m" is minutes and "mo" is months
+  ms("1M")
+
+  // @ts-expect-error -- a bare number means milliseconds, so seconds() needs a unit
+  seconds("30")
+
+  // @ts-expect-error -- a bare number means milliseconds, so years() needs a unit
+  years("1")
+
+  // @ts-expect-error -- a decimal point needs a digit after it
+  ms("1.h")
+
+  // @ts-expect-error -- leading whitespace is not part of the strict form
+  ms(" 1h")
+
+  // @ts-expect-error -- hexadecimal is not part of the number grammar
+  seconds("0x10h")
+
+  // @ts-expect-error -- binary is not part of the number grammar
+  minutes("0b1s")
+
+  // @ts-expect-error -- a value outside the finite range is not a TimeExpression
+  hours("1e400h")
+
   // @ts-expect-error -- unit helpers take a string, not a number
   ms(1000)
 
@@ -240,6 +317,12 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- format takes a number, not a time expression
   format("1h")
+
+  // @ts-expect-error -- format takes milliseconds, not seconds
+  format(seconds("1h"))
+
+  // @ts-expect-error -- format takes milliseconds, not minutes
+  format(convert("1h", "minutes"))
 
   // @ts-expect-error -- precision is a number
   format(1000, { precision: "2" })

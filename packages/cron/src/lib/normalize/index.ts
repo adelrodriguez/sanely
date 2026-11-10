@@ -1,14 +1,8 @@
-import { UNITS } from "@sanely/core/time"
+import { findUnit, getAmbiguousUnitHint, type UnitDefinition } from "@sanely/core/time"
 import { DAY_GROUPS, DAYS } from "#lib/vocabulary/words.ts"
-
-const INTERVAL_UNITS = UNITS.filter((unit) => unit.long === "minute" || unit.long === "hour")
 
 const DAY_BY_ALIAS: ReadonlyMap<string, string> = new Map(
   Object.entries(DAYS).flatMap(([name, day]) => day.aliases.map((alias) => [alias, name] as const))
-)
-
-const UNIT_BY_ALIAS: ReadonlyMap<string, (typeof INTERVAL_UNITS)[number]> = new Map(
-  INTERVAL_UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
 )
 
 const GROUP_BY_WORD: ReadonlyMap<string, { readonly plural: string; readonly singular: string }> =
@@ -20,25 +14,40 @@ const GROUP_BY_WORD: ReadonlyMap<string, { readonly plural: string; readonly sin
   )
 
 // A number with a unit alias and no space, such as "15m".
-const ATTACHED_UNIT_RE = /^(\d+)([a-z]+)$/
+const ATTACHED_UNIT_RE = /^(\d+)([a-z]+)$/i
+
+// Find a minute or hour alias in any case. `findUnit` rejects an ambiguous token, such as "M".
+function findIntervalUnit(token: string): UnitDefinition | undefined {
+  const unit = findUnit(token)
+  return unit?.long === "minute" || unit?.long === "hour" ? unit : undefined
+}
+
+// An ambiguous unit, alone or after its number, stays as written so the grammar can reject it.
+// Lowercasing "15M" would make it "15m", which a second pass would read as minutes.
+function hasAmbiguousUnit(token: string): boolean {
+  return getAmbiguousUnitHint(ATTACHED_UNIT_RE.exec(token)?.[2] ?? token) !== undefined
+}
 
 function splitAttachedUnit(token: string): string[] {
   const match = ATTACHED_UNIT_RE.exec(token)
-  if (match?.[1] && match[2] && UNIT_BY_ALIAS.has(match[2])) return [match[1], match[2]]
+  if (match?.[1] && match[2] && findIntervalUnit(match[2])) return [match[1], match[2]]
   return [token]
 }
 
 // Map one alias to its canonical word. The singular and plural forms of a unit or a day group are
 // spelling variants: the word before them selects the form that the strict form uses.
 function mapWord(word: string, previous: string | undefined): string {
-  const unit = UNIT_BY_ALIAS.get(word)
+  if (hasAmbiguousUnit(word)) return word
+
+  const unit = findIntervalUnit(word)
   if (unit) return previous === "every" ? unit.long : unit.longPlural
 
-  const group = GROUP_BY_WORD.get(word)
+  const lower = word.toLowerCase()
+  const group = GROUP_BY_WORD.get(lower)
   if (group && previous === "every") return group.singular
   if (group && previous === "on") return group.plural
 
-  return DAY_BY_ALIAS.get(word) ?? word
+  return DAY_BY_ALIAS.get(lower) ?? lower
 }
 
 /**
@@ -47,13 +56,13 @@ function mapWord(word: string, previous: string | undefined): string {
  * the words. The grammar rejects the result if it is not a strict cron phrase.
  */
 export function normalize(phrase: string): string {
+  // Each word is lowercased in `mapWord`, so that an ambiguous unit keeps its case.
   const text = phrase
-    .toLowerCase()
     .replaceAll(/\s+/g, " ")
     .trim()
     .replaceAll(/ ?, ?/g, ", ")
-    .replaceAll(", and ", " and ")
-    .replaceAll(/(\d) (am|pm)(?= |,|$)/g, "$1$2")
+    .replaceAll(/, and /gi, " and ")
+    .replaceAll(/(\d) (am|pm)(?= |,|$)/gi, "$1$2")
 
   const tokens = text.split(" ").flatMap((token) => splitAttachedUnit(token))
 
@@ -61,7 +70,7 @@ export function normalize(phrase: string): string {
     .map((token, index) => {
       const hasComma = token.endsWith(",")
       const word = hasComma ? token.slice(0, -1) : token
-      const previous = tokens[index - 1]
+      const previous = tokens[index - 1]?.toLowerCase()
       return `${mapWord(word, previous)}${hasComma ? "," : ""}`
     })
     .join(" ")

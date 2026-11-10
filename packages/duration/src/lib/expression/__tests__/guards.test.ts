@@ -47,6 +47,11 @@ describe("isTimeExpression", () => {
     expect(isTimeExpression("1Ms")).toBe(true)
   })
 
+  it("should reject M, which the type also rejects", () => {
+    expect(isTimeExpression("1M")).toBe(false)
+    expect(isTimeExpression("1 M")).toBe(false)
+  })
+
   it("should reject mixed casing outside the type", () => {
     expect(isTimeExpression("1mS")).toBe(false)
     expect(isTimeExpression("1 HoUr")).toBe(false)

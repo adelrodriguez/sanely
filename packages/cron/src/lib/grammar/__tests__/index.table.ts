@@ -846,6 +846,21 @@ export const GRAMMAR = [
   },
 
   // ---- Lenient form ----
+  // "M" means months in other notations, so it is not a minute alias in any form.
+  {
+    error: '"M" is ambiguous: use "m" for minutes or "mo" for months',
+    lenient: false,
+    phrase: "every 5 M",
+    strict: false,
+    strictError: "use lowercase words",
+  },
+  {
+    error: '"M" is ambiguous: use "m" for minutes or "mo" for months',
+    lenient: false,
+    phrase: "every 5M",
+    strict: false,
+    strictError: "use lowercase words",
+  },
   {
     cron: "*/15 * * * *",
     lenient: true,

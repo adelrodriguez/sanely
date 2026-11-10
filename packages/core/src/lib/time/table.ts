@@ -87,8 +87,14 @@ export const UNITS = [
  */
 export const UNIT_ALIASES: readonly string[] = [...new Set(UNITS.flatMap((unit) => unit.aliases))]
 
-const UNIT_MS_BY_ALIAS: ReadonlyMap<string, number> = new Map(
-  UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit.ms] as const))
+// Unit tokens that a casing rule would accept, but that mean another unit in common notations.
+// `findUnit` rejects them, and each value says what to write instead.
+export const AMBIGUOUS_UNITS = {
+  M: 'use "m" for minutes or "mo" for months',
+} as const
+
+const UNIT_BY_ALIAS: ReadonlyMap<string, UnitDefinition> = new Map(
+  UNITS.flatMap((unit) => unit.aliases.map((alias) => [alias, unit] as const))
 )
 
 const UNIT_BY_NAME: ReadonlyMap<string, UnitDefinition> = new Map(
@@ -96,10 +102,24 @@ const UNIT_BY_NAME: ReadonlyMap<string, UnitDefinition> = new Map(
 )
 
 /**
- * Look up the millisecond multiplier for a unit alias in any casing, such as `"h"` or `"Hours"`.
+ * Look up a unit by one of its aliases in any casing, such as `"h"`, `"Hour"`, or `"MINUTES"`. A
+ * token in `AMBIGUOUS_UNITS` has no unit.
  */
-export function getUnitMs(alias: string): number | undefined {
-  return UNIT_MS_BY_ALIAS.get(alias.toLowerCase())
+export function findUnit(token: string): UnitDefinition | undefined {
+  if (isAmbiguousUnit(token)) return undefined
+  return UNIT_BY_ALIAS.get(token.toLowerCase())
+}
+
+function isAmbiguousUnit(token: string): token is keyof typeof AMBIGUOUS_UNITS {
+  return Object.hasOwn(AMBIGUOUS_UNITS, token)
+}
+
+/**
+ * Say what to write instead of an ambiguous unit token, such as `"M"`. Returns `undefined` for any
+ * other token.
+ */
+export function getAmbiguousUnitHint(token: string): string | undefined {
+  return isAmbiguousUnit(token) ? AMBIGUOUS_UNITS[token] : undefined
 }
 
 /**

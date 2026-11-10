@@ -1,4 +1,4 @@
-import { getUnitMs, UNITS } from "@sanely/core/time"
+import { findUnit, UNITS } from "@sanely/core/time"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 import {
@@ -30,7 +30,7 @@ function getLastUnitMs(expr: string): number {
   const unit = token.match(/[a-zA-Z]+$/)?.[0]
   if (!unit) throw new Error(`Cannot determine unit suffix for expression: ${expr}`)
 
-  const unitMs = getUnitMs(unit)
+  const unitMs = findUnit(unit)?.ms
   if (unitMs === undefined) throw new Error(`Unsupported unit suffix in expression: ${expr}`)
 
   return unitMs

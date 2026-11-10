@@ -19,7 +19,8 @@
 - `convert("1h 30m", "minutes")` converts a compound time expression to a named unit.
 - `parse` converts a compound time expression to milliseconds.
 - `format` writes milliseconds as a short-form or long-form time expression.
-- The `TimeExpression` type checks string literals at compile time.
+- The unit functions check string literals at compile time, and give the reason for an invalid one.
+- Each result is a `Duration` in its unit, so `format(seconds("1h"))` is a type error.
 - `isTimeExpression` and `isValidTimeExpression` check values at run time.
 - Invalid input throws `InvalidTimeExpressionError`, or `safeParse` returns `null`.
 - Every export is a named export that a bundler can remove when you do not use it.

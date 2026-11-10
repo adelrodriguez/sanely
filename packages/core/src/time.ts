@@ -9,9 +9,17 @@ export {
   MS_PER_WEEK,
   MS_PER_YEAR,
 } from "#lib/time/constants.ts"
-export { getUnitByName, getUnitMs, UNIT_ALIASES, UNITS } from "#lib/time/table.ts"
+export {
+  findUnit,
+  getAmbiguousUnitHint,
+  getUnitByName,
+  UNIT_ALIASES,
+  UNITS,
+} from "#lib/time/table.ts"
 export type { UnitDefinition } from "#lib/time/table.ts"
 export type {
+  AmbiguousUnit,
+  AmbiguousUnitHint,
   Days,
   Hours,
   Milliseconds,

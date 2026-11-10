@@ -1,4 +1,4 @@
-import { UNIT_ALIASES } from "@sanely/core/time"
+import { findUnit, UNIT_ALIASES } from "@sanely/core/time"
 
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -29,8 +29,11 @@ export const LENIENT_UNIT_PATTERN = toAlternation(UNIT_ALIASES)
 
 /**
  * Exact-casing alias alternation for the strict grammar. Accepts only the casings that the
- * `TimeExpression` type accepts for units: lowercase, Capitalized, and UPPERCASE.
+ * `TimeExpression` type accepts for units: lowercase, Capitalized, and UPPERCASE, except the
+ * ambiguous tokens that `findUnit` rejects, such as `"M"`.
  */
-export const STRICT_UNIT_PATTERN = toAlternation([
-  ...new Set(UNIT_ALIASES.flatMap((alias) => [alias, alias.toUpperCase(), capitalize(alias)])),
-])
+export const STRICT_UNIT_PATTERN = toAlternation(
+  [
+    ...new Set(UNIT_ALIASES.flatMap((alias) => [alias, alias.toUpperCase(), capitalize(alias)])),
+  ].filter((token) => findUnit(token) !== undefined)
+)

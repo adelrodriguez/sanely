@@ -48,6 +48,7 @@
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
     "test:coverage": "vitest run --coverage",
+    "test:types-perf": "node scripts/typecheck-perf.ts",
     "test:watch": "vitest"
   },
   "devDependencies": {
