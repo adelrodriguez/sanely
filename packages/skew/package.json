@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
+    "@sanely/core": "workspace:*",
     "@testing-library/react": "16.3.3",
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",

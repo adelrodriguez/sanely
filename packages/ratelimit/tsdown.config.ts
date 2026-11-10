@@ -3,6 +3,11 @@ import { Macros } from "unplugin-macros"
 
 export default defineConfig({
   clean: true,
+  deps: {
+    alwaysBundle: ["@sanely/core/time"],
+    onlyBundle: [],
+    onlyImport: [],
+  },
   dts: true,
   // `scripts/verify-package.ts` fails when a built store has no export in `package.json`.
   entry: ["src/index.ts", "src/stores/*.ts"],

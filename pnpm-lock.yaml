@@ -370,6 +370,9 @@ importers:
 
   packages/ratelimit:
     devDependencies:
+      '@sanely/core':
+        specifier: workspace:*
+        version: link:../core
       '@tooling/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
@@ -446,6 +449,9 @@ importers:
       '@happy-dom/global-registrator':
         specifier: 21.0.4
         version: 21.0.4
+      '@sanely/core':
+        specifier: workspace:*
+        version: link:../core
       '@testing-library/react':
         specifier: 16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

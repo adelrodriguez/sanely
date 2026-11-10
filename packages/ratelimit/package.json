@@ -82,6 +82,7 @@
     "test:watch": "vitest --project unit"
   },
   "devDependencies": {
+    "@sanely/core": "workspace:*",
     "@tooling/tsconfig": "workspace:*",
     "@types/bun": "1.4.4",
     "@types/node": "catalog:",
