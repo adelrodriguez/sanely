@@ -45,10 +45,21 @@ describe("convert", () => {
     expect(convert("-1h 30m", "minutes")).toBe(-90)
   })
 
-  it("should interpret bare numbers as milliseconds", () => {
+  it("should interpret a bare number as milliseconds when the output is milliseconds", () => {
     expect(convert("100", "milliseconds")).toBe(100)
-    expect(convert("1000", "seconds")).toBe(1)
   })
+
+  it.each(UNITS.filter((unit) => unit.longPlural !== "milliseconds"))(
+    "should reject a bare number when the output is $longPlural",
+    ({ longPlural }) => {
+      expect(() => convert("30", longPlural)).toThrow(
+        new InvalidTimeExpressionError(
+          "30",
+          'a number without a unit means milliseconds. Add a unit, such as "30s" or "30ms"'
+        )
+      )
+    }
+  )
 
   it("should throw a RangeError for unknown unit names", () => {
     expect(() => convert("1h", "fortnights" as never)).toThrow(RangeError)
@@ -80,6 +91,10 @@ describe("seconds", () => {
     expect(seconds("1h")).toBe(3600)
     expect(seconds("500ms")).toBe(0.5)
     expect(seconds("1m")).toBe(60)
+  })
+
+  it("should reject a bare number, which means milliseconds", () => {
+    expect(() => seconds("30" as never)).toThrow(InvalidTimeExpressionError)
   })
 
   it("should throw for invalid input", () => {

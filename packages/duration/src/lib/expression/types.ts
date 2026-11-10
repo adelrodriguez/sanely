@@ -10,3 +10,9 @@ import type { UnitAnyCase } from "@sanely/core/time"
  * accepts a lenient superset of the strict grammar (flexible whitespace and any unit casing).
  */
 export type TimeExpression = `${number}` | `${number}${UnitAnyCase}` | `${number} ${UnitAnyCase}`
+
+/**
+ * A `TimeExpression` with a unit. A bare number means milliseconds, so the unit functions other
+ * than `ms` take this type.
+ */
+export type TimeExpressionWithUnit = Exclude<TimeExpression, `${number}`>

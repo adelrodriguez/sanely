@@ -163,6 +163,12 @@ declare const start: number
   void timeoutMs
 }
 
+// Accepts a bare number only where the result is milliseconds.
+{
+  ms("500")
+  convert("500", "milliseconds")
+}
+
 // Accepts plain numbers and millisecond Durations in format.
 {
   format(5_400_000)
@@ -244,6 +250,12 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- "M" is ambiguous: "m" is minutes and "mo" is months
   ms("1M")
+
+  // @ts-expect-error -- a bare number means milliseconds, so seconds() needs a unit
+  seconds("30")
+
+  // @ts-expect-error -- a bare number means milliseconds, so years() needs a unit
+  years("1")
 
   // @ts-expect-error -- unit helpers take a string, not a number
   ms(1000)

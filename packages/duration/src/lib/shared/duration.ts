@@ -1,11 +1,11 @@
 import type { UnitName } from "@sanely/core/time"
 
 /**
- * A number of the given unit, such as the result of `seconds("1h")`. It is still a `number`, so
- * any API that takes a number accepts it. Arithmetic on it gives a plain `number`.
+ * A number of the given unit, such as the result of `seconds("1h")`. It is still a `number`, so any
+ * API that takes a number accepts it. Arithmetic on it gives a plain `number`.
  *
- * The unit lets `format` reject a value in the wrong unit: `format(seconds("1h"))` is a type
- * error, because `format` takes milliseconds.
+ * The unit lets `format` reject a value in the wrong unit: `format(seconds("1h"))` is a type error,
+ * because `format` takes milliseconds.
  */
 export type Duration<U extends UnitName> = number & { readonly __unit: U }
 
