@@ -1,6 +1,6 @@
 # How to clean up resources with `disposer`
 
-This guide shows you how to register cleanup next to the code that creates a resource, so that the cleanup runs when the work ends, also after an error.
+This guide shows you how to register cleanup next to the code that creates a resource, so that the cleanup runs when the work ends, even after an error.
 
 ## Clean up in a scope
 
