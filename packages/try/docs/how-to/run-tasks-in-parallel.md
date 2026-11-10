@@ -31,6 +31,8 @@ if (page instanceof Error) {
 }
 ```
 
+Write the task object inside the call, as in this example. TypeScript gives a task its `this` members only when the object is written in the call, so a task object stored in a variable first has no `this.$result` or `this.$signal`. The later examples write `tasks` in place of the full object.
+
 Like `run`, `all` resolves with its failures instead of rejecting. When one task fails, `this.$signal` aborts in every other task, and `all` resolves with an `UnhandledException` whose `cause` is the error. To return your own value instead, pass `catch`:
 
 ```ts
