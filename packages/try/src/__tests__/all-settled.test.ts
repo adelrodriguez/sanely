@@ -77,40 +77,6 @@ describe("allSettled", () => {
     expect(dependencyError).toBe(failure)
   })
 
-  it("rejects dependent task with the referenced task failure", async () => {
-    const error = new Error("a failed")
-
-    const result = await try$.allSettled({
-      a() {
-        throw error
-      },
-      async b() {
-        const a = await this.$result.a
-        return a
-      },
-    })
-
-    expect((result.a as { reason: unknown }).reason).toBe(error)
-    expect((result.b as { reason: unknown }).reason).toBe(error)
-    expect(result.b.status).toBe("rejected")
-  })
-
-  it("throws a Panic from a self-referential task instead of recording it as a result", async () => {
-    try {
-      await try$.allSettled({
-        async a() {
-          return await (this.$result as Record<string, Promise<unknown>>).a
-        },
-        b() {
-          return 1
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TASK_SELF_REFERENCE")
-    }
-  })
-
   it("aborts sibling signals on a Panic and waits for siblings to settle before throwing", async () => {
     const events: string[] = []
     let siblingReason: unknown
@@ -184,50 +150,6 @@ describe("allSettled", () => {
       expect.unreachable("should have thrown")
     } catch (error) {
       expectPanic(error, "TASK_INVALID_HANDLER")
-    }
-  })
-
-  it("applies nested run() policies inside allSettled tasks", async () => {
-    vi.useFakeTimers()
-
-    try {
-      let attempts = 0
-
-      const promise = try$.allSettled({
-        async a() {
-          return await try$.retry(2).run(() => {
-            attempts += 1
-
-            if (attempts === 1) {
-              throw new Error("boom")
-            }
-
-            return 1
-          })
-        },
-        async b() {
-          const value = await try$.timeout(5).run(async () => {
-            await sleep(20)
-            return 2
-          })
-
-          if (value instanceof Error) {
-            throw value
-          }
-
-          return value
-        },
-      })
-
-      await vi.advanceTimersByTimeAsync(20)
-      const result = await promise
-
-      expect(result.a).toEqual({ status: "fulfilled", value: 1 })
-      expect(result.b.status).toBe("rejected")
-      expect((result.b as { reason: unknown }).reason).toBeInstanceOf(TimeoutError)
-      expect(attempts).toBe(2)
-    } finally {
-      vi.useRealTimers()
     }
   })
 

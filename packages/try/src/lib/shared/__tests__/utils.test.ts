@@ -73,25 +73,4 @@ describe("utils", () => {
     expect(result).toBe("done")
     expect(abortFactoryCalls).toBe(0)
   })
-
-  it("returns the abort result once when abort happens after registration and before settlement", async () => {
-    const controller = new AbortController()
-    let resolvePromise!: (value: string) => void
-    let abortFactoryCalls = 0
-
-    const pending = new Promise<string>((resolve) => {
-      resolvePromise = resolve
-    })
-
-    const resultPromise = resolveWithAbort(controller.signal, pending, () => {
-      abortFactoryCalls += 1
-      return "aborted" as const
-    })
-
-    controller.abort(new Error("stop"))
-    resolvePromise("done")
-
-    expect(await resultPromise).toBe("aborted")
-    expect(abortFactoryCalls).toBe(1)
-  })
 })

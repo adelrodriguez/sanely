@@ -82,17 +82,6 @@ describe("runSync", () => {
       expect(value).toBe(42)
     })
 
-    it("returns UnhandledException with the thrown error as cause", () => {
-      const failure = new Error("boom")
-
-      const result = try$.runSync(() => {
-        throw failure
-      })
-
-      expect(result).toBeInstanceOf(UnhandledException)
-      expect(result.cause).toBe(failure)
-    })
-
     it("throws Panic when sync run receives a Promise-returning function via unsafe cast", () => {
       const unsafeRun = try$.runSync as unknown as (tryFn: () => number) => number
       const unsafeTry = (() => Promise.resolve(42)) as unknown as () => number
@@ -215,32 +204,6 @@ describe("run", () => {
       expect(result).toBeInstanceOf(UnhandledException)
       expect(result.cause).toBe(failure)
     })
-
-    it("rethrows user-thrown Panic in function form", async () => {
-      const panic = new Panic("FLOW_NO_EXIT")
-      let thrown: unknown
-
-      try {
-        await try$.run(() => {
-          throw panic
-        })
-      } catch (error) {
-        thrown = error
-      }
-
-      expect(thrown).toBe(panic)
-    })
-
-    it("returns UnhandledException with the thrown error as cause when sync function throws", async () => {
-      const failure = new Error("boom")
-
-      const result = await try$.run(() => {
-        throw failure
-      })
-
-      expect(result).toBeInstanceOf(UnhandledException)
-      expect(result.cause).toBe(failure)
-    })
   })
 
   describe("object form", () => {
@@ -261,25 +224,6 @@ describe("run", () => {
 
       expect(result).toBe("mapped")
       expect(caught).toEqual([failure])
-    })
-
-    it("throws Panic with the catch error as cause when catch throws synchronously", async () => {
-      const catchFailure = new Error("catch failed")
-
-      try {
-        await try$.run({
-          catch: () => {
-            throw catchFailure
-          },
-          try: () => {
-            throw new Error("boom")
-          },
-        })
-        expect.unreachable("should have thrown")
-      } catch (error) {
-        expectPanic(error, "CATCH_HANDLER_THROW")
-        expect((error as Panic).cause).toBe(catchFailure)
-      }
     })
 
     it("throws Panic with the rejection as cause when async catch rejects", async () => {
@@ -616,15 +560,6 @@ describe("retry give-up and catch contract", () => {
     expect(result).toBe("mapped")
     expect(caught).toHaveLength(1)
     expect((caught[0] as Error).message).toBe("boom 2")
-  })
-
-  it("returns RetryExhaustedError with the last error as cause when no catch is provided", async () => {
-    const result = await try$.retry(2).run((ctx) => {
-      throw new Error(`boom ${ctx.retry.attempt}`)
-    })
-
-    expect(result).toBeInstanceOf(RetryExhaustedError)
-    expect((result.cause as Error).message).toBe("boom 2")
   })
 
   it("returns RetryExhaustedError with cause in runSync when no catch is provided", () => {

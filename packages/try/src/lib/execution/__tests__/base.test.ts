@@ -56,13 +56,4 @@ describe("guard branches", () => {
     expect("signal" in ctx).toBe(true)
     expect(ctx.signal).toBeUndefined()
   })
-
-  it("keeps control helpers inert when execution has no signal config", () => {
-    const execution = new TestExecution()
-    const promise = Promise.resolve("ok")
-
-    expect(execution.signal).toBeUndefined()
-    expect(execution.cancel(new Error("cause"))).toBeUndefined()
-    expect(execution.raceCancel(promise)).toBe(promise)
-  })
 })

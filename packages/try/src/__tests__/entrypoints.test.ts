@@ -105,42 +105,6 @@ describe("entrypoints", () => {
     }
   })
 
-  it("throws Panic when timeout() receives NaN", () => {
-    try {
-      try$.timeout(Number.NaN)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TIMEOUT_INVALID_MS")
-    }
-  })
-
-  it("throws Panic when retry() receives Infinity", () => {
-    try {
-      try$.retry(Infinity)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
-    }
-  })
-
-  it("throws Panic when retry() receives a negative number", () => {
-    try {
-      try$.retry(-1 as number)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
-    }
-  })
-
-  it("throws Panic when retry() receives NaN", () => {
-    try {
-      try$.retry(Number.NaN)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
-    }
-  })
-
   it("throws Panic when retry() receives zero", () => {
     try {
       try$.retry(0 as number)

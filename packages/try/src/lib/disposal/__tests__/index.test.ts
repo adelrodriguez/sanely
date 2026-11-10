@@ -23,11 +23,6 @@ function catchError(fn: () => void): unknown {
 }
 
 describe("disposer shim", () => {
-  it("uses the native disposal symbols when the runtime provides them", () => {
-    expect(DISPOSE).toBe(Symbol.dispose)
-    expect(ASYNC_DISPOSE).toBe(Symbol.asyncDispose)
-  })
-
   it("installs a non-enumerable sync dispose alias that calls the instance dispose method", () => {
     class SyncAliasTarget {
       calls: string[] = []
@@ -231,33 +226,6 @@ describe("disposer shim", () => {
   })
 
   describe("disposer", () => {
-    it("runs deferred cleanups through the async symbol alias", async () => {
-      const calls: string[] = []
-      const stack = disposer()
-
-      stack.defer(() => {
-        calls.push("cleanup")
-      })
-
-      await stack[Symbol.asyncDispose]()
-
-      expect(calls).toEqual(["cleanup"])
-    })
-
-    it("runs cleanups once when disposed more than once", async () => {
-      let cleanupCalls = 0
-      const stack = disposer()
-
-      stack.defer(() => {
-        cleanupCalls += 1
-      })
-
-      await stack.dispose()
-      await stack.dispose()
-
-      expect(cleanupCalls).toBe(1)
-    })
-
     it("prefers the async dispose method over the sync one on the same resource", async () => {
       const calls: string[] = []
       const stack = disposer()

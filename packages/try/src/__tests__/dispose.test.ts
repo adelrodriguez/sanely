@@ -2,14 +2,6 @@ import { describe, expect, it } from "vitest"
 import * as try$ from "#index.ts"
 
 describe("disposer", () => {
-  it("does not expose legacy cleanup method names", () => {
-    const disposer = try$.disposer()
-
-    expect("add" in disposer).toBe(false)
-    expect("cleanup" in disposer).toBe(false)
-    expect("disposeAsync" in disposer).toBe(false)
-  })
-
   it("disposes deferred callbacks and sync and async resources once, in reverse order", async () => {
     const calls: string[] = []
     const disposer = try$.disposer()

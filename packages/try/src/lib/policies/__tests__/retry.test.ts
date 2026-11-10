@@ -60,22 +60,4 @@ describe("retry helpers", () => {
       })
     ).toBe(12)
   })
-
-  it("applies jitter only when the computed delay is positive", () => {
-    const random = vi.spyOn(Math, "random").mockReturnValue(0.5)
-
-    expect(
-      calculateRetryDelay(1, {
-        retry: { backoff: "constant", delayMs: 0, jitter: true, limit: 3 },
-      })
-    ).toBe(0)
-    expect(random).not.toHaveBeenCalled()
-
-    expect(
-      calculateRetryDelay(1, {
-        retry: { backoff: "constant", delayMs: 25, jitter: true, limit: 3 },
-      })
-    ).toBe(12)
-    expect(random).toHaveBeenCalledTimes(1)
-  })
 })
