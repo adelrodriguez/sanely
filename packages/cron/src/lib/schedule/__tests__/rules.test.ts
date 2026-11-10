@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "vitest"
+import type { IntervalKind } from "#lib/schedule/rules.ts"
 import {
+  INTERVAL_CYCLES,
   ParseError,
   fail,
   toHourInterval,
@@ -18,6 +20,17 @@ describe("fail", () => {
 
     expect(caught).toBeInstanceOf(ParseError)
     expect(caught).toMatchObject({ path: ["at"], reason: "the key is required" })
+  })
+})
+
+describe("INTERVAL_CYCLES", () => {
+  it("should cover exactly the kinds of schedule that take an interval", () => {
+    expectTypeOf<IntervalKind>().toEqualTypeOf<"minute" | "hour">()
+    expectTypeOf<keyof typeof INTERVAL_CYCLES>().toEqualTypeOf<IntervalKind>()
+  })
+
+  it("should give each kind the cycle that its interval divides", () => {
+    expect(INTERVAL_CYCLES).toEqual({ hour: 24, minute: 60 })
   })
 })
 

@@ -1,8 +1,15 @@
 import { HOURS_PER_DAY, MINUTES_PER_HOUR } from "@sanely/core/time"
 import type { DaySet, Kind, Schedule, ScheduleOf, Time, Window } from "#lib/schedule/index.ts"
-import type { Path } from "#lib/schedule/rules.ts"
+import type { IntervalKind, Path } from "#lib/schedule/rules.ts"
 import type { DayOfMonth, HourInterval, MinuteInterval, Weekday } from "#lib/vocabulary/words.ts"
-import { fail, show, toHourInterval, toMinuteInterval, toWindow } from "#lib/schedule/rules.ts"
+import {
+  INTERVAL_CYCLES,
+  fail,
+  show,
+  toHourInterval,
+  toMinuteInterval,
+  toWindow,
+} from "#lib/schedule/rules.ts"
 import {
   DAY_GROUP_NAMES,
   LAST_DAY_OF_MONTH,
@@ -110,14 +117,13 @@ function readDaySet(value: unknown, path: Path): DaySet {
 
 // An interval of 1 is the schedule without `interval`, and an interval of one full cycle is the
 // next kind of schedule.
-function readIntervalNumber(value: unknown, path: Path, unit: string, next: string): number {
+function readIntervalNumber(value: unknown, path: Path, kind: IntervalKind, next: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     fail(`${show(value)} is not a valid interval. Use a whole number`, path)
   }
-  if (value === 1) fail(`leave out "interval" for an interval of 1 ${unit}`, path)
-  if (value === (unit === "minute" ? MINUTES_PER_HOUR : HOURS_PER_DAY)) {
-    fail(`use ${next} for an interval of ${value} ${unit}s`, path)
-  }
+  if (value === 1) fail(`leave out "interval" for an interval of 1 ${kind}`, path)
+  if (value === INTERVAL_CYCLES[kind])
+    fail(`use ${next} for an interval of ${value} ${kind}s`, path)
   return value
 }
 
