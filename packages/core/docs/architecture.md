@@ -33,7 +33,7 @@ The package exports keep implementation paths private.
 These checks enforce the boundaries:
 
 - Oxlint rejects an import of another Sanely package from core, and an import of core's entry point from its implementation modules.
-- In a library that depends on core, the `project/clock-ratios` lint rule rejects a clock ratio, such as `60` or `1000`, written as a literal.
+- In the `src/` code of a library that depends on core, the `project/clock-ratios` lint rule rejects a clock ratio, such as `60` or `1000`, written as a numeric literal. Tests and literal types are exempt.
 - The core build rejects bundled third-party code and every external package import.
 - Each library bundles core's JavaScript and declarations, so its build output never imports `@sanely/core`. Cron, duration, and ratelimit allow no external imports. Skew allows only its framework peer dependencies.
 
