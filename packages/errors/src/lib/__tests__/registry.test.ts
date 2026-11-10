@@ -221,41 +221,13 @@ describe("registry", () => {
     expect(constructorCalls).toBe(0)
   })
 
-  it("keeps a wire value that a subclass field initializer would reset", () => {
-    class RetryError extends Tagged("RetryError")() {
-      attempts = 0
-    }
-
-    const Faults = registry({ RetryError })
-    const error = new RetryError()
-    error.attempts = 3
-
-    const restored = Faults.fromSerializable(error.toSerializable())
-
-    expect(restored).toBeInstanceOf(RetryError)
-    expect((restored as RetryError).attempts).toBe(3)
-  })
-
-  it("keeps a wire value for a field that the subclass redeclares", () => {
-    class LookupError extends Tagged("LookupError")<{ id: string }>() {
-      override readonly id!: string
-    }
-
-    const Faults = registry({ LookupError })
-    const restored = Faults.fromSerializable({
-      __fault: true,
-      _tag: "LookupError",
-      id: "42",
-      name: "LookupError",
-    })
-
-    expect((restored as LookupError).id).toBe("42")
-  })
-
-  it("keeps what a Tagged subclass normalizes before calling super", () => {
+  it("keeps what a Tagged subclass constructor assigns after super during revival", () => {
     class AmountError extends Tagged("AmountError")<{ cents: number }>() {
+      override readonly cents: number
+
       constructor(fields: { cents: number }) {
-        super({ cents: Math.round(fields.cents) })
+        super(fields)
+        this.cents = Math.round(fields.cents)
       }
     }
 
@@ -267,6 +239,7 @@ describe("registry", () => {
       name: "AmountError",
     })
 
+    expect(new AmountError({ cents: 10.4 }).cents).toBe(10)
     expect((restored as AmountError).cents).toBe(10)
   })
 

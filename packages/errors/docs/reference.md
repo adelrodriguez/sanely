@@ -106,18 +106,18 @@ Returns one registry with the classes of every registry. It takes at least two r
 
 Membership uses the class, not only the tag. A fault from another class with the same tag is not a member.
 
-| Member                                     | Description                                                                                                                                                                |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                                                                 |
-| `tags`                                     | The registered tags, in the order of the keys.                                                                                                                             |
-| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                                                                      |
-| `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                                                                 |
-| `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                                                                     |
-| `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                                                          |
-| `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                      |
-| `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                                |
-| `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                                                               |
-| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class, with the fields its constructor received. Any other tag becomes a generic `Fault`. |
+| Member                                     | Description                                                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                       |
+| `tags`                                     | The registered tags, in the order of the keys.                                                                                   |
+| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                            |
+| `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                       |
+| `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                           |
+| `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                |
+| `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.            |
+| `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                      |
+| `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                     |
+| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
 
 ```ts
 const AppFault = Fault.registry({ NotFoundError, TimeoutError })

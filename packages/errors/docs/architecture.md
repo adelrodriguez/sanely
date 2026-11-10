@@ -22,7 +22,7 @@ The root lint configuration rejects imports from `lib/` into public entry points
 
 ## State and compatibility
 
-Fault instances own their data. `fault.ts` owns the original-stack `WeakMap`, and `tagged.ts` owns the `WeakMap` of the fields each `Tagged` constructor assigned.
+Fault instances own their data. `fault.ts` owns the original-stack `WeakMap`.
 Registry closures own their constructor maps, and `registry.ts` owns the registry-composition `WeakMap`.
 
 - Registry membership uses constructor identity, not only `_tag`. A foreign Fault with the same tag is not a registry member.
@@ -30,7 +30,6 @@ Registry closures own their constructor maps, and `registry.ts` owns the registr
 - Standalone matching accepts a typed Fault union. Registry matching accepts `unknown`, checks membership, then uses the same tag dispatch.
 - `Fault.toSerializable()` encodes a fault. `fromSerializable()` reconstructs a generic Fault, while `registry.fromSerializable()` restores registered subclasses when possible.
 - Registry reconstruction calls the registered constructor with the payload fields object. `registry()` therefore rejects, at the type level, constructors that do not take the fields object as their only parameter; call-site sugar belongs in static factories.
-- Subclass field definitions run after the `Tagged` constructor, so a field initializer or a redeclared field can overwrite an assigned field. Registry reconstruction re-applies the fields the `Tagged` constructor assigned after construction. A subclass that normalizes its fields before `super()` keeps the normalized values.
 - Generic and registry reconstruction share one validator, payload restoration, and cause recursion. Both accept `unknown` and check the envelope and every cause before they build anything. A malformed value throws `InvalidPayloadError`, whose reason names the depth of a bad cause. `isSerializableFault()` uses the same validator, so `true` means `fromSerializable()` accepts the value.
 - Reserved keys follow one rule with two policies: `Tagged` construction rejects them (`ReservedFieldError`), while deserialization renames colliding wire keys with repeated `__payload_` prefixes until safe and unique (wire data must not be dropped).
 - Cause traversal and serialization stop after 100 nested fault edges. Deserialization rejects a deeper chain, because the serializer never writes one.
