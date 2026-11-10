@@ -101,20 +101,36 @@ UNIT_ALIASES.length // 34
 UNIT_ALIASES.includes("hrs") // true
 ```
 
-## `getUnitMs`
+## `findUnit`
 
 ```ts
-function getUnitMs(alias: string): number | undefined
+function findUnit(token: string): UnitDefinition | undefined
 ```
 
-`getUnitMs` returns the length in milliseconds of the unit that `alias` names. It accepts an alias in any casing. It returns `undefined` when `alias` is not a unit alias.
+`findUnit` returns the unit that `token` names. It accepts an alias in any casing, such as `"h"`, `"Hour"`, or `"MINUTES"`. It returns `undefined` when `token` is not a unit alias, and when `token` is an ambiguous unit, such as `"M"`.
 
 ```ts
-import { getUnitMs } from "@sanely/core/time"
+import { findUnit } from "@sanely/core/time"
 
-getUnitMs("h") // 3_600_000
-getUnitMs("Hours") // 3_600_000
-getUnitMs("parsec") // undefined
+findUnit("h")?.ms // 3_600_000
+findUnit("Hours")?.longPlural // "hours"
+findUnit("M") // undefined
+findUnit("parsec") // undefined
+```
+
+## `getAmbiguousUnitHint`
+
+```ts
+function getAmbiguousUnitHint(token: string): string | undefined
+```
+
+`getAmbiguousUnitHint` returns what to write instead of an ambiguous unit. An ambiguous unit is a token that a casing rule would accept but that means another unit in common notations. `"M"` is the only one. It reads as minutes by casing but means months in other notations. The function returns `undefined` for any other token.
+
+```ts
+import { getAmbiguousUnitHint } from "@sanely/core/time"
+
+getAmbiguousUnitHint("M") // 'use "m" for minutes or "mo" for months'
+getAmbiguousUnitHint("m") // undefined
 ```
 
 ## `getUnitByName`
@@ -182,7 +198,9 @@ type UnitName =
   | "minutes"
   | "seconds"
   | "milliseconds"
-type UnitAnyCase = Unit | Capitalize<Unit> | Uppercase<Unit>
+type UnitAnyCase = Exclude<Unit | Capitalize<Unit> | Uppercase<Unit>, AmbiguousUnit>
+type AmbiguousUnit = "M"
+type AmbiguousUnitHint<T extends AmbiguousUnit> = 'use "m" for minutes or "mo" for months' // for T = "M"
 ```
 
 The unit types derive from `UNITS`.
@@ -190,7 +208,9 @@ The unit types derive from `UNITS`.
 - Each per-unit type, such as `Hours`, is the union of that unit's aliases.
 - `Unit` is the union of every alias.
 - `UnitName` is the union of every unit name.
-- `UnitAnyCase` adds the Capitalized and UPPERCASE forms of every alias, such as `"Hour"` and `"HOURS"`.
+- `UnitAnyCase` adds the Capitalized and UPPERCASE forms of every alias, such as `"Hour"` and `"HOURS"`. It leaves out every `AmbiguousUnit`.
+- `AmbiguousUnit` is the union of the ambiguous units that `findUnit` rejects.
+- `AmbiguousUnitHint<T>` is the hint that `getAmbiguousUnitHint` returns for `T`.
 
 ```ts
 import type { UnitAnyCase, UnitName } from "@sanely/core/time"

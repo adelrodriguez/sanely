@@ -18,7 +18,7 @@ The Sanely libraries bundle their own copy of core, so you don't need to install
 
 - Millisecond constants, such as `MS_PER_MINUTE`, replace hand-written numbers like `60_000`.
 - `UNITS` lists eight units, from years to milliseconds, with their names and aliases.
-- `getUnitMs` looks up a unit alias in any casing, such as `"h"` or `"Hours"`.
+- `findUnit` looks up a unit alias in any casing, such as `"h"` or `"Hours"`, and rejects the ambiguous `"M"`.
 - `getUnitByName` looks up a unit by its unit name, such as `"hours"`.
 - Types such as `Unit`, `UnitName`, and `Hours` check unit strings at compile time.
 
@@ -33,12 +33,12 @@ The package needs Node.js 20 or later.
 ## Get started
 
 ```ts
-import { getUnitMs, MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
+import { findUnit, MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
 
 const timeout = 30 * MS_PER_SECOND // 30_000
 const interval = 5 * MS_PER_MINUTE // 300_000
 
-getUnitMs("h") // 3_600_000
+findUnit("h")?.ms // 3_600_000
 ```
 
 See the [reference](docs/reference.md) for every export.

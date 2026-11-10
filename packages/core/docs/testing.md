@@ -6,7 +6,7 @@ Core's own suites check the unit table. The libraries that use core check its de
 
 Core has two suites:
 
-- `src/lib/time/__tests__/table.test.ts` checks conversion values, alias lookups in any casing, the rejection of unknown aliases and names, that each alias belongs to one unit, and the largest-to-smallest order that duration's `format` relies on.
+- `src/lib/time/__tests__/table.test.ts` checks conversion values, alias lookups in any casing, the rejection of unknown aliases, names, and the ambiguous `"M"`, the hint for `"M"`, that each alias belongs to one unit, and the largest-to-smallest order that duration's `format` relies on.
 - `src/__tests__/types.test-d.ts` checks that each unit lists its `long`, `longPlural`, and `short` spellings among its aliases. Duration's `format` writes those spellings, so this check keeps its output parseable. `pnpm run check` enforces this suite, and Vitest never runs it.
 
 ## Library suites

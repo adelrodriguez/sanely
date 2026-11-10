@@ -5,11 +5,11 @@ The [glossary](../GLOSSARY.md) defines the shared time vocabulary.
 
 ## Module ownership
 
-| Module                  | Ownership                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| `lib/time/constants.ts` | Millisecond conversion constants and nominal clock ratios.                     |
-| `lib/time/table.ts`     | The unit table, unit aliases, and the `getUnitMs` and `getUnitByName` lookups. |
-| `lib/time/types.ts`     | Unit alias types derived from the unit table.                                  |
+| Module                  | Ownership                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `lib/time/constants.ts` | Millisecond conversion constants and nominal clock ratios.                                                              |
+| `lib/time/table.ts`     | The unit table, unit aliases, ambiguous units, and the `findUnit`, `getAmbiguousUnitHint`, and `getUnitByName` lookups. |
+| `lib/time/types.ts`     | Unit alias types derived from the unit table.                                                                           |
 
 The unit table lists units from largest to smallest, which is the order that duration's `format` reads it in.
 Month and year multipliers are the fixed lengths that the glossary defines, not calendar lengths.
