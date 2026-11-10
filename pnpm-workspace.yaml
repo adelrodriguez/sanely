@@ -7,7 +7,7 @@ catalog:
   "@types/node": 24.19.2
   "@vitest/coverage-v8": 5.1.0
   fast-check: 4.10.2
-  tsdown: 0.23.5
+  tsdown: 0.23.7
   typescript: 7.1.0-beta
   vitest: 5.1.0
 

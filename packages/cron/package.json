@@ -53,7 +53,7 @@
     "@tooling/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
-    "croner": "10.0.1",
+    "croner": "11.0.0",
     "fast-check": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
