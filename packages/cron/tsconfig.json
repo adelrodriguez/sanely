@@ -1,3 +1,7 @@
 {
-  "extends": "@tooling/tsconfig/library.json"
+  "extends": "@tooling/tsconfig/library.json",
+  "compilerOptions": {
+    // A consumer with this option sees the declared types exactly, so the type tests check them that way.
+    "exactOptionalPropertyTypes": true
+  }
 }
