@@ -476,14 +476,14 @@ describe("retry behavior", () => {
     ])
   })
 
-  it("does not retry or map a TimeoutError thrown by try", () => {
+  it("retries and maps a TimeoutError thrown by try like any other failure", () => {
     const thrown = new TimeoutError()
     let attempts = 0
-    let catchCalls = 0
+    const caught: unknown[] = []
 
     const result = try$.retry(3).runSync({
-      catch: () => {
-        catchCalls += 1
+      catch: (error) => {
+        caught.push(error)
         return "mapped"
       },
       try: () => {
@@ -492,9 +492,38 @@ describe("retry behavior", () => {
       },
     })
 
-    expect(result).toBe(thrown)
-    expect(attempts).toBe(1)
-    expect(catchCalls).toBe(0)
+    expect(result).toBe("mapped")
+    expect(attempts).toBe(3)
+    expect(caught).toEqual([thrown])
+  })
+
+  it("maps a nested policy failure through catch instead of returning it", async () => {
+    const caught: unknown[] = []
+
+    const result = await try$.run({
+      catch: (error) => {
+        caught.push(error)
+        return "mapped"
+      },
+      try: async () => {
+        const inner = await try$.timeout(1).run(never)
+
+        if (inner instanceof Error) {
+          throw inner
+        }
+
+        return "unreachable"
+      },
+    })
+
+    const unmapped = await try$.run(() => {
+      throw new CancellationError()
+    })
+
+    expect(result).toBe("mapped")
+    expect(caught[0]).toBeInstanceOf(TimeoutError)
+    expect(unmapped).toBeInstanceOf(UnhandledException)
+    expect(unmapped.cause).toBeInstanceOf(CancellationError)
   })
 
   it("calls shouldRetry once per failed attempt below the limit", async () => {

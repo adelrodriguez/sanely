@@ -5,7 +5,6 @@ import { SignalController } from "#lib/policies/signal.ts"
 import { TimeoutController } from "#lib/policies/timeout.ts"
 import {
   CancellationError,
-  ControlError,
   isPanic,
   Panic,
   RetryExhaustedError,
@@ -304,17 +303,16 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
   }
 
   /**
-   * Shared prefix of attempt-failure resolution: rethrows defects, passes control errors through,
-   * and turns retryable failures into a {@link RetryDirective}. Returns `undefined` when the failure
-   * should continue into catch mapping (or unmapped wrapping).
+   * Shared prefix of attempt-failure resolution: rethrows defects, reports this execution's own
+   * cancellation or deadline, and turns retryable failures into a {@link RetryDirective}. Returns
+   * `undefined` when the failure should continue into catch mapping (or unmapped wrapping).
+   *
+   * A `TimeoutError` or `CancellationError` that this execution's policies did not cause, such as
+   * one rethrown from a nested call, is an ordinary failure: it is retried and mapped.
    */
   protected resolveControlOrRetry(error: unknown): RunnerError | RetryDirective | undefined {
     if (error instanceof Panic) {
       throw error
-    }
-
-    if (error instanceof ControlError) {
-      return error
     }
 
     const controlError = this.checkDidControlFail(error)

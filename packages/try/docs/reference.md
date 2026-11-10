@@ -27,7 +27,7 @@ Runs the work and resolves with a result union. It never rejects with an error f
 
 - Without `catch`, a thrown error becomes an `UnhandledException`, or a `RetryExhaustedError` after a retry policy. The original error is the `cause`.
 - With `catch`, `catch` receives the thrown error, or the error of the last attempt after a retry policy. Its return value is part of the result.
-- `catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`.
+- `catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. A `TimeoutError` or `CancellationError` that `try` rethrows from a nested call is retried and goes to `catch` like any other failure.
 - A `catch` that throws or rejects throws a `Panic`.
 
 The context is read-only. `try` and `shouldRetry` receive the same context, with these fields:

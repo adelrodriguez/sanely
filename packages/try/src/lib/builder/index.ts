@@ -157,9 +157,10 @@ export class RunBuilder<
    * Executes an async unit of work.
    *
    * `catch` maps errors that originated inside `try` — thrown directly, or carried out of the retry
-   * loop as the last attempt's error once the retry policy gives up. Policy outcomes ({@link
-   * TimeoutError}, {@link CancellationError}) and defects (`Panic`) never pass through `catch`; they
-   * surface typed in the return union (or are thrown, for `Panic`).
+   * loop as the last attempt's error once the retry policy gives up. This call's own policy
+   * outcomes ({@link TimeoutError}, {@link CancellationError}) and defects (`Panic`) never pass
+   * through `catch`; they surface typed in the return union (or are thrown, for `Panic`). A policy
+   * failure that `try` rethrows from a nested call is an ordinary failure.
    *
    * Without `catch`, unmapped failures are wrapped: {@link RetryExhaustedError} when a retry policy
    * gave up, {@link UnhandledException} otherwise. The original error is available as `cause`.

@@ -12,9 +12,9 @@ export interface SyncRunOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
   try: SyncRunTryFn<T, Ctx>
   /**
    * Maps errors that originated inside `try` — thrown directly, or carried out of the retry loop as
-   * the last attempt's error once the retry policy gives up. Policy outcomes (timeout,
-   * cancellation) and defects (`Panic`) never pass through `catch`: they are reported directly,
-   * even when they fire while the handler is running.
+   * the last attempt's error once the retry policy gives up. This call's own policy outcomes
+   * (timeout, cancellation) and defects (`Panic`) never pass through `catch`: they are reported
+   * directly, even when they fire while the handler is running.
    */
   catch: SyncRunCatchFn<E>
 }
