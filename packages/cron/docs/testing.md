@@ -10,6 +10,7 @@ The architecture suite checks test ownership and coverage. Import direction is c
 
 Property tests check exact run times, canonical phrase round trips, and JSON schedule round trips.
 Keep the grammar table shared between runtime tests and public type assertions.
+A rejected row also checks that the type error and the runtime error give the same reason, so give each new error path a row.
 
 The package's `test:types-perf` script checks both phrase literals and typed schedule objects.
 Run `pnpm turbo run test:types-perf --filter @sanely/cron` to build workspace dependencies before the check.
