@@ -106,7 +106,7 @@ export class Panic extends Error {
  * override it, so reject objects that define one.
  */
 function checkIsError(value: unknown): value is Error {
-  // oxlint-disable-next-line typescript/no-unnecessary-condition -- absent on Node 22
+  // Error.isError is absent on Node 22.
   if (typeof Error.isError === "function") {
     return Error.isError(value)
   }

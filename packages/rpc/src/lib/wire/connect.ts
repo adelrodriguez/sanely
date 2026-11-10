@@ -94,7 +94,7 @@ export function connect<Context = void>(
     signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options ?? {}
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- `Router<Context>`'s rest tuple is a conditional TypeScript cannot resolve for a generic Context
+  // `Router<Context>`'s rest tuple is a conditional TypeScript cannot resolve for a generic Context.
   const dispatch = router?.dispatch as
     | ((
         path: string,

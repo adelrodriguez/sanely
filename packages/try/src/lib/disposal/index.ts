@@ -170,7 +170,7 @@ export class InternalDisposableStack implements Disposable {
     }
 
     if (error !== undefined) {
-      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Preserve raw disposer failures.
+      // oxlint-disable-next-line typescript/only-throw-error -- Preserve raw disposer failures.
       throw error
     }
   }
@@ -233,7 +233,7 @@ class AsyncDisposerStack implements AsyncDisposer {
     }
 
     if (error !== undefined) {
-      // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Preserve raw async disposer failures.
+      // oxlint-disable-next-line typescript/only-throw-error -- Preserve raw async disposer failures.
       throw error
     }
   }

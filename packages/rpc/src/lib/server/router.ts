@@ -94,7 +94,6 @@ type CreateRouterWithContext<Context> = {
 // the tree overload instantiates FragmentTree with the bare ContractTree constraint, whose index
 // signature recurses without terminating (TS2589). Concrete contracts are finite, so call sites
 // are unaffected; the cast stands in for the compatibility check.
-// oxlint-disable-next-line typescript/consistent-type-assertions -- see above
 export const createRouter: CreateRouter = Object.assign(buildRouter as CreateRouter, {
   // Context exists only in the type system; at runtime the factory is unchanged.
   $context: () => createRouter,
@@ -229,7 +228,7 @@ export function mergeRouters<const Routers extends readonly AnyRouter[]>(
       throw new ChannelError({ code: "unknown-channel", path })
     }
 
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- the owner accepts the slice of the merged context it declared, and the intersection carries every slice
+    // The owner accepts the slice of the merged context it declared, and the intersection carries every slice.
     const forward = owner.dispatch as (
       path: string,
       raw: unknown,
@@ -263,7 +262,7 @@ function buildRouter(contract: ContractTree, resolvers: object): Router<never> {
       throw new SetupError({ code: "missing-resolver", path })
     }
 
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- a resolver's parameters are typed by its leaf; dispatch parses before it calls
+    // A resolver's parameters are typed by its leaf. Dispatch parses before it calls.
     resolverMap[path] = resolver as AnyResolver
   }
 
