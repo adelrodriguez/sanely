@@ -19,7 +19,9 @@ These library suites also cover core's definitions:
 
 ## Build checks
 
-Each library's `build:verify` script loads its built entry points and type-checks a consumer against its declarations.
+Core's `build:verify` script packs core, installs it in an isolated consumer, loads `@sanely/core/time`, and type-checks the consumer against its declarations.
+
+Each library's `build:verify` script also loads its built entry points and type-checks a consumer against its declarations.
 Cron, duration, and ratelimit first pack the library and install it in an isolated consumer.
 
 Core's `test:compat` script loads core's built entry point.
