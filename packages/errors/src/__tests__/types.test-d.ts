@@ -20,7 +20,7 @@ import type {
 import { InvalidPayloadError } from "#errors.ts"
 
 import {
-  type Fault,
+  type Base,
   findCause,
   fromSerializable,
   isSerializableFault,
@@ -95,7 +95,7 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 {
   const fault = new NotFoundError({ id: "123" })
 
-  expectTypeOf(fault).toExtend<Fault>()
+  expectTypeOf(fault).toExtend<Base>()
 }
 
 // Exports public contracts from the types entrypoint.
@@ -161,9 +161,9 @@ type AppError = NotFoundError | TimeoutError | PaymentError
     expectTypeOf(value).toEqualTypeOf<SerializableFault>()
   }
   // Received data parses without a cast.
-  expectTypeOf(fromSerializable(value)).toEqualTypeOf<Fault>()
+  expectTypeOf(fromSerializable(value)).toEqualTypeOf<Base>()
   expectTypeOf(AppFault.fromSerializable(value)).toEqualTypeOf<
-    NotFoundError | TimeoutError | Fault
+    NotFoundError | TimeoutError | Base
   >()
   expectTypeOf(findCause(value, TypeError)).toEqualTypeOf<TypeError | undefined>()
 
@@ -171,8 +171,8 @@ type AppError = NotFoundError | TimeoutError | PaymentError
   expectTypeOf(serialized).toEqualTypeOf<SerializableFault>()
   expectTypeOf(registrySerialized).toEqualTypeOf<SerializableFault>()
   expectTypeOf(standaloneSerialized).toEqualTypeOf<SerializableFault>()
-  expectTypeOf(generic).toEqualTypeOf<Fault>()
-  expectTypeOf(restored).toEqualTypeOf<Fault | NotFoundError | TimeoutError>()
+  expectTypeOf(generic).toEqualTypeOf<Base>()
+  expectTypeOf(restored).toEqualTypeOf<Base | NotFoundError | TimeoutError>()
 }
 
 // Exposes the registry fault union as Type.

@@ -24,11 +24,13 @@ function assertExports(namespace: object, expected: string[], entrypoint: string
 assertExports(
   Fault,
   [
-    "Fault",
+    "Base",
     "Tagged",
     "findCause",
     "fromSerializable",
+    "is",
     "isFault",
+    "isSerializable",
     "isSerializableFault",
     "matchTag",
     "matchTags",

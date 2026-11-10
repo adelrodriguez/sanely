@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util"
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import type { Fault } from "#index.ts"
+import type { Base as Fault } from "#index.ts"
 import type { SerializableFault, SerializableValue } from "#types.ts"
 import { InvalidPayloadError } from "#errors.ts"
 import { fromSerializable, isFault, isSerializableFault, Tagged, toSerializable } from "#index.ts"

@@ -1,16 +1,16 @@
 # `@sanely/errors` reference
 
-The package has three entry points:
+The package has three entry points. The examples import the root entry point as a namespace, with `import * as Fault from "@sanely/errors"`.
 
-| Entry point             | Exports                                                                                                                                                              |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@sanely/errors`        | `Fault`, `Tagged`, `registry`, `merge`, `matchTag`, `matchTags`, `isFault`, `findCause`, `toSerializable`, `fromSerializable`, `isSerializableFault`                 |
-| `@sanely/errors/errors` | `RegistryTagMismatchError`, `RegistryMergeConflictError`, `RegistryNotRecognizedError`, `RegistryUnknownTagError`, `RegistryConstructorError`, `InvalidPayloadError` |
-| `@sanely/errors/types`  | The types `FaultRegistry`, `FlattenOptions`, `FlattenField`, `TagOf`, `ByTag`, `SerializableValue`, `SerializableFault`, and `SerializableCause`                     |
+| Entry point             | Exports                                                                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@sanely/errors`        | `Base`, `Tagged`, `registry`, `merge`, `matchTag`, `matchTags`, `is` (alias `isFault`), `findCause`, `toSerializable`, `fromSerializable`, `isSerializable` (alias `isSerializableFault`) |
+| `@sanely/errors/errors` | `RegistryTagMismatchError`, `RegistryMergeConflictError`, `RegistryNotRecognizedError`, `RegistryUnknownTagError`, `RegistryConstructorError`, `InvalidPayloadError`                      |
+| `@sanely/errors/types`  | The types `FaultRegistry`, `FlattenOptions`, `FlattenField`, `TagOf`, `ByTag`, `SerializableValue`, `SerializableFault`, and `SerializableCause`                                          |
 
-## `Fault`
+## `Fault.Base`
 
-The abstract base class of every fault. It extends `Error`. Create subclasses with `Tagged`.
+The abstract base class of every fault. It extends `Error`. Create subclasses with `Tagged`, and use `Fault.Base` in `instanceof` checks and types.
 
 ### Properties
 
@@ -105,18 +105,18 @@ Returns one registry with the classes of every registry. It takes at least two r
 
 Membership uses the class, not only the tag. A fault from another class with the same tag is not a member.
 
-| Member                                     | Description                                                                                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                       |
-| `tags`                                     | The registered tags, in the order of the keys.                                                                                   |
-| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                            |
-| `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                       |
-| `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                           |
-| `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                |
-| `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.            |
-| `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                      |
-| `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                     |
-| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class. Any other tag becomes a generic `Fault`. |
+| Member                                     | Description                                                                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                                                                      |
+| `tags`                                     | The registered tags, in the order of the keys.                                                                                                                                  |
+| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                                                                           |
+| `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                                                                      |
+| `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                                                                          |
+| `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                                                               |
+| `matchTag(value, tag, handler, fallback?)` | Calls `handler` when `value` is a member with `tag`. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                           |
+| `matchTags(value, handlers, fallback?)`    | Calls the handler for the tag of a member. Otherwise calls `fallback` with `value`, or returns `undefined`.                                                                     |
+| `toSerializable(value)`                    | The same as the standalone `toSerializable`.                                                                                                                                    |
+| `fromSerializable(value)`                  | Builds a fault from the wire format. A registered tag becomes an instance of its class, with the fields its constructor received. Any other tag becomes a generic `Fault.Base`. |
 
 ```ts
 const AppFault = Fault.registry({ NotFoundError, TimeoutError })
@@ -140,13 +140,13 @@ Fault.matchTags(error, { NotFoundError: () => 404, TimeoutError: () => 503 })
 
 ## Other functions
 
-| Function                     | Description                                                                                                                                                                                         |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isFault(value)`             | Returns `true` when `value` is an instance of `Fault`. It uses `instanceof`, so it does not work across realms.                                                                                     |
-| `findCause(value, Class)`    | Returns the first node of the chain, from the head and including it, that is an instance of `Class`. Returns `undefined` when `value` is not a fault.                                               |
-| `toSerializable(value)`      | Returns the wire format of any value. A fault serializes itself. A native `Error` gets the tag `UnknownError`, and any other value gets the tag `UnknownThrown`. The original value is the `cause`. |
-| `fromSerializable(value)`    | Builds a generic `Fault` from the wire format, without its subclass. Accepts any value, and throws `InvalidPayloadError` when the envelope or any cause is malformed.                               |
-| `isSerializableFault(value)` | Returns `true` when `fromSerializable` accepts `value`. Both use the same check. It does not check the values of fields and `meta` deeply.                                                          |
+| Function                  | Description                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `is(value)`               | Returns `true` when `value` is an instance of `Fault.Base`. It uses `instanceof`, so it does not work across realms. `isFault` is the same function.                                                |
+| `findCause(value, Class)` | Returns the first node of the chain, from the head and including it, that is an instance of `Class`. Returns `undefined` when `value` is not a fault.                                               |
+| `toSerializable(value)`   | Returns the wire format of any value. A fault serializes itself. A native `Error` gets the tag `UnknownError`, and any other value gets the tag `UnknownThrown`. The original value is the `cause`. |
+| `fromSerializable(value)` | Builds a generic `Fault.Base` from the wire format, without its subclass. Accepts any value, and throws `InvalidPayloadError` when the envelope or any cause is malformed.                          |
+| `isSerializable(value)`   | Returns `true` when `fromSerializable` accepts `value`. Both use the same check. It does not check the values of fields and `meta` deeply. `isSerializableFault` is the same function.              |
 
 ## Wire format
 
