@@ -100,7 +100,7 @@ Creates a registry from an object of fault classes. Each key must be the tag of 
 function merge(a: FaultRegistry, b: FaultRegistry, ...rest: FaultRegistry[]): FaultRegistry
 ```
 
-Returns one registry with the classes of every registry. It takes at least two registries, as a list with a known length. It throws `RegistryMergeConflictError` when two registries map one tag to different classes, and `TypeError` for a value that is not a registry.
+Returns one registry with the classes of every registry. It takes at least two registries, as a list with a known length. It throws `RegistryMergeConflictError` when two registries map one tag to different classes, and `RegistryNotRecognizedError` for a value that `registry()` or `merge()` did not create, such as a spread copy of a registry.
 
 ### `FaultRegistry` members
 
@@ -110,7 +110,7 @@ Membership uses the class, not only the tag. A fault from another class with the
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `Type`                                     | Type only. The union of the fault types. Use it as `typeof registry.Type`.                                                       |
 | `tags`                                     | The registered tags, in the order of the keys.                                                                                   |
-| `create(tag, fields?)`                     | Creates a fault. Throws `TypeError` for an unknown tag.                                                                          |
+| `create(tag, fields?)`                     | Creates a fault. Throws `RegistryUnknownTagError` for an unknown tag.                                                            |
 | `wrap(cause).as(tag, fields?)`             | Creates a fault with `cause` as its cause.                                                                                       |
 | `is(value)`                                | Returns `true` when `value` is a member. A type guard.                                                                           |
 | `findCause(value, tag)`                    | Returns the first member with `tag` in the chain, from the head and including it, or `undefined`.                                |
@@ -192,6 +192,9 @@ The errors of the package are faults, and come from `@sanely/errors/errors`:
 | `ReservedFieldError`         | `field`                  | A `Tagged` constructor receives a reserved field name. |
 | `RegistryTagMismatchError`   | `registryKey`, `ctorTag` | A `registry` key is not the tag of its class.          |
 | `RegistryMergeConflictError` | `conflictingTag`         | `merge` finds one tag for two different classes.       |
+| `RegistryNotRecognizedError` |                          | `merge` receives a value that is not a registry.       |
+| `RegistryUnknownTagError`    | `tag`                    | `create` or `wrap().as` receives an unknown tag.       |
+| `RegistryConstructorError`   | `tag`                    | A registered constructor does not create a fault.      |
 | `InvalidPayloadError`        | `reason`                 | `fromSerializable` receives a malformed value.         |
 
 ## Types

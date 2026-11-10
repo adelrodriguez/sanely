@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest"
 import type { SerializableFault } from "#lib/wire.ts"
 import {
   InvalidPayloadError,
+  RegistryConstructorError,
   RegistryMergeConflictError,
+  RegistryNotRecognizedError,
   RegistryTagMismatchError,
+  RegistryUnknownTagError,
 } from "#lib/errors.ts"
 import { Fault, toSerializable } from "#lib/fault.ts"
 import { merge, registry } from "#lib/registry.ts"
@@ -335,14 +338,14 @@ describe("registry", () => {
     expect(Faults.wrap(new Error("root")).as(1)).toBeInstanceOf(NumericError)
   })
 
-  it("throws a TypeError naming the tag when create receives an unregistered tag", () => {
+  it("throws RegistryUnknownTagError naming the tag when create receives an unregistered tag", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
     // @ts-expect-error -- exercises the runtime guard for a tag the registry does not know
-    expect(() => Faults.create("Nope")).toThrow(new TypeError("Unknown Fault registry tag 'Nope'."))
+    expect(() => Faults.create("Nope")).toThrow(new RegistryUnknownTagError({ tag: "Nope" }))
     // @ts-expect-error -- an inherited Object.prototype key is not a registered tag
     expect(() => Faults.create("toString")).toThrow(
-      new TypeError("Unknown Fault registry tag 'toString'.")
+      expect.objectContaining({ _tag: "RegistryUnknownTagError", tag: "toString" })
     )
   })
 
@@ -452,7 +455,10 @@ describe("registry", () => {
 
     expect(() =>
       (Faults as never as { create: (tag: string) => unknown }).create("NotAFault")
-    ).toThrow("Invalid Fault constructor")
+    ).toThrow(expect.objectContaining({ _tag: "RegistryConstructorError", tag: "NotAFault" }))
+    expect(() =>
+      Faults.fromSerializable({ __fault: true, _tag: "NotAFault", name: "NotAFault" })
+    ).toThrow(RegistryConstructorError)
   })
 })
 
@@ -510,7 +516,7 @@ describe("merge", () => {
     const DbFault = registry({ DatabaseError })
     const forged = { ...AppFault }
 
-    expect(() => merge(forged, DbFault)).toThrow("Invalid Fault registry")
+    expect(() => merge(forged, DbFault)).toThrow(RegistryNotRecognizedError)
   })
 
   it("behaves like a normal registry", () => {

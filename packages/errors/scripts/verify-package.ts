@@ -42,8 +42,11 @@ assertExports(
   FaultErrors,
   [
     "InvalidPayloadError",
+    "RegistryConstructorError",
     "RegistryMergeConflictError",
+    "RegistryNotRecognizedError",
     "RegistryTagMismatchError",
+    "RegistryUnknownTagError",
     "ReservedFieldError",
   ],
   "@sanely/errors/errors"

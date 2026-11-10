@@ -1,6 +1,12 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
 import { expectTypeOf } from "vitest"
-import type { RegistryMergeConflictError, RegistryTagMismatchError } from "#errors.ts"
+import type {
+  RegistryConstructorError,
+  RegistryMergeConflictError,
+  RegistryNotRecognizedError,
+  RegistryTagMismatchError,
+  RegistryUnknownTagError,
+} from "#errors.ts"
 import type {
   ByTag,
   FaultRegistry,
@@ -223,16 +229,32 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 {
   const err = new ReservedFieldError({ field: "_tag" }) as
     | InvalidPayloadError
+    | RegistryConstructorError
     | RegistryMergeConflictError
+    | RegistryNotRecognizedError
     | RegistryTagMismatchError
+    | RegistryUnknownTagError
     | ReservedFieldError
 
   expectTypeOf(err._tag).toEqualTypeOf<
     | "InvalidPayloadError"
+    | "RegistryConstructorError"
     | "RegistryMergeConflictError"
+    | "RegistryNotRecognizedError"
     | "RegistryTagMismatchError"
+    | "RegistryUnknownTagError"
     | "ReservedFieldError"
   >()
+
+  matchTag(err, "RegistryUnknownTagError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>()
+    expectTypeOf(e.tag).toEqualTypeOf<string>()
+  })
+
+  matchTag(err, "RegistryConstructorError", (e) => {
+    expectTypeOf(e).toEqualTypeOf<RegistryConstructorError>()
+    expectTypeOf(e.tag).toEqualTypeOf<string>()
+  })
 
   matchTag(err, "ReservedFieldError", (e) => {
     expectTypeOf(e).toEqualTypeOf<ReservedFieldError>()
@@ -251,8 +273,11 @@ type AppError = NotFoundError | TimeoutError | PaymentError
 
   matchTags(err, {
     InvalidPayloadError: (e) => expectTypeOf(e).toEqualTypeOf<InvalidPayloadError>(),
+    RegistryConstructorError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryConstructorError>(),
     RegistryMergeConflictError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryMergeConflictError>(),
+    RegistryNotRecognizedError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryNotRecognizedError>(),
     RegistryTagMismatchError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryTagMismatchError>(),
+    RegistryUnknownTagError: (e) => expectTypeOf(e).toEqualTypeOf<RegistryUnknownTagError>(),
     ReservedFieldError: (e) => expectTypeOf(e).toEqualTypeOf<ReservedFieldError>(),
   })
 }

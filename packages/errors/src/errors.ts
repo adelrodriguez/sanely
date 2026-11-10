@@ -3,7 +3,10 @@
  */
 export {
   InvalidPayloadError,
+  RegistryConstructorError,
   RegistryMergeConflictError,
+  RegistryNotRecognizedError,
   RegistryTagMismatchError,
+  RegistryUnknownTagError,
   ReservedFieldError,
 } from "#lib/errors.ts"
