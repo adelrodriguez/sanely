@@ -186,7 +186,7 @@ cron(input) // input: string
 
 ### `parse(value)`
 
-Parses input at runtime to a `Schedule`. A string is a cron phrase in the strict form or the lenient form. An object is a schedule object, such as one from `JSON.parse`. Each key must be a key of its kind of schedule. Throws `InvalidScheduleError` for an invalid value.
+Parses input at runtime to a `Schedule`. A string is a cron phrase in the strict form or the lenient form. An object is a schedule object, such as one from `JSON.parse`. Each key must be a key of its kind of schedule, and an optional key set to `undefined` is the same as a missing key. Throws `InvalidScheduleError` for an invalid value.
 
 ```ts
 parse("Every 15 Mins Between 9:00 AM And 5:00 PM On Weekdays")

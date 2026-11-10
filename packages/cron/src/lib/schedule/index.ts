@@ -60,18 +60,24 @@ export type DaySet = DayGroup | readonly [Weekday, ...Weekday[]]
  * - `month`: at a time on one day of the month, from 1 to 28. A month schedule has no day set,
  *   because cron runs on the day of the month or on the day of the week when both are set.
  *
+ * An optional key set to `undefined` is the same as a missing key.
+ *
  * @example
  *   const schedule: Schedule = { every: "day", at: { hour: 17, minute: 30 }, on: "weekdays" }
  */
 export type Schedule =
   | {
       readonly every: "minute"
-      readonly interval?: MinuteInterval
-      readonly between?: Window
-      readonly on?: DaySet
+      readonly interval?: MinuteInterval | undefined
+      readonly between?: Window | undefined
+      readonly on?: DaySet | undefined
     }
-  | { readonly every: "hour"; readonly interval?: HourInterval; readonly on?: DaySet }
-  | { readonly every: "day"; readonly at: Time; readonly on?: DaySet }
+  | {
+      readonly every: "hour"
+      readonly interval?: HourInterval | undefined
+      readonly on?: DaySet | undefined
+    }
+  | { readonly every: "day"; readonly at: Time; readonly on?: DaySet | undefined }
   | { readonly every: "month"; readonly day: DayOfMonth; readonly at: Time }
 
 declare const cronExpression: unique symbol

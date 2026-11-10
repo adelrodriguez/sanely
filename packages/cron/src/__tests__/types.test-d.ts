@@ -330,6 +330,47 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(isSchedule).parameters.toEqualTypeOf<[value: unknown]>()
 }
 
+// Accepts an optional key set to undefined, the same as a missing key, as validation does. This
+// package checks its types with exactOptionalPropertyTypes, so these lines fail without it.
+{
+  const formInterval = MINUTE_INTERVALS[0] as MinuteInterval | undefined
+  const formDays = undefined as DaySet | undefined
+
+  expectTypeOf({
+    every: "minute",
+    interval: formInterval,
+    on: formDays,
+  } as const).toExtend<Schedule>()
+  expectTypeOf({ between: undefined, every: "minute" } as const).toExtend<Schedule>()
+  expectTypeOf({ every: "hour", interval: undefined, on: undefined } as const).toExtend<Schedule>()
+  expectTypeOf({
+    at: { hour: 9, minute: 0 },
+    every: "day",
+    on: undefined,
+  } as const).toExtend<Schedule>()
+  expectTypeOf(cron({ every: "hour", on: formDays })).toEqualTypeOf<CronExpression>()
+}
+
+// Reads an optional key that isSchedule narrowed as possibly undefined, because validation accepts
+// it set to undefined.
+{
+  const value: unknown = JSON.parse("{}")
+
+  if (isSchedule(value) && value.every === "minute" && "interval" in value) {
+    expectTypeOf(value.interval).toEqualTypeOf<MinuteInterval | undefined>()
+  }
+}
+
+// Keeps required keys required, and gives a month schedule no day set.
+{
+  // @ts-expect-error -- "at" is required, and undefined does not stand in for it
+  const missingAt: Schedule = { at: undefined, every: "day" }
+  // @ts-expect-error -- a month schedule has no day set, even an undefined one
+  const monthOn: Schedule = { at: { hour: 9, minute: 0 }, day: 1, every: "month", on: undefined }
+
+  void [missingAt, monthOn]
+}
+
 // InvalidScheduleError
 
 // Exposes the input, the reason, and the path on InvalidScheduleError, with a literal name.
@@ -342,7 +383,7 @@ type ExpectedReason<R> = R extends { strictError: infer Reason extends string }
   expectTypeOf(error.reason).toEqualTypeOf<string>()
   expectTypeOf(error.path).toEqualTypeOf<ReadonlyArray<string | number>>()
   expectTypeOf(InvalidScheduleError).constructorParameters.toEqualTypeOf<
-    [value: unknown, reason: string, path?: ReadonlyArray<string | number>]
+    [value: unknown, reason: string, path?: ReadonlyArray<string | number> | undefined]
   >()
 }
 
