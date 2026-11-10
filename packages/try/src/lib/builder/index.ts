@@ -3,8 +3,9 @@ import type {
   TaskRecord,
   TaskResult,
   TaskValidation,
-  AllOptions,
   AllSettledResult,
+  AllValue,
+  CatchOptions,
 } from "#lib/orchestration/task-graph.ts"
 import type {
   BuilderConfig,
@@ -28,6 +29,7 @@ import { executeAll } from "#lib/orchestration/all.ts"
 import {
   executeFlow,
   type FlowResult,
+  type FlowValue,
   type InferredFlowTaskContext,
 } from "#lib/orchestration/flow.ts"
 import { retryOptions } from "#lib/policies/retry.ts"
@@ -82,9 +84,10 @@ export class RunBuilder<
   protected buildTimeoutConfig(ms: number): BuilderConfig {
     assertValidTimeout(ms)
 
+    // Deadlines combine the way signals do: each one can only make the call stop sooner.
     return {
       ...this.config,
-      timeout: ms,
+      timeout: Math.min(this.config.timeout ?? ms, ms),
     }
   }
 
@@ -110,19 +113,20 @@ export class RunBuilder<
     policy: P & ValidateRetryOptions<P>
   ): AsyncExecutionBuilderSurface<E, true>
   retry(policy: RetryOptions): ExecutionBuilderSurface<E, true> {
-    return new RunBuilder({
+    return new RunBuilder<E, true, false>({
       ...this.config,
       retry: retryOptions(policy),
     })
   }
 
   /**
-   * Applies one total deadline to the next terminal call. For `run`, the deadline spans attempts,
-   * delays, and catch handling, and surfaces typed as {@link TimeoutError}. For orchestration
-   * (`all`/`allSettled`/`flow`), it is a whole-graph deadline: the task signal aborts when it fires
-   * and the orchestration rejects with {@link TimeoutError} (cancellation still wins when both
-   * fire). The deadline is cooperative — orchestration waits for in-flight tasks to settle before
-   * rejecting, so tasks must observe `$signal` for it to bound wall-clock time.
+   * Applies one total deadline to the next terminal call. When the chain already has a deadline,
+   * the tighter one applies. For `run`, the deadline spans attempts, delays, and catch handling,
+   * and surfaces typed as {@link TimeoutError}. For orchestration (`all`/`allSettled`/`flow`), it is
+   * a whole-graph deadline: the task signal aborts when it fires and the orchestration rejects with
+   * {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative —
+   * orchestration waits for in-flight tasks to settle before rejecting, so tasks must observe
+   * `$signal` for it to bound wall-clock time.
    */
   timeout(
     ms: number
@@ -155,9 +159,10 @@ export class RunBuilder<
    * Executes an async unit of work.
    *
    * `catch` maps errors that originated inside `try` — thrown directly, or carried out of the retry
-   * loop as the last attempt's error once the retry policy gives up. Policy outcomes ({@link
-   * TimeoutError}, {@link CancellationError}) and defects (`Panic`) never pass through `catch`; they
-   * surface typed in the return union (or are thrown, for `Panic`).
+   * loop as the last attempt's error once the retry policy gives up. This call's own policy
+   * outcomes ({@link TimeoutError}, {@link CancellationError}) and defects (`Panic`) never pass
+   * through `catch`; they surface typed in the return union (or are thrown, for `Panic`). A policy
+   * failure that `try` rethrows from a nested call is an ordinary failure.
    *
    * Without `catch`, unmapped failures are wrapped: {@link RetryExhaustedError} when a retry policy
    * gave up, {@link UnhandledException} otherwise. The original error is available as `cause`.
@@ -180,22 +185,55 @@ export class RunBuilder<
     return executeRunSync(this.config, input)
   }
 
-  all<T extends TaskRecord, C = never>(
+  /**
+   * Runs a task graph and resolves with every task result. Like `run`, it never rejects except with
+   * a `Panic`. Without `catch`, a task failure resolves as {@link UnhandledException} with the
+   * failure as `cause`. This call's own policy outcomes surface typed in the result union.
+   */
+  all<T extends TaskRecord>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
+  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | UnhandledException | E>
+  all<T extends TaskRecord, C>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
-    options?: AllOptions<T, C>
-  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C> {
+    options: CatchOptions<AllValue<T>, C>
+  ): Promise<{ [K in keyof T]: TaskResult<T[K]> } | C | E>
+  all<T extends TaskRecord, C>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>,
+    options?: CatchOptions<AllValue<T>, C>
+  ) {
     return executeAll(this.config, tasks, options)
   }
 
+  /**
+   * Runs a task graph and resolves with every settled outcome. It never rejects except with a
+   * `Panic`, and this call's own policy outcomes surface typed in the result union.
+   */
   allSettled<T extends TaskRecord>(
     tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
-  ): Promise<AllSettledResult<T>> {
+  ): Promise<AllSettledResult<T> | E>
+  allSettled<T extends TaskRecord>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
+  ) {
     return executeAllSettled(this.config, tasks)
   }
 
+  /**
+   * Runs a task graph until a task calls `$exit`, and resolves with the exit value. Like `run`, it
+   * never rejects except with a `Panic`. Without `catch`, a task failure resolves as
+   * {@link UnhandledException} with the failure as `cause`. This call's own policy outcomes surface
+   * typed in the result union.
+   */
   flow<T extends TaskRecord>(
-    tasks: T & ThisType<InferredFlowTaskContext<T>>
-  ): Promise<FlowResult<T>> {
-    return executeFlow(this.config, tasks)
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>
+  ): Promise<FlowResult<T> | UnhandledException | E>
+  flow<T extends TaskRecord, C>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
+    options: CatchOptions<FlowValue<T>, C>
+  ): Promise<FlowResult<T> | C | E>
+  flow<T extends TaskRecord, C>(
+    tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredFlowTaskContext<T>>,
+    options?: CatchOptions<FlowValue<T>, C>
+  ) {
+    return executeFlow(this.config, tasks, options)
   }
 }

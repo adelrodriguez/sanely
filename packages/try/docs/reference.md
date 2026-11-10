@@ -27,10 +27,10 @@ Runs the work and resolves with a result union. It never rejects with an error f
 
 - Without `catch`, a thrown error becomes an `UnhandledException`, or a `RetryExhaustedError` after a retry policy. The original error is the `cause`.
 - With `catch`, `catch` receives the thrown error, or the error of the last attempt after a retry policy. Its return value is part of the result.
-- `catch` never receives a `TimeoutError`, a `CancellationError`, or a `Panic`.
+- `catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. A `TimeoutError` or `CancellationError` that `try` rethrows from a nested call is retried and goes to `catch` like any other failure.
 - A `catch` that throws or rejects throws a `Panic`.
 
-The context has these fields:
+The context is read-only. `try` and `shouldRetry` receive the same context, with these fields:
 
 | Field           | Type          | Present                     | Description                                                    |
 | --------------- | ------------- | --------------------------- | -------------------------------------------------------------- |
@@ -54,14 +54,19 @@ const url = try$.runSync(() => new URL(link))
 
 ### Result union rules
 
-| Chain                            | Result type                |
-| -------------------------------- | -------------------------- |
-| `run(fn)`                        | `T \| UnhandledException`  |
-| `run({ try, catch })`            | `T \| C`                   |
-| `retry(...).run(fn)`             | `T \| RetryExhaustedError` |
-| `retry(...).run({ try, catch })` | `T \| C`                   |
-| `timeout(...)` in the chain      | Adds `TimeoutError`.       |
-| `signal(...)` in the chain       | Adds `CancellationError`.  |
+| Chain                            | Result type                       |
+| -------------------------------- | --------------------------------- |
+| `run(fn)`                        | `T \| UnhandledException`         |
+| `run({ try, catch })`            | `T \| C`                          |
+| `retry(...).run(fn)`             | `T \| RetryExhaustedError`        |
+| `retry(...).run({ try, catch })` | `T \| C`                          |
+| `all(tasks)`                     | `Results \| UnhandledException`   |
+| `all(tasks, { catch })`          | `Results \| C`                    |
+| `allSettled(tasks)`              | `SettledResults`                  |
+| `flow(tasks)`                    | `ExitValue \| UnhandledException` |
+| `flow(tasks, { catch })`         | `ExitValue \| C`                  |
+| `timeout(...)` in the chain      | Adds `TimeoutError`.              |
+| `signal(...)` in the chain       | Adds `CancellationError`.         |
 
 ## Policy builders
 
@@ -130,7 +135,7 @@ try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
 timeout(ms: number)
 ```
 
-Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`.
+Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. When the chain already has a deadline, the tighter deadline applies.
 
 ### `signal(abortSignal)`
 
@@ -146,13 +151,13 @@ Adds external cancellation. You can call it more than once. Any of the signals c
 wrap(fn: (ctx: WrapCtx, next: () => unknown) => unknown)
 ```
 
-Adds a hook around the whole terminal call, retries included. `fn` must call `next()` and return its result. `ctx` is a read-only view of the context, and `ctx.retry.attempt` is live. The first wrap that you add is the outermost.
+Adds a hook around the whole terminal call, retries included. `fn` must call `next()` exactly once. `next()` returns the result of the work, and the call returns that result whatever `fn` returns. When `fn` returns a promise, the call waits for it before it resolves. A wrap that never calls `next()`, calls it twice, or throws or rejects throws a `Panic`. `ctx` is a read-only view of the context, and `ctx.retry.attempt` is live. The first wrap that you add is the outermost.
 
 ## Orchestration
 
 ### Tasks
 
-`all`, `allSettled`, and `flow` take an object of tasks. Each task is a method. Inside a task, `this` has these members:
+`all`, `allSettled`, and `flow` take an object of tasks. Each task is a method. Inside a task, `this` is read-only and has these members:
 
 | Member           | Type                     | Description                                                                                             |
 | ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
@@ -162,15 +167,18 @@ Adds a hook around the whole terminal call, retries included. `fn` must call `ne
 | `this.$race(p)`  | `Promise<V>`             | Resolves with `p`, or rejects with the abort reason when `this.$signal` aborts first.                   |
 | `this.$exit(v)`  | `FlowExit<V>`            | Only in `flow`. Ends the flow with `v`.                                                                 |
 
-All tasks start together. Every orchestration call waits for every running task to settle before it resolves or rejects. When the deadline and cancellation both fire, the call rejects with `CancellationError`. A `Panic` wins over both.
+All tasks start together. Every orchestration call waits for every running task to settle before it resolves.
+
+Like `run`, an orchestration call resolves with a result union and never rejects with an error from the work. A task failure that `catch` does not map becomes an `UnhandledException`, with the original error as the `cause`. The `TimeoutError` of this call's own deadline and the `CancellationError` of its own signal are part of the result. When the deadline and cancellation both fire, the call resolves with `CancellationError`. A `Panic` throws, and wins over every other outcome.
 
 ### `all(tasks, options?)`
 
 ```ts
-all<T, C = never>(tasks: T, options?: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | C>
+all<T>(tasks: T): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | UnhandledException | PolicyErrors>
+all<T, C>(tasks: T, options: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> } | C | PolicyErrors>
 ```
 
-Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts, and the call rejects with the error. With `catch`, it resolves with the value of `catch` in place of the rejection.
+Resolves with an object of the task results. When a task fails, every other `this.$signal` aborts. Without `catch`, the call resolves with an `UnhandledException` whose `cause` is the error. With `catch`, `catch` receives the error, and the call resolves with the value of `catch`.
 
 | `catch` context field | Description                                                 |
 | --------------------- | ----------------------------------------------------------- |
@@ -178,23 +186,24 @@ Resolves with an object of the task results. When a task fails, every other `thi
 | `partial`             | The results of the tasks that succeeded before the failure. |
 | `signal`              | The signal of the orchestration.                            |
 
-`catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. Those reject the call instead. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
+`catch` never receives the `TimeoutError` of this call's own deadline, the `CancellationError` of its own signal, or a `Panic`. The call resolves with its own policy failures and throws a `Panic`. A task that fails with a `TimeoutError` or a `CancellationError` from a nested policy, such as `timeout(0).all(...)` inside the task, goes to `catch` like any other failure. A `catch` that throws or rejects throws a `Panic`.
 
 ### `allSettled(tasks)`
 
 ```ts
-allSettled<T>(tasks: T): Promise<AllSettledResult<T>>
+allSettled<T>(tasks: T): Promise<AllSettledResult<T> | PolicyErrors>
 ```
 
-Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. A `Panic` is never an outcome. The call throws it after every task settles.
+Resolves with an object of settled outcomes, in the format of `Promise.allSettled`: `{ status: "fulfilled", value }` or `{ status: "rejected", reason }`. When this call's own deadline or signal fires, it resolves with the `TimeoutError` or `CancellationError` instead. A `Panic` is never an outcome. The call throws it after every task settles.
 
-### `flow(tasks)`
+### `flow(tasks, options?)`
 
 ```ts
-flow<T>(tasks: T): Promise<FlowResult<T>>
+flow<T>(tasks: T): Promise<FlowResult<T> | UnhandledException | PolicyErrors>
+flow<T, C>(tasks: T, options: { catch: (error: unknown, ctx) => C | Promise<C> }): Promise<FlowResult<T> | C | PolicyErrors>
 ```
 
-Resolves with the value of the first `this.$exit(value)`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
+Resolves with the value of the first `this.$exit(value)`. The exit counts when `$exit` is called, even if the task catches what `$exit` throws or calls it inside a nested `run`. The first exit aborts the other `this.$signal` values. `$exit` does not stop a task that already started. When a task fails before the first exit, every other `this.$signal` aborts. Without `catch`, the call resolves with an `UnhandledException` whose `cause` is the error. With `catch`, `catch` receives the error and the same context as the `catch` of `all`, and the call resolves with the value of `catch`. `catch` follows the same rules as in `all`. If no task exits, `flow` throws a `Panic` with the code `FLOW_NO_EXIT`. A `Panic` from any task wins, even after the first exit.
 
 ## Composition and cleanup
 
@@ -248,15 +257,12 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 
 | Code                               | Cause                                                     |
 | ---------------------------------- | --------------------------------------------------------- |
-| `ALL_CATCH_HANDLER_REJECT`         | The `catch` of `all` rejected.                            |
-| `ALL_CATCH_HANDLER_THROW`          | The `catch` of `all` threw.                               |
+| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.             |
+| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                |
 | `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                       |
 | `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                 |
 | `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                |
-| `RUN_CATCH_HANDLER_REJECT`         | The `catch` of `run` rejected.                            |
-| `RUN_CATCH_HANDLER_THROW`          | The `catch` of `run` threw.                               |
 | `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay or jitter. |
-| `RUN_SYNC_CATCH_HANDLER_THROW`     | The `catch` of `runSync` threw.                           |
 | `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.              |
 | `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                |
 | `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                   |
@@ -265,6 +271,10 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 | `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                |
 | `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                    |
 | `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                |
+| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                |
+| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                    |
+| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                 |
+| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.       |
 
 ## Types
 

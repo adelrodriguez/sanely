@@ -11,9 +11,9 @@ interface RunAsyncOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
   try: RunTryFn<T, Ctx>
   /**
    * Maps errors that originated inside `try` — thrown directly, or carried out of the retry loop as
-   * the last attempt's error once the retry policy gives up. Policy outcomes (timeout,
-   * cancellation) and defects (`Panic`) never pass through `catch`: they are reported directly,
-   * even when they fire while the handler is running.
+   * the last attempt's error once the retry policy gives up. This call's own policy outcomes
+   * (timeout, cancellation) and defects (`Panic`) never pass through `catch`: they are reported
+   * directly, even when they fire while the handler is running.
    */
   catch: RunCatchFn<E>
 }
@@ -63,14 +63,14 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
     try {
       mapped = catchFn(error)
     } catch (catchError) {
-      throw new Panic("RUN_CATCH_HANDLER_THROW", { cause: catchError })
+      throw new Panic("CATCH_HANDLER_THROW", { cause: catchError })
     }
 
     if (checkIsPromiseLike(mapped)) {
       try {
         return await this.race(mapped, error)
       } catch (catchError) {
-        throw new Panic("RUN_CATCH_HANDLER_REJECT", { cause: catchError })
+        throw new Panic("CATCH_HANDLER_REJECT", { cause: catchError })
       }
     }
 
@@ -99,7 +99,7 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
         }
       }
 
-      this.ctx.retry.attempt = currentAttempt
+      this.startAttempt(currentAttempt)
 
       try {
         const result = this.#tryFn(this.ctx as unknown as Ctx)

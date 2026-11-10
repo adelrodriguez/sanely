@@ -1,32 +1,30 @@
 export type PanicCode =
-  | "ALL_CATCH_HANDLER_REJECT"
-  | "ALL_CATCH_HANDLER_THROW"
+  | "CATCH_HANDLER_REJECT"
+  | "CATCH_HANDLER_THROW"
   | "FLOW_NO_EXIT"
   | "ORCHESTRATION_UNSUPPORTED_POLICY"
   | "RETRY_INVALID_LIMIT"
-  | "RUN_CATCH_HANDLER_REJECT"
-  | "RUN_CATCH_HANDLER_THROW"
   | "RUN_SYNC_ASYNC_RETRY_POLICY"
-  | "RUN_SYNC_CATCH_HANDLER_THROW"
   | "RUN_SYNC_CATCH_PROMISE"
   | "RUN_SYNC_TRY_PROMISE"
   | "RUN_SYNC_WRAPPED_RESULT_PROMISE"
   | "TASK_INVALID_HANDLER"
   | "TASK_SELF_REFERENCE"
-  | "TIMEOUT_INVALID_MS"
   | "TASK_UNKNOWN_REFERENCE"
+  | "TIMEOUT_INVALID_MS"
   | "UNREACHABLE_RETRY_POLICY_BACKOFF"
+  | "UNREACHABLE_WORK_STATE"
+  | "WRAP_NEXT_CALLED_TWICE"
+  | "WRAP_NEXT_NOT_CALLED"
+  | "WRAP_THROW"
 
 export const PanicMessages = {
-  ALL_CATCH_HANDLER_REJECT: "Panic: all() catch handler rejected",
-  ALL_CATCH_HANDLER_THROW: "Panic: all() catch handler threw",
+  CATCH_HANDLER_REJECT: "A catch handler rejected.",
+  CATCH_HANDLER_THROW: "A catch handler threw.",
   FLOW_NO_EXIT: "flow() requires at least one task to call $exit().",
   ORCHESTRATION_UNSUPPORTED_POLICY: "Orchestration does not support retry() policies.",
   RETRY_INVALID_LIMIT: "retry() requires a positive integer retry limit.",
-  RUN_CATCH_HANDLER_REJECT: "Panic: run() catch handler rejected",
-  RUN_CATCH_HANDLER_THROW: "Panic: run() catch handler threw",
   RUN_SYNC_ASYNC_RETRY_POLICY: "This retry policy may run asynchronously. Use run() instead.",
-  RUN_SYNC_CATCH_HANDLER_THROW: "Panic: runSync() catch handler threw",
   RUN_SYNC_CATCH_PROMISE: "runSync() catch cannot return a Promise. Use run() instead.",
   RUN_SYNC_TRY_PROMISE: "runSync() cannot handle Promise values. Use run() instead.",
   RUN_SYNC_WRAPPED_RESULT_PROMISE:
@@ -36,6 +34,10 @@ export const PanicMessages = {
   TASK_UNKNOWN_REFERENCE: "Task attempted to read an unknown task result.",
   TIMEOUT_INVALID_MS: "timeout() requires a non-negative finite millisecond value.",
   UNREACHABLE_RETRY_POLICY_BACKOFF: "Panic: unreachable retry policy backoff",
+  UNREACHABLE_WORK_STATE: "Panic: unreachable wrapped work state",
+  WRAP_NEXT_CALLED_TWICE: "wrap() called next() more than once.",
+  WRAP_NEXT_NOT_CALLED: "wrap() returned without calling next().",
+  WRAP_THROW: "wrap() threw or rejected.",
 } as const satisfies Record<PanicCode, string>
 
 /**

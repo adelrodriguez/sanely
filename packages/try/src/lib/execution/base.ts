@@ -1,22 +1,31 @@
-import type { BuilderConfig, WrapCtx, TryCtx } from "#lib/policies/options.ts"
+import type { BuilderConfig, TryCtx, WrapFn } from "#lib/policies/options.ts"
 import { defineDisposeAlias } from "#lib/disposal/index.ts"
 import { calculateRetryDelay, checkShouldAttemptRetry } from "#lib/policies/retry.ts"
 import { SignalController } from "#lib/policies/signal.ts"
 import { TimeoutController } from "#lib/policies/timeout.ts"
 import {
   CancellationError,
-  ControlError,
+  isPanic,
   Panic,
   RetryExhaustedError,
   TimeoutError,
   UnhandledException,
 } from "#lib/shared/errors.ts"
+import { assertUnreachable, checkIsPromiseLike, discardOutcome } from "#lib/shared/utils.ts"
 
 export type RunnerError =
   | CancellationError
   | RetryExhaustedError
   | TimeoutError
   | UnhandledException
+
+/**
+ * What one wrap's `next()` call has done so far.
+ */
+type NextCall<TResult> =
+  | { status: "pending" }
+  | { status: "returned"; result: TResult }
+  | { status: "threw"; error: unknown }
 
 export class RetryDirective {
   readonly delay: number
@@ -28,9 +37,12 @@ export class RetryDirective {
 
 export abstract class BaseExecution<TResult = unknown> implements Disposable {
   protected readonly config: BuilderConfig
+  /**
+   * The read-only view of the execution context that user code receives.
+   */
   protected readonly ctx: TryCtx
   protected readonly executionSignal: AbortSignal | undefined
-  #wrapCtxCache: WrapCtx | undefined
+  readonly #retryState: { attempt: number; readonly limit: number }
   readonly #signalController: SignalController | undefined
   readonly #timeoutController: TimeoutController | undefined
   declare [Symbol.dispose]: () => void
@@ -43,26 +55,109 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       this.#timeoutController?.signal
     )
     this.executionSignal = this.#signalController?.signal
-    this.ctx = BaseExecution.createContext(config, this.executionSignal)
+    this.#retryState = { attempt: 1, limit: config.retry?.limit ?? 1 }
+    this.ctx = BaseExecution.createContext(this.#retryState, this.executionSignal)
   }
 
+  /**
+   * Runs the work inside the wraps. Wraps cover the full retry scope; `ctx.retry.attempt` may
+   * reflect the final attempt when observed after `next()` resolves.
+   *
+   * Wraps observe execution and never replace its result: the call returns what the work returned,
+   * whatever a wrap returns. A wrap must call `next()` exactly once, and a wrap that throws or
+   * rejects is a defect.
+   */
   execute(): TResult {
-    // Wraps cover the full retry scope; `ctx.retry.attempt` may reflect the final
-    // attempt when observed after `next()` resolves.
-    const wraps = this.config.wraps
+    let run = (): TResult => this.executeCore()
 
-    if (!wraps || wraps.length === 0) {
-      return this.executeCore()
+    for (const wrap of (this.config.wraps ?? []).toReversed()) {
+      const inner = run
+      run = () => this.#runWrap(wrap, inner)
     }
 
-    let next = (): unknown => this.executeCore()
+    return run()
+  }
 
-    for (const wrap of wraps.toReversed()) {
-      const previous = next
-      next = () => wrap(this.#wrapCtx, previous)
+  /**
+   * Runs one wrap around `inner`, the next wrap or the work. Each wrap records its own `next()`
+   * call, so the layer reports what its inner layer did even when the wrap ignores it: an inner
+   * async wrap's completion, its result, and its Panics.
+   */
+  #runWrap(wrap: WrapFn, inner: () => TResult): TResult {
+    let call: NextCall<TResult> = { status: "pending" }
+
+    const next = (): TResult => {
+      if (call.status !== "pending") {
+        const panic = new Panic("WRAP_NEXT_CALLED_TWICE")
+        call = { error: panic, status: "threw" }
+        throw panic
+      }
+
+      try {
+        const result = inner()
+        call = { result, status: "returned" }
+
+        // Observe an inner rejection at once. The wrap may not await `next()` before it settles,
+        // or may throw first. `settle()` still hands the same promise, and its Panic, to the caller.
+        if (checkIsPromiseLike(result)) {
+          discardOutcome(result)
+        }
+
+        return result
+      } catch (error) {
+        call = { error, status: "threw" }
+        throw error
+      }
     }
 
-    return next() as TResult
+    const settle = (): TResult => {
+      switch (call.status) {
+        case "pending":
+          throw new Panic("WRAP_NEXT_NOT_CALLED")
+        case "threw":
+          throw call.error
+        case "returned":
+          return call.result
+        default:
+          return assertUnreachable(call, "UNREACHABLE_WORK_STATE")
+      }
+    }
+
+    const fail = (error: unknown): never => {
+      if (call.status === "threw") {
+        throw call.error
+      }
+
+      // Every terminal call rejects only with a Panic, so an inner layer's rejection that the wrap
+      // rethrows is a Panic.
+      if (isPanic(error)) {
+        throw error
+      }
+
+      throw new Panic("WRAP_THROW", { cause: error })
+    }
+
+    let returned: unknown
+
+    try {
+      returned = wrap(this.ctx, next)
+    } catch (error) {
+      return fail(error)
+    }
+
+    return checkIsPromiseLike(returned) ? this.settleAsyncWrap(returned, settle, fail) : settle()
+  }
+
+  /**
+   * Waits for an async wrap to settle, then reports the result of the work. Sync executions
+   * override this, because they cannot wait.
+   */
+  protected settleAsyncWrap(
+    returned: PromiseLike<unknown>,
+    settle: () => TResult,
+    fail: (error: unknown) => never
+  ): TResult {
+    return Promise.resolve(returned).then(settle, fail) as TResult
   }
 
   protected abstract executeCore(): TResult
@@ -71,14 +166,11 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
     this.#timeoutController?.dispose()
   }
 
-  protected static createContext(config: BuilderConfig, signal: AbortSignal | undefined): TryCtx {
-    return {
-      retry: {
-        attempt: 1,
-        limit: config.retry?.limit ?? 1,
-      },
-      signal,
-    }
+  /**
+   * Records the attempt that is about to run. Only the execution writes the attempt count.
+   */
+  protected startAttempt(attempt: number): void {
+    this.#retryState.attempt = attempt
   }
 
   protected static createTimeoutController(
@@ -98,12 +190,15 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       : undefined
   }
 
-  protected static createWrapContext(ctx: TryCtx): WrapCtx {
+  protected static createContext(
+    retryState: TryCtx["retry"],
+    signal: AbortSignal | undefined
+  ): TryCtx {
     // `ctx.retry.attempt` advances across retries, so the retry view must stay live
     // while still reporting read-only data descriptors; a Proxy is the only way to
     // do both. `ctx.signal` is set once at construction, so a frozen plain object
     // suffices for the rest.
-    const retry = new Proxy(ctx.retry, {
+    const retry = new Proxy(retryState, {
       defineProperty: () => false,
       deleteProperty: () => false,
       getOwnPropertyDescriptor(target, property) {
@@ -121,7 +216,7 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       set: () => false,
     })
 
-    return Object.freeze({ retry, signal: ctx.signal })
+    return Object.freeze({ retry, signal })
   }
 
   protected checkDidCancel(cause?: unknown): CancellationError | undefined {
@@ -202,17 +297,16 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
   }
 
   /**
-   * Shared prefix of attempt-failure resolution: rethrows defects, passes control errors through,
-   * and turns retryable failures into a {@link RetryDirective}. Returns `undefined` when the failure
-   * should continue into catch mapping (or unmapped wrapping).
+   * Shared prefix of attempt-failure resolution: rethrows defects, reports this execution's own
+   * cancellation or deadline, and turns retryable failures into a {@link RetryDirective}. Returns
+   * `undefined` when the failure should continue into catch mapping (or unmapped wrapping).
+   *
+   * A `TimeoutError` or `CancellationError` that this execution's policies did not cause, such as
+   * one rethrown from a nested call, is an ordinary failure: it is retried and mapped.
    */
   protected resolveControlOrRetry(error: unknown): RunnerError | RetryDirective | undefined {
     if (error instanceof Panic) {
       throw error
-    }
-
-    if (error instanceof ControlError) {
-      return error
     }
 
     const controlError = this.checkDidControlFail(error)
@@ -243,11 +337,6 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       : new UnhandledException(undefined, { cause: error })
 
     return this.resolveOutcome(wrapped, error)
-  }
-
-  get #wrapCtx(): WrapCtx {
-    this.#wrapCtxCache ??= BaseExecution.createWrapContext(this.ctx)
-    return this.#wrapCtxCache
   }
 }
 defineDisposeAlias(BaseExecution.prototype)

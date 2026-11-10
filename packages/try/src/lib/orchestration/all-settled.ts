@@ -1,6 +1,8 @@
 import type { BuilderConfig } from "#lib/policies/options.ts"
+import type { UnhandledException } from "#lib/shared/errors.ts"
 import type {
   AllSettledResult,
+  ControlFailure,
   InferredTaskContext,
   TaskRecord,
   TaskValidation,
@@ -17,7 +19,7 @@ class AllSettledExecution<T extends TaskRecord> extends OrchestrationExecution<
     this.#tasks = tasks
   }
 
-  protected override executeTasks(): Promise<AllSettledResult<T>> {
+  protected override executeTasks() {
     return this.executeTaskGraph(new SettledTaskExecution(this.executionSignal, this.#tasks))
   }
 }
@@ -25,7 +27,7 @@ class AllSettledExecution<T extends TaskRecord> extends OrchestrationExecution<
 export async function executeAllSettled<T extends TaskRecord>(
   config: BuilderConfig,
   tasks: T & TaskValidation<NoInfer<T>> & ThisType<InferredTaskContext<T>>
-): Promise<AllSettledResult<T>> {
+): Promise<AllSettledResult<T> | UnhandledException | ControlFailure> {
   using execution = new AllSettledExecution(config, tasks)
   return await execution.execute()
 }

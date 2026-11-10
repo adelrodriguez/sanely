@@ -24,10 +24,14 @@ const page = await try$.all({
   },
 })
 
-// page is { user: { id: string; name: string }; invoices: Array<{ total: number }> }
+// page is { user: { id: string; name: string }; invoices: Array<{ total: number }> } | UnhandledException
+
+if (page instanceof Error) {
+  console.error("page failed:", page.cause)
+}
 ```
 
-When one task fails, `this.$signal` aborts in every other task, and `all` rejects with the error. To return a value instead, pass `catch`:
+Like `run`, `all` resolves with its failures instead of rejecting. When one task fails, `this.$signal` aborts in every other task, and `all` resolves with an `UnhandledException` whose `cause` is the error. To return your own value instead, pass `catch`:
 
 ```ts
 class PageUnavailableError extends Error {}
@@ -37,7 +41,7 @@ const page = await try$.all(tasks, {
 })
 ```
 
-`partial` holds the results of the tasks that succeeded before the failure.
+`catch` receives the error as the task threw it. `partial` holds the results of the tasks that succeeded before the failure.
 
 ## Keep every outcome with `allSettled`
 
@@ -62,6 +66,8 @@ if (checks.api.status === "rejected") {
 
 A `Panic` is never a settled outcome. If a task panics, `allSettled` aborts the other tasks, waits for them, and throws the `Panic`.
 
+When the call's own deadline or signal fires, `allSettled` resolves with the `TimeoutError` or `CancellationError` instead of the outcomes, even though every task has settled by then.
+
 ## Set a deadline for the group
 
 Put `timeout` before the call. The deadline covers the whole group:
@@ -70,7 +76,7 @@ Put `timeout` before the call. The deadline covers the whole group:
 const page = await try$.timeout(5_000).all(tasks)
 ```
 
-When the deadline fires, every `this.$signal` aborts, and the call rejects with `TimeoutError` after every task settles. Orchestration does not support `retry`. To retry one request, see [How to run an ordered workflow with `flow`](./run-a-workflow.md#retry-one-step).
+When the deadline fires, every `this.$signal` aborts, and the call resolves with `TimeoutError` after every task settles. The type of `page` includes `TimeoutError`. Orchestration does not support `retry`. To retry one request, see [How to run an ordered workflow with `flow`](./run-a-workflow.md#retry-one-step).
 
 ## Cancel the group from outside
 
@@ -93,7 +99,7 @@ const data = await try$.signal(controller.signal).all({
 })
 ```
 
-The call rejects with `CancellationError` after every task settles.
+The call resolves with `CancellationError` after every task settles.
 
 ## Bound work that takes no signal
 
@@ -110,5 +116,21 @@ async function buildReport(legacy: { generateReport(): Promise<{ rows: number }>
 ```
 
 `$race` rejects with the abort reason when the signal fires first. It cannot stop the work, so the abandoned promise keeps running.
+
+## Use the result inside another call
+
+An orchestration call returns its failure as a value, so an outer call sees a success. In particular, an outer `retry` does not retry it. Throw the failure to hand it to the outer call:
+
+```ts
+const page = await try$.retry(3).run(async () => {
+  const result = await try$.all(tasks)
+
+  if (result instanceof Error) {
+    throw result // retry sees the failure and runs the group again.
+  }
+
+  return result
+})
+```
 
 Refer to the [orchestration reference](../reference.md#orchestration) for the task context and the result types.

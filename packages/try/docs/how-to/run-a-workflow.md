@@ -33,12 +33,20 @@ This guide shows you how to run steps that depend on earlier steps, and end the 
      },
    })
 
-   // avatar is string
+   // avatar is string | UnhandledException
    ```
 
-2. End every path with `return this.$exit(value)`. The first exit becomes the result of the flow. If no task exits, `flow` throws a `Panic`.
+2. End every path with `return this.$exit(value)`. The first exit becomes the result of the flow. An exit counts as soon as `$exit` runs, even inside a `try` block, but write `return` so that the type of the flow includes the value. If no task exits, `flow` throws a `Panic`.
 
 3. Make the later steps wait before they start side effects. Tasks start together, as in `all`, and `$exit` does not stop a task that already started. Await an earlier result through `this.$result`, or check `this.$signal`, before a side effect.
+
+4. Handle a failed step. When a task fails before the first exit, `flow` resolves with an `UnhandledException` whose `cause` is the error. To return your own value instead, pass `catch`, which works the same way as in `all`:
+
+   ```ts
+   const avatar = await try$.flow(steps, {
+     catch: (error, { failedTask }) => `/avatars/default.png?failed=${failedTask}`,
+   })
+   ```
 
 ## Retry one step
 
@@ -62,4 +70,4 @@ const result = await try$.flow({
 })
 ```
 
-A `Panic` in any task wins, even after the first exit. Refer to the [`flow` reference](../reference.md#flowtasks) for the full rules.
+A `Panic` in any task wins, even after the first exit. Refer to the [`flow` reference](../reference.md#flowtasks-options) for the full rules.

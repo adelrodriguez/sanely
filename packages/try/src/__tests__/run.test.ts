@@ -32,6 +32,18 @@ function captureScheduledDelays() {
   }
 }
 
+function swallowNext(_: unknown, next: () => unknown) {
+  try {
+    next()
+  } catch {
+    // Swallowing the inner layer's Panic does not hide it.
+  }
+}
+
+function skipNext() {
+  return "skipped"
+}
+
 function never<T>(): Promise<T> {
   return new Promise<T>(() => {
     // Intentionally never settles.
@@ -157,7 +169,7 @@ describe("runSync", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_SYNC_CATCH_HANDLER_THROW")
+        expectPanic(error, "CATCH_HANDLER_THROW")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -265,7 +277,7 @@ describe("run", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_CATCH_HANDLER_THROW")
+        expectPanic(error, "CATCH_HANDLER_THROW")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -286,7 +298,7 @@ describe("run", () => {
         })
         expect.unreachable("should have thrown")
       } catch (error) {
-        expectPanic(error, "RUN_CATCH_HANDLER_REJECT")
+        expectPanic(error, "CATCH_HANDLER_REJECT")
         expect((error as Panic).cause).toBe(catchFailure)
       }
     })
@@ -306,6 +318,33 @@ describe("retry behavior", () => {
     })
 
     expect(result).toBe(limit)
+  })
+
+  it("keeps the attempt count when try or shouldRetry writes to its context", async () => {
+    const seen: number[] = []
+    const writes: boolean[] = []
+
+    const result = await try$
+      .retry({
+        backoff: "constant",
+        limit: 3,
+        shouldRetry: (_error, ctx) => {
+          writes.push(Reflect.set(ctx.retry, "attempt", 99))
+          return true
+        },
+      })
+      .run((ctx) => {
+        seen.push(ctx.retry.attempt)
+        writes.push(
+          Reflect.set(ctx.retry, "attempt", 99),
+          Reflect.set(ctx, "signal", new AbortController().signal)
+        )
+        throw new Error("fail")
+      })
+
+    expect(seen).toEqual([1, 2, 3])
+    expect(writes.every((write) => !write)).toBe(true)
+    expect(result).toBeInstanceOf(RetryExhaustedError)
   })
 
   it("runs no more than the numeric retry limit", () => {
@@ -445,14 +484,14 @@ describe("retry behavior", () => {
     ])
   })
 
-  it("does not retry or map a TimeoutError thrown by try", () => {
+  it("retries and maps a TimeoutError thrown by try like any other failure", () => {
     const thrown = new TimeoutError()
     let attempts = 0
-    let catchCalls = 0
+    const caught: unknown[] = []
 
     const result = try$.retry(3).runSync({
-      catch: () => {
-        catchCalls += 1
+      catch: (error) => {
+        caught.push(error)
         return "mapped"
       },
       try: () => {
@@ -461,9 +500,38 @@ describe("retry behavior", () => {
       },
     })
 
-    expect(result).toBe(thrown)
-    expect(attempts).toBe(1)
-    expect(catchCalls).toBe(0)
+    expect(result).toBe("mapped")
+    expect(attempts).toBe(3)
+    expect(caught).toEqual([thrown])
+  })
+
+  it("maps a nested policy failure through catch instead of returning it", async () => {
+    const caught: unknown[] = []
+
+    const result = await try$.run({
+      catch: (error) => {
+        caught.push(error)
+        return "mapped"
+      },
+      try: async () => {
+        const inner = await try$.timeout(1).run(never)
+
+        if (inner instanceof Error) {
+          throw inner
+        }
+
+        return "unreachable"
+      },
+    })
+
+    const unmapped = await try$.run(() => {
+      throw new CancellationError()
+    })
+
+    expect(result).toBe("mapped")
+    expect(caught[0]).toBeInstanceOf(TimeoutError)
+    expect(unmapped).toBeInstanceOf(UnhandledException)
+    expect(unmapped.cause).toBeInstanceOf(CancellationError)
   })
 
   it("calls shouldRetry once per failed attempt below the limit", async () => {
@@ -1013,5 +1081,246 @@ describe("wrap behavior", () => {
     expect(result).toBe(2)
     expect(wrapCalls).toBe(1)
     expect(attempts).toBe(2)
+  })
+
+  it("returns the result of the work when a wrap does not return next()", async () => {
+    const events: string[] = []
+
+    const asyncResult = await try$
+      .wrap(async (_, next) => {
+        try {
+          await next()
+        } finally {
+          events.push("wrap-finally")
+        }
+      })
+      .run(() => {
+        events.push("try")
+        return 42
+      })
+
+    const syncResult = try$
+      .wrap((_, next) => {
+        next()
+        return "replaced"
+      })
+      .runSync(() => 7)
+
+    expect(asyncResult).toBe(42)
+    expect(syncResult).toBe(7)
+    expect(events).toEqual(["try", "wrap-finally"])
+  })
+
+  it("throws WRAP_NEXT_NOT_CALLED when a wrap never calls next()", async () => {
+    let attempts = 0
+
+    await expect(
+      try$.wrap(skipNext).run(() => {
+        attempts += 1
+        return 1
+      })
+    ).rejects.toMatchObject({ code: "WRAP_NEXT_NOT_CALLED" })
+
+    try {
+      try$.wrap(skipNext).runSync(() => 1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "WRAP_NEXT_NOT_CALLED")
+    }
+
+    expect(attempts).toBe(0)
+  })
+
+  it("throws WRAP_NEXT_CALLED_TWICE and runs the work once when a wrap calls next() twice", async () => {
+    let attempts = 0
+
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          await next()
+          try {
+            await next()
+          } catch {
+            // Swallowing the second call's Panic does not hide it.
+          }
+        })
+        .run(() => {
+          attempts += 1
+          return 1
+        })
+    ).rejects.toMatchObject({ code: "WRAP_NEXT_CALLED_TWICE" })
+
+    expect(attempts).toBe(1)
+  })
+
+  it("throws WRAP_THROW with the cause when a wrap throws or rejects", async () => {
+    const failure = new Error("wrap failed")
+
+    await expect(
+      try$
+        .wrap(() => {
+          throw failure
+        })
+        .run(() => 1)
+    ).rejects.toMatchObject({ cause: failure, code: "WRAP_THROW" })
+
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          await next()
+          throw failure
+        })
+        .run(() => 1)
+    ).rejects.toMatchObject({ cause: failure, code: "WRAP_THROW" })
+
+    try {
+      try$
+        .wrap((_, next) => {
+          next()
+          throw failure
+        })
+        .runSync(() => 1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "WRAP_THROW")
+      expect((error as Panic).cause).toBe(failure)
+    }
+  })
+
+  it("waits for an inner async wrap that calls next() late when the outer wrap does not return it", async () => {
+    const result = await try$
+      .wrap((_, next) => {
+        void next()
+      })
+      .wrap(async (_, next) => {
+        await Promise.resolve()
+        await next()
+      })
+      .run(() => 42)
+
+    expect(result).toBe(42)
+  })
+
+  it("resolves only after an inner async wrap's cleanup when the outer wrap does not return it", async () => {
+    const events: string[] = []
+
+    const result = await try$
+      .wrap((_, next) => {
+        void next()
+      })
+      .wrap(async (_, next) => {
+        try {
+          await next()
+        } finally {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 1)
+          })
+          events.push("inner-cleanup")
+        }
+      })
+      .run(() => 42)
+
+    events.push("resolved")
+
+    expect(result).toBe(42)
+    expect(events).toEqual(["inner-cleanup", "resolved"])
+  })
+
+  it("observes the work's Panic while an async wrap has not awaited next() yet", async () => {
+    const unhandled = await collectUnhandledRejections(async () => {
+      const error = await try$
+        .wrap(async (_, next) => {
+          void next()
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10)
+          })
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+        .catch((error: unknown) => error)
+
+      expectPanic(error, "CATCH_HANDLER_THROW")
+    })
+
+    expect(unhandled).toEqual([])
+  })
+
+  it("observes the work's Panic when a wrap throws after next()", async () => {
+    const unhandled = await collectUnhandledRejections(async () => {
+      const error = await try$
+        .wrap((_, next) => {
+          void next()
+          throw new Error("wrap failed")
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+        .catch((error: unknown) => error)
+
+      expectPanic(error, "WRAP_THROW")
+    })
+
+    expect(unhandled).toEqual([])
+  })
+
+  it("throws an inner wrap's WRAP_THROW even when an outer wrap catches it", async () => {
+    const failure = new Error("inner wrap failed")
+    const fail = () => {
+      throw failure
+    }
+
+    const asyncError = await try$
+      .wrap(swallowNext)
+      .wrap(fail)
+      .run(() => 1)
+      .catch((error: unknown) => error)
+
+    let syncError: unknown
+
+    try {
+      try$
+        .wrap(swallowNext)
+        .wrap(fail)
+        .runSync(() => 1)
+    } catch (error) {
+      syncError = error
+    }
+
+    expectPanic(asyncError, "WRAP_THROW")
+    expect((asyncError as Error).cause).toBe(failure)
+    expectPanic(syncError, "WRAP_THROW")
+    expect((syncError as Error).cause).toBe(failure)
+  })
+
+  it("throws a Panic from the work even when a wrap swallows it", async () => {
+    await expect(
+      try$
+        .wrap(async (_, next) => {
+          try {
+            await next()
+          } catch {
+            // Swallowed.
+          }
+        })
+        .run({
+          catch: () => {
+            throw new Error("catch failed")
+          },
+          try: () => {
+            throw new Error("boom")
+          },
+        })
+    ).rejects.toMatchObject({ code: "CATCH_HANDLER_THROW" })
   })
 })
