@@ -81,3 +81,20 @@ describe("InvalidPayloadError", () => {
     expect(error.message).toBe("Invalid fault payload: _tag must be a string")
   })
 })
+
+describe("package error stacks", () => {
+  it("start with the diagnostic message, not the tag", () => {
+    const errors = [
+      new InvalidPayloadError({ reason: "bad" }),
+      new RegistryConstructorError({ tag: "X" }),
+      new RegistryMergeConflictError({ conflictingTag: "X" }),
+      new RegistryNotRecognizedError(),
+      new RegistryTagMismatchError({ ctorTag: "Y", registryKey: "X" }),
+      new RegistryUnknownTagError({ tag: "X" }),
+    ]
+
+    for (const error of errors) {
+      expect(error.stack?.split("\n")[0]).toBe(`${error.name}: ${error.message}`)
+    }
+  })
+})

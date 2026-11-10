@@ -2,6 +2,7 @@ import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 import { Fault } from "#lib/fault.ts"
+import { fromSerializable } from "#lib/reviver.ts"
 import { Tagged } from "#lib/tagged.ts"
 
 describe("Tagged", () => {
@@ -69,5 +70,51 @@ describe("Tagged", () => {
     expect(Object.getOwnPropertyDescriptor(fault.fields, "__proto__")?.value).toBe("value")
     expect(Object.getPrototypeOf(fault.fields)).toBe(Object.prototype)
     expect(Object.getPrototypeOf(fault)).toBe(ProbeError.prototype)
+  })
+})
+
+describe("Tagged stack", () => {
+  class UserNotFound extends Tagged("UserNotFound")<{ id: string }>() {
+    constructor(fields: { id: string }) {
+      super(fields)
+      this.message = `User ${fields.id} not found`
+    }
+  }
+
+  it("uses a message that the subclass constructor sets after super", () => {
+    expect(new UserNotFound({ id: "7" }).stack?.split("\n")[0]).toBe(
+      "UserNotFound: User 7 not found"
+    )
+  })
+
+  it("keeps that message in the stack after withCause", () => {
+    const stack = new UserNotFound({ id: "7" }).withCause(new Error("db down")).stack ?? ""
+
+    expect(stack.split("\n")[0]).toBe("UserNotFound: User 7 not found")
+    expect(stack).toContain("Caused by: Error: db down")
+  })
+})
+
+describe("revived fault stack", () => {
+  class LookupError extends Tagged("LookupError")() {}
+
+  function revivedWithCause(): Fault {
+    const sent = new LookupError().withCause(new Error("first cause"))
+    return fromSerializable(sent.toSerializable())
+  }
+
+  it("replaces a serialized cause block when withCause sets a new cause", () => {
+    const stack = revivedWithCause().withCause(new Error("second cause")).stack ?? ""
+
+    expect(stack).not.toContain("first cause")
+    expect(stack.match(/Caused by: /g)).toHaveLength(1)
+    expect(stack).toContain("Caused by: Error: second cause")
+  })
+
+  it("drops a serialized cause block when the new cause is not an Error", () => {
+    const stack = revivedWithCause().withCause("a thrown string").stack ?? ""
+
+    expect(stack).not.toContain("Caused by: ")
+    expect(stack.split("\n")[0]).toBe("LookupError: LookupError")
   })
 })
