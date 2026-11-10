@@ -1,5 +1,5 @@
 ---
-"@sanely/try": patch
+"@sanely/try": minor
 ---
 
 Treat a `TimeoutError` or `CancellationError` that `try` rethrows from a nested call as an ordinary failure

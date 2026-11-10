@@ -1,5 +1,5 @@
 ---
-"@sanely/try": patch
+"@sanely/try": minor
 ---
 
 Fix three cases where a mistake passed the type checker and failed at runtime

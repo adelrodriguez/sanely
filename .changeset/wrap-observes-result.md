@@ -1,5 +1,5 @@
 ---
-"@sanely/try": patch
+"@sanely/try": minor
 ---
 
 Return the work's result whatever a `wrap` returns

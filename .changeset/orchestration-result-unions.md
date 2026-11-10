@@ -1,5 +1,5 @@
 ---
-"@sanely/try": patch
+"@sanely/try": minor
 ---
 
 Resolve `all`, `allSettled`, and `flow` failures as values, like `run`
