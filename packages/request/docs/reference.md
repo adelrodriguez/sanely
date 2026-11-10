@@ -23,7 +23,7 @@ ip(new Request("http://localhost"), { platform: "none" }) // undefined
 With `platform: "none"`, for an app with no platform in front of it:
 
 1. The address that the runtime or framework reports: `request.ip`, `request.socket.remoteAddress`, `request.info.remoteAddress`, then `request.requestContext.identity.sourceIp`. A client cannot forge these.
-2. The common forwarding headers: `X-Forwarded-For`, `X-Client-IP`, `DO-Connecting-IP`, `Fastly-Client-IP`, `True-Client-IP`, `X-Real-IP`, `X-Cluster-Client-IP`, `X-Forwarded`, `Forwarded-For`, `Forwarded`, then `X-Appengine-User-IP`.
+2. The common forwarding headers: `X-Forwarded-For`, `X-Client-IP`, `DO-Connecting-IP`, `Fastly-Client-IP`, `True-Client-IP`, `X-Real-IP`, `X-Cluster-Client-IP`, `X-Forwarded`, `Forwarded-For`, `Forwarded`, then `X-Appengine-User-IP`. `ip` reads the `for` parameters of the standard `Forwarded` header from RFC 7239, such as `for=192.0.2.60;proto=https`.
 
 With a platform:
 
@@ -36,7 +36,7 @@ With a platform:
 - Addresses that match an entry in `proxies`.
 - Text that is not an IPv4 or IPv6 address. IPv4 octets with a leading zero are rejected, because some parsers read them as octal.
 
-In a header that lists several addresses, such as `X-Forwarded-For`, `ip` reads from the right. Each proxy appends the address it received the request from, so the rightmost addresses come from proxies you control, and a client can write anything on the left.
+In a header that lists several addresses, such as `X-Forwarded-For` or `Forwarded`, `ip` reads from the right. Each proxy appends the address it received the request from, so the rightmost addresses come from proxies you control, and a client can write anything on the left.
 
 `ip` drops a port, brackets, or an IPv6 zone, and writes IPv6 addresses in their canonical form from RFC 5952. One client always gets one spelling, so the result works as a rate-limit identity.
 

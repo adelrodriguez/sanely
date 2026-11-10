@@ -204,6 +204,24 @@ describe("ip from X-Forwarded-For", () => {
   })
 })
 
+describe("ip from Forwarded", () => {
+  it.each([
+    ["one element", "for=1.1.1.1;proto=https", "1.1.1.1"],
+    ["the rightmost element", "for=1.1.1.1, for=2.2.2.2;by=10.0.0.1", "2.2.2.2"],
+    ["a quoted IPv6 address with a port", 'for="[2606:4700::1]:443"', "2606:4700::1"],
+    ["a parameter name in any case", "proto=https;For=1.1.1.1", "1.1.1.1"],
+    ["past an obfuscated identifier", "for=1.1.1.1, for=_hidden", "1.1.1.1"],
+    ["past an unknown client", "for=1.1.1.1, for=unknown", "1.1.1.1"],
+    ["past a private address", 'for=1.1.1.1, for="10.0.0.1"', "1.1.1.1"],
+  ])("returns %s", (_name, value, expected) => {
+    expect(find(headers({ forwarded: value }))).toBe(expected)
+  })
+
+  it("ignores an element without a for parameter", () => {
+    expect(find(headers({ forwarded: "by=1.1.1.1;proto=https" }))).toBeUndefined()
+  })
+})
+
 describe("ip without a platform", () => {
   it.each([
     "x-client-ip",
@@ -214,7 +232,6 @@ describe("ip without a platform", () => {
     "x-cluster-client-ip",
     "x-forwarded",
     "forwarded-for",
-    "forwarded",
     "x-appengine-user-ip",
   ])("reads %s", (header) => {
     expect(find(headers({ [header]: "1.1.1.1" }))).toBe("1.1.1.1")

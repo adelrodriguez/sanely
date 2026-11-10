@@ -5,8 +5,18 @@ import { format, parseHost } from "#lib/address/index.ts"
 import { contains, parseRange } from "#lib/address/range.ts"
 import { checkPlatform, readHeader } from "#lib/request/index.ts"
 
+// The `for` parameter of one RFC 7239 element, such as `for=192.0.2.60` or `for="[2001:db8::1]:443"`.
+const FORWARDED_FOR = /(?:^|;)\s*for=("?)([^";]*)\1\s*(?:;|$)/i
+
 // How each kind of header writes addresses, split into candidates in the order to try them.
 const CANDIDATES = {
+  // RFC 7239 elements that each proxy appends to, read from the right like `list`. An element's
+  // `for` parameter holds the address the proxy received the request from.
+  forwarded: (value: string) =>
+    value
+      .split(",")
+      .toReversed()
+      .flatMap((element) => FORWARDED_FOR.exec(element.trim())?.slice(2, 3) ?? []),
   // Comma-separated addresses that each proxy appends to. The walk starts from the right, where
   // the nearest proxy wrote, because a client can write anything on the left.
   list: (value: string) => value.split(",").toReversed(),
@@ -55,7 +65,7 @@ const COMMON: readonly Source[] = [
   { format: "single", header: "x-cluster-client-ip" },
   { format: "single", header: "x-forwarded" },
   { format: "single", header: "forwarded-for" },
-  { format: "single", header: "forwarded" },
+  { format: "forwarded", header: "forwarded" },
   { format: "single", header: "x-appengine-user-ip" },
 ]
 
