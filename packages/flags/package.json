@@ -1,6 +1,7 @@
 {
   "name": "@sanely/flags",
   "version": "0.0.1",
+  "private": true,
   "description": "Type-safe feature flag library for TypeScript applications",
   "keywords": [
     "ab-testing",

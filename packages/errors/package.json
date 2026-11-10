@@ -1,6 +1,7 @@
 {
   "name": "@sanely/errors",
   "version": "0.0.1",
+  "private": true,
   "description": "Extensible error handling for TypeScript",
   "keywords": [
     "error-handling",

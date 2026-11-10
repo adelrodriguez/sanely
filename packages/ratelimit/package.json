@@ -1,6 +1,7 @@
 {
   "name": "@sanely/ratelimit",
   "version": "0.0.1",
+  "private": true,
   "description": "Atomic rate limiting with pluggable stores",
   "keywords": [
     "bun",

@@ -1,6 +1,7 @@
 {
   "name": "@sanely/cron",
   "version": "0.0.1",
+  "private": true,
   "description": "Type-safe schedules that compile to exact cron expressions",
   "keywords": [
     "cron",
