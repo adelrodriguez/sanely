@@ -57,4 +57,4 @@ const action = Fault.matchTag(
 )
 ```
 
-Refer to the [registry reference](../reference.md#registry) for the signatures of both kinds of matcher.
+Refer to the [registry reference](../reference.md#registry) for the registry matchers, and to the [matching reference](../reference.md#matching) for the standalone ones.
