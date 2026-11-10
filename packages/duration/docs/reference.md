@@ -202,13 +202,13 @@ A space between the number and the unit is optional. A number can have decimals 
 | `"milliseconds"` | `ms`  | `milliseconds`, `millisecond`, `msecs`, `msec` |
 | `"seconds"`      | `s`   | `seconds`, `second`, `secs`, `sec`             |
 | `"minutes"`      | `m`   | `minutes`, `minute`, `mins`, `min`             |
+| `"hours"`        | `h`   | `hours`, `hour`, `hrs`, `hr`                   |
+| `"days"`         | `d`   | `days`, `day`                                  |
+| `"weeks"`        | `w`   | `weeks`, `week`                                |
+| `"months"`       | `mo`  | `months`, `month`                              |
+| `"years"`        | `y`   | `years`, `year`, `yrs`, `yr`                   |
 
 `M` is not a unit in any form, because other notations, such as ISO 8601, use it for months. Write `m` for minutes or `mo` for months.
-| `"hours"` | `h` | `hours`, `hour`, `hrs`, `hr` |
-| `"days"` | `d` | `days`, `day` |
-| `"weeks"` | `w` | `weeks`, `week` |
-| `"months"` | `mo` | `months`, `month` |
-| `"years"` | `y` | `years`, `year`, `yrs`, `yr` |
 
 ### Strict and lenient forms
 
