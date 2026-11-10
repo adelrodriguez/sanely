@@ -170,9 +170,9 @@ describe("errors that are not about the schedule", () => {
   }
 
   it("should pass them on unchanged from parse, safeParse, and isSchedule", () => {
-    expect(() => parse(hostile)).toThrow(failure)
-    expect(() => safeParse(hostile)).toThrow(failure)
-    expect(() => isSchedule(hostile)).toThrow(failure)
+    expect(catchError(() => parse(hostile))).toBe(failure)
+    expect(catchError(() => safeParse(hostile))).toBe(failure)
+    expect(catchError(() => isSchedule(hostile))).toBe(failure)
   })
 })
 
