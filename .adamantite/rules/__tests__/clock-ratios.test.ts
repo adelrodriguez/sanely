@@ -24,12 +24,14 @@ new RuleTester().run("clock-ratios", rule, {
     { ...source(), code: "const ttl = 5 * 60_000", errors: [{ messageId: "literal" }] },
     { ...source(), code: "const day = 86_400_000", errors: [{ messageId: "literal" }] },
     { ...source(), code: "const day = 3_600_000 * 2", errors: [{ messageId: "literal" }] },
+    { ...source(), code: "const offset = -60", errors: [{ messageId: "literal" }] },
   ],
   valid: [
     // Other numbers are not clock ratios.
     { ...source(), code: "const hour = 12, day = 31, status = 404" },
     // A type can only spell a ratio as a literal.
     { ...source(), code: "type End = 24 | 0" },
+    { ...source(), code: "type Offset = -24 | 0" },
     // Tests check the ratios against literal values on purpose.
     {
       ...fixture("lib/schedule/__tests__/rules.test.ts", [], usesCore),

@@ -45,8 +45,10 @@ export default defineRule({
       Literal(node) {
         if (!checked || typeof node.value !== "number") return
         const name = RATIOS.get(node.value)
-        // A type can only spell a ratio as a literal.
-        if (!name || node.parent.type === "TSLiteralType") return
+        // A type can only spell a ratio as a literal, and a negative one, such as `-24`, has a
+        // unary minus between the number and the literal type.
+        const literal = node.parent.type === "UnaryExpression" ? node.parent.parent : node.parent
+        if (!name || literal.type === "TSLiteralType") return
         context.report({
           data: { name, value: node.raw ?? String(node.value) },
           messageId: "literal",
