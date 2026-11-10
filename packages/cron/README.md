@@ -38,6 +38,11 @@ npm install @sanely/cron
 
 ## Documentation
 
+How-to guides:
+
+- [How to validate a schedule from user input](docs/how-to/validate-user-input.md): turn a cron phrase from a form or a schedule object from JSON into a cron expression, and show the reason when it fails.
+- [How to accept a cron phrase in your own function](docs/how-to/accept-a-cron-phrase.md): check a phrase argument at compile time, as `cron` does.
+
 Reference:
 
 - [`@sanely/cron` reference](docs/reference.md): the functions, the `Schedule` object, the cron-phrase language, the error, the constants, and the types.
