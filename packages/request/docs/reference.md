@@ -50,7 +50,7 @@ In a header that lists several addresses, such as `X-Forwarded-For` or `Forwarde
 | `"render"`     | `True-Client-IP`                                         |
 | `"vercel"`     | `X-Real-IP`, `X-Vercel-Forwarded-For`, `X-Forwarded-For` |
 
-CloudFront sends `CloudFront-Viewer-Address` only when an origin request policy includes it.
+CloudFront sends `CloudFront-Viewer-Address` only when an origin request policy includes it. The header holds the viewer's address and source port, such as `198.51.100.10:46532`. `ip` skips a value without a port.
 
 ### `IpOptions`
 

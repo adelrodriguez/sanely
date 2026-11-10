@@ -8,6 +8,9 @@ import { checkPlatform, readHeader } from "#lib/request/index.ts"
 // The `for` parameter of one RFC 7239 element, such as `for=192.0.2.60` or `for="[2001:db8::1]:443"`.
 const FORWARDED_FOR = /(?:^|;)\s*for=("?)([^";]*)\1\s*(?:;|$)/i
 
+// An address, then a colon and a port of up to five digits.
+const WITH_PORT = /^(.+):(\d{1,5})$/
+
 // How each kind of header writes addresses, split into candidates in the order to try them.
 const CANDIDATES = {
   // RFC 7239 elements that each proxy appends to, read from the right like `list`. An element's
@@ -22,8 +25,13 @@ const CANDIDATES = {
   list: (value: string) => value.split(",").toReversed(),
   // One address, which can carry a port or an IPv6 zone.
   single: (value: string) => [value],
-  // One address followed by the source port, which can be unbracketed even for IPv6.
-  "with-port": (value: string) => [value.replace(/:\d+$/, "")],
+  // One address followed by the source port, unbracketed even for IPv6. CloudFront documents the
+  // port as always present, so a value without one is skipped. An unbracketed IPv6 address that
+  // lacked the port anyway would lose its last group to it, if that group is all digits.
+  "with-port": (value: string) => {
+    const [, address, port] = WITH_PORT.exec(value) ?? []
+    return address !== undefined && Number(port) <= 65_535 ? [address] : []
+  },
 } as const
 
 interface Source {

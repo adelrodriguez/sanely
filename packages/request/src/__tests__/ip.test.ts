@@ -304,6 +304,15 @@ describe("ip with a platform", () => {
     expect(find(request, { platform: "cloudflare" })).toBe("1.1.1.1")
   })
 
+  it.each(["1.1.1.1", "2606:4700::abcd", "1.1.1.1:65536"])(
+    "skips a CloudFront viewer address without a valid port, %s, instead of guessing",
+    (value) => {
+      const request = headers({ "cloudfront-viewer-address": value })
+
+      expect(ip(request, { platform: "cloudfront" })).toBeUndefined()
+    }
+  )
+
   it("skips trusted proxies in the platform's headers", () => {
     expect(
       find(headers({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" }), {
