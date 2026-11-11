@@ -44,6 +44,9 @@ const NOT_GLOBAL = [
   ["IPv6 link local", "fe80::"],
   ["IPv4 multicast", "224.0.0.1"],
   ["IPv6 multicast", "ff02::1"],
+  ["reserved IPv6 a000::/3", "abcd::"],
+  ["reserved IPv6 e000::/4", "e123::"],
+  ["deprecated site-local IPv6", "fec0::1"],
   ["IPv6 documentation 3fff::/20", "3fff::1"],
   ["SRv6 SID", "5f00::1"],
   ["dummy IPv6 prefix", "100:0:0:1::1"],
@@ -65,7 +68,8 @@ const MALFORMED = [
 // Public addresses, including the globally reachable exceptions inside 2001::/23, and how `ip` writes them.
 const GLOBAL = [
   ["IPv4", "1.1.1.1", "1.1.1.1"],
-  ["IPv6", "::abcd:c00a:2ff", "::abcd:c00a:2ff"],
+  ["IPv6", "2001:4860::c00a:2ff", "2001:4860::c00a:2ff"],
+  ["the NAT64 well-known prefix", "64:ff9b::808:808", "64:ff9b::808:808"],
   ["Port Control Protocol anycast", "2001:1::1", "2001:1::1"],
   ["TURN anycast", "2001:1::2", "2001:1::2"],
   ["AMT", "2001:3::", "2001:3::"],
@@ -77,7 +81,7 @@ const GLOBAL = [
   ["DRIP entity tags", "2001:30::1", "2001:30::1"],
   ["an IPv4 address with a port", "1.1.1.1:443", "1.1.1.1"],
   ["a bracketed IPv6 address with a port", "[2606:4700::1]:443", "2606:4700::1"],
-  ["an IPv6 address with a zone", "::abcd:c00a:2ff%1", "::abcd:c00a:2ff"],
+  ["an IPv6 address with a zone", "2001:4860::c00a:2ff%1", "2001:4860::c00a:2ff"],
   ["padding", " 1.1.1.1 ", "1.1.1.1"],
 ] as const
 
@@ -117,18 +121,18 @@ describe.each(FIELDS)("ip from %s", (_, place) => {
 
   it("skips a trusted proxy given as an address", () => {
     expect(find(place("1.1.1.1"), { proxies: ["1.1.1.1"] })).toBeUndefined()
-    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2ff"] })).toBeUndefined()
+    expect(find(place("2001:4860::c00a:2ff"), { proxies: ["2001:4860::c00a:2ff"] })).toBeUndefined()
   })
 
   it("skips a trusted proxy inside a range", () => {
     expect(find(place("1.1.1.1"), { proxies: ["1.1.1.0/24"] })).toBeUndefined()
-    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:0:0/96"] })).toBeUndefined()
+    expect(find(place("2001:4860::c00a:2ff"), { proxies: ["2001:4860::/32"] })).toBeUndefined()
   })
 
   it("returns an address that no proxy matches", () => {
     expect(find(place("1.1.1.1"), { proxies: ["1.1.1.2", "1.1.2.0/24"] })).toBe("1.1.1.1")
-    expect(find(place("::abcd:c00a:2ff"), { proxies: ["::abcd:c00a:2fa/128"] })).toBe(
-      "::abcd:c00a:2ff"
+    expect(find(place("2001:4860::c00a:2ff"), { proxies: ["2001:4860::c00a:2fa/128"] })).toBe(
+      "2001:4860::c00a:2ff"
     )
   })
 })
@@ -222,12 +226,12 @@ describe("ip", () => {
 describe("ip from X-Forwarded-For", () => {
   it.each([
     ["the rightmost public IPv4 address", "1.1.1.1, 2.2.2.2, 3.3.3.3", "3.3.3.3", []],
-    ["the rightmost public IPv6 address", "e123::, 3.3.3.3, abcd::", "abcd::", []],
+    ["the rightmost public IPv6 address", "2a00:1450::, 3.3.3.3, 2606:4700::", "2606:4700::", []],
     ["past an unknown entry", "1.1.1.1, 3.3.3.3, unknown", "3.3.3.3", []],
     ["past a private address", "1.1.1.1, 3.3.3.3, 127.0.0.1", "3.3.3.3", []],
-    ["past a private IPv6 address", "e123::, abcd::, ::1", "abcd::", []],
+    ["past a private IPv6 address", "2a00:1450::, 2606:4700::, ::1", "2606:4700::", []],
     ["past a trusted proxy", "1.1.1.1, 2.2.2.2, 3.3.3.3", "2.2.2.2", ["3.3.3.3"]],
-    ["past an IPv6 trusted proxy", "e123::, 3.3.3.3, abcd::", "3.3.3.3", ["abcd::"]],
+    ["past an IPv6 trusted proxy", "2a00:1450::, 3.3.3.3, 2606:4700::", "3.3.3.3", ["2606:4700::"]],
     [
       "past several trusted proxies",
       "1.1.1.1, 2.2.2.2, 3.3.3.3",
@@ -295,7 +299,7 @@ describe("ip without a platform", () => {
 // Each platform's headers in the order it reads them, with the address each one holds.
 const PLATFORMS: ReadonlyArray<readonly [IpPlatform, Record<string, string>, string]> = [
   ["app-engine", { "x-appengine-user-ip": "1.1.1.1" }, "1.1.1.1"],
-  ["cloudflare", { "cf-connecting-ipv6": "abcd::" }, "abcd::"],
+  ["cloudflare", { "cf-connecting-ipv6": "2606:4700::" }, "2606:4700::"],
   ["cloudflare", { "cf-connecting-ip": "1.1.1.1" }, "1.1.1.1"],
   ["cloudfront", { "cloudfront-viewer-address": "1.1.1.1:46532" }, "1.1.1.1"],
   ["cloudfront", { "cloudfront-viewer-address": "2606:4700::1:443" }, "2606:4700::1"],
@@ -329,8 +333,8 @@ describe("ip with a platform", () => {
     const options: IpOptions = { platform: "cloudflare" }
 
     expect(
-      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "abcd::" }), options)
-    ).toBe("abcd::")
+      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "2606:4700::" }), options)
+    ).toBe("2606:4700::")
     expect(
       ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
     ).toBe("1.1.1.1")

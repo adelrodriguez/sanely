@@ -4,8 +4,9 @@ import { contains, parseRange } from "./range.ts"
 
 // Special-purpose blocks from the IANA IPv4 and IPv6 address registries, marked by whether their
 // addresses are reachable from the public internet. The first matching block decides, so each
-// exception comes before the block that holds it. Addresses outside every block are global, and
-// IPv4-mapped addresses parse as IPv4, so the IPv4 blocks cover them.
+// exception comes before the block that holds it. IANA assigns global IPv6 unicast only in
+// `2000::/3`, so every other IPv6 address is not global. IPv4 addresses outside every block are
+// global, and IPv4-mapped addresses parse as IPv4, so the IPv4 blocks cover them.
 const BLOCKS: ReadonlyArray<readonly [cidr: string, global: boolean]> = [
   ["0.0.0.0/8", false], // This network
   ["10.0.0.0/8", false], // Private use
@@ -42,6 +43,9 @@ const BLOCKS: ReadonlyArray<readonly [cidr: string, global: boolean]> = [
   ["fc00::/7", false], // Unique local
   ["fe80::/10", false], // Link local
   ["ff00::/8", false], // Multicast
+  ["64:ff9b::/96", true], // IPv4-IPv6 translation, well-known prefix
+  ["2000::/3", true], // Global unicast
+  ["::/0", false], // Every other IPv6 block is reserved by IANA
 ]
 
 function block(cidr: string, global: boolean): { global: boolean; range: Range } {

@@ -32,7 +32,7 @@ With a platform:
 
 `ip` skips these addresses:
 
-- Private, loopback, link-local, multicast, documentation, benchmarking, and reserved addresses from the IANA special-purpose registries. The registries' globally reachable exceptions, such as the anycast address `192.0.0.9`, are kept.
+- Private, loopback, link-local, multicast, documentation, benchmarking, and reserved addresses from the IANA special-purpose registries. The registries' globally reachable exceptions, such as the anycast address `192.0.0.9`, are kept. An IPv6 address must also be in global unicast, `2000::/3`, or the NAT64 prefix `64:ff9b::/96`, because IANA reserves every other block.
 - Addresses inside `proxies`.
 - Text that is not an IPv4 or IPv6 address. IPv4 octets with a leading zero are rejected, because some parsers read them as octal.
 
