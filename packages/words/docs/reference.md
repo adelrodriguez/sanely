@@ -58,7 +58,7 @@ A pattern from outside the code, such as a config file, is `unknown` until you c
 function count<const N extends string = never>(options?: CountOptions<N>): bigint
 ```
 
-Returns the number of distinct names that `generate` can return with the same `segments`, `pattern`, `lists`, and `omit`. The count ignores `maxLength`. It is a `bigint`, so it stays exact for any number of words. Convert it with `Number(count())` when you need a `number` and the count is below `Number.MAX_SAFE_INTEGER`.
+Returns the number of distinct names that `generate` can return with the same `segments`, `pattern`, `lists`, and `omit`. The count ignores `maxLength`. It is a `bigint`, so it stays exact for any number of words.
 
 ```ts
 import { count } from "@sanely/words"
@@ -70,6 +70,25 @@ count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] }) // 0n
 ```
 
 `count` throws `InvalidOptionError` for the same options as `generate`.
+
+### Use a count
+
+Compare and format a count directly. JavaScript compares a `bigint` with a `number`.
+
+```ts
+count() > 1_000_000 // true
+count().toLocaleString("en-US") // "1,084,149"
+```
+
+`JSON.stringify` and arithmetic with a `number`, such as `count() / 2` or `Math.log2(count())`, throw a `TypeError` for a `bigint`. Convert the count with `Number` first, or send it as a string.
+
+```ts
+JSON.stringify({ names: Number(count()) }) // '{"names":1084149}'
+JSON.stringify({ names: String(count({ segments: 5 })) }) // keeps every digit
+Math.log2(Number(count())) // about 20 bits of randomness
+```
+
+`Number` rounds a count above `Number.MAX_SAFE_INTEGER`, such as `count({ segments: 5 })`. Send a count that large as a string.
 
 ## `lists`
 
