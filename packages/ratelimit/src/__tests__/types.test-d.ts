@@ -71,6 +71,14 @@ describe("limiter", () => {
     limiter({ algorithm, identify: (request: Request) => request.ip.length, name: "length" })
   })
 
+  it("accepts only algorithms that an algorithm function made", () => {
+    limiter({
+      // @ts-expect-error -- an object literal skips the checks of fixedWindow.
+      algorithm: { limit: 10, type: "fixedWindow", window: 0 },
+      name: "literal",
+    })
+  })
+
   it("accepts only algorithms the store supports", () => {
     const fixedLimiter = buildLimiter({ store: fixedOnly })
 

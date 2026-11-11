@@ -17,10 +17,16 @@ function period(option: string, value: number | string) {
   return parsed
 }
 
+declare const checked: unique symbol
+
+// Only `fixedWindow`, `slidingWindow`, and `tokenBucket` add this brand, after they check their
+// options, so the type checker rejects an algorithm written as an object literal.
+type Checked = { readonly [checked]: true }
+
 /**
  * Allows `limit` units in each window. Windows start at multiples of `window` since the epoch.
  */
-export type FixedWindow = {
+export type FixedWindow = Checked & {
   readonly type: "fixedWindow"
   readonly limit: number
   readonly window: number
@@ -29,7 +35,7 @@ export type FixedWindow = {
 /**
  * Allows `limit` units in any period of `window`, weighting the previous window by its overlap.
  */
-export type SlidingWindow = {
+export type SlidingWindow = Checked & {
   readonly type: "slidingWindow"
   readonly limit: number
   readonly window: number
@@ -38,7 +44,7 @@ export type SlidingWindow = {
 /**
  * Holds up to `capacity` tokens and adds `refillRate` tokens every `interval`.
  */
-export type TokenBucket = {
+export type TokenBucket = Checked & {
   readonly type: "tokenBucket"
   readonly refillRate: number
   readonly interval: number
@@ -81,7 +87,7 @@ export function fixedWindow<const T extends string = never>({
     limit: positiveInteger("limit", limit),
     type: "fixedWindow",
     window: period("window", window),
-  }
+  } as FixedWindow
 }
 
 export function slidingWindow<const T extends string = never>({
@@ -92,7 +98,7 @@ export function slidingWindow<const T extends string = never>({
     limit: positiveInteger("limit", limit),
     type: "slidingWindow",
     window: period("window", window),
-  }
+  } as SlidingWindow
 }
 
 export function tokenBucket<const T extends string = never>({
@@ -100,12 +106,12 @@ export function tokenBucket<const T extends string = never>({
   interval,
   capacity,
 }: TokenBucketOptions<T>): TokenBucket {
-  const bucket: TokenBucket = {
+  const bucket = {
     capacity: positiveInteger("capacity", capacity),
     interval: period("interval", interval),
     refillRate: positiveInteger("refillRate", refillRate),
     type: "tokenBucket",
-  }
+  } as TokenBucket
 
   if (windowOf(bucket) > MAX_PERIOD) {
     throw new InvalidOptionError(

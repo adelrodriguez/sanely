@@ -329,7 +329,7 @@ A store must follow these rules:
 | Type                                                                               | Describes                                                |
 | ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `Algorithm`                                                                        | `FixedWindow \| SlidingWindow \| TokenBucket`.           |
-| `FixedWindow`, `SlidingWindow`, `TokenBucket`                                      | The values that the algorithm functions return.          |
+| `FixedWindow`, `SlidingWindow`, `TokenBucket`                                      | Made only by the algorithm functions, not by a literal.  |
 | `WindowOptions`, `TokenBucketOptions`                                              | The arguments of the algorithm functions.                |
 | `BuildLimiterOptions`                                                              | The argument of `buildLimiter`.                          |
 | `LimiterOptions`                                                                   | The argument of the limiter factory, without `identify`. |
