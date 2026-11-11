@@ -58,7 +58,7 @@ export function defineAsyncDisposeAlias(prototype: { dispose(): Promise<void> })
   })
 }
 
-function createSuppressedError(error: unknown, suppressed: unknown): Error {
+export function createSuppressedError(error: unknown, suppressed: unknown): Error {
   if (typeof SuppressedError === "function") {
     return new SuppressedError(error, suppressed, SUPPRESSED_ERROR_MESSAGE)
   }

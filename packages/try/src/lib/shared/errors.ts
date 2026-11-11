@@ -9,6 +9,7 @@ export type PanicCode =
   | "RUN_SYNC_CATCH_PROMISE"
   | "RUN_SYNC_TRY_PROMISE"
   | "RUN_SYNC_WRAPPED_RESULT_PROMISE"
+  | "TASK_CLEANUP_THROW"
   | "TASK_INVALID_HANDLER"
   | "TASK_SELF_REFERENCE"
   | "TASK_UNKNOWN_REFERENCE"
@@ -31,6 +32,7 @@ export const PanicMessages = {
   RUN_SYNC_TRY_PROMISE: "runSync() cannot handle Promise values. Use run() instead.",
   RUN_SYNC_WRAPPED_RESULT_PROMISE:
     "Wrapped runSync() execution returned a Promise. Use run() instead.",
+  TASK_CLEANUP_THROW: "A task cleanup threw or rejected.",
   TASK_INVALID_HANDLER: "Task runner expected a function handler.",
   TASK_SELF_REFERENCE: "Task cannot await its own result.",
   TASK_UNKNOWN_REFERENCE: "Task attempted to read an unknown task result.",

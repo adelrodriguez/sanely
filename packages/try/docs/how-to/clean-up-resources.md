@@ -43,4 +43,6 @@ await try$.all({
 })
 ```
 
+A cleanup must not throw. If it throws or rejects, the orchestration throws a `Panic` with the code `TASK_CLEANUP_THROW` after the rest of the cleanup runs. For a cleanup that can fail, such as closing a connection that may already be closed, catch the error inside the cleanup.
+
 The package does not need the native `DisposableStack` and `AsyncDisposableStack` globals.

@@ -1,5 +1,5 @@
 import type { AsyncDisposer } from "#lib/disposal/index.ts"
-import { disposer, defineAsyncDisposeAlias } from "#lib/disposal/index.ts"
+import { disposer } from "#lib/disposal/index.ts"
 import { Panic, UnhandledException, isPanic } from "#lib/shared/errors.ts"
 import { invariant, resolveWithAbort } from "#lib/shared/utils.ts"
 import type { Settlement, SettledResult, TaskEvent } from "./settlement.ts"
@@ -110,7 +110,7 @@ class ExitSignalError extends Error {
  * during a run: the state of the graph, each task's outcome, the `$result` deferreds, the first
  * Panic, the task signal, and the cleanup stack.
  */
-export class TaskGraph implements AsyncDisposable {
+export class TaskGraph {
   readonly #tasks: TaskRecord
   readonly #settlement: Settlement
   readonly #controller = new AbortController()
@@ -123,7 +123,6 @@ export class TaskGraph implements AsyncDisposable {
   #state: GraphState = { status: "running" }
   #panic: Panic | undefined
   #settled: Promise<unknown> = Promise.resolve()
-  declare [Symbol.asyncDispose]: () => Promise<void>
 
   constructor(tasks: TaskRecord, settlement: Settlement, signal: AbortSignal | undefined) {
     this.#tasks = tasks
@@ -185,6 +184,9 @@ export class TaskGraph implements AsyncDisposable {
     })
   }
 
+  /**
+   * Runs the cleanup on `$disposer`. It rejects with the cleanup failure when a cleanup throws.
+   */
   async dispose(): Promise<void> {
     await this.#disposer.dispose()
   }
@@ -347,4 +349,3 @@ export class TaskGraph implements AsyncDisposable {
     return raced as V
   }
 }
-defineAsyncDisposeAlias(TaskGraph.prototype)

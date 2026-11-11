@@ -169,13 +169,15 @@ Adds a hook around the whole terminal call, retries included. `fn` must call `ne
 | ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `this.$result`   | `{ [task]: Promise<T> }` | The results of the other tasks. A task that reads its own result, or an unknown task, throws a `Panic`. |
 | `this.$signal`   | `AbortSignal`            | Aborts when the orchestration stops, from a failure, an exit, the deadline, or cancellation.            |
-| `this.$disposer` | `AsyncDisposer`          | Cleanup that runs when the orchestration settles.                                                       |
+| `this.$disposer` | `AsyncDisposer`          | Cleanup that runs when the orchestration settles. A cleanup that throws or rejects throws a `Panic`.    |
 | `this.$race(p)`  | `Promise<V>`             | Resolves with `p`, or rejects with the abort reason when `this.$signal` aborts first.                   |
 | `this.$exit(v)`  | `FlowExit<V>`            | Only in `flow`. Ends the flow with `v`.                                                                 |
 
 All tasks start together. Every orchestration call waits for every running task to settle before it resolves.
 
 Like `run`, an orchestration call resolves with a result union and never rejects with an error from the work. A task failure that `catch` does not map becomes an `UnhandledException`, with the original error as the `cause`. The `TimeoutError` of this call's own deadline and the `CancellationError` of its own signal are part of the result. When the deadline and cancellation both fire, the call resolves with `CancellationError`. A `Panic` throws, and wins over every other outcome.
+
+The cleanup on `this.$disposer` runs after every task settles. When a cleanup throws or rejects, the other cleanup still runs, and then the call throws a `Panic` with the code `TASK_CLEANUP_THROW`. Its `cause` is the cleanup error. When a task failure or a policy failure stopped the graph, the `cause` is a `SuppressedError` instead, with the cleanup error as `error` and that failure as `suppressed`. A `Panic` from a task or from `catch` wins over this `Panic`.
 
 ### `all(tasks, options?)`
 
@@ -273,6 +275,7 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 | `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.                 |
 | `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                   |
 | `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                      |
+| `TASK_CLEANUP_THROW`               | A cleanup on `this.$disposer` threw or rejected.             |
 | `TASK_INVALID_HANDLER`             | A task is not a function.                                    |
 | `TASK_SELF_REFERENCE`              | A task read its own result.                                  |
 | `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                   |
