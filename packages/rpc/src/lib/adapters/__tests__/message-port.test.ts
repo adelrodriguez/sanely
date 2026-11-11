@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import * as z from "zod"
 import {
   domPort,
@@ -15,6 +15,7 @@ import {
 } from "#lib/adapters/message-port.ts"
 import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
+import { SetupError } from "#lib/core/setup-error.ts"
 import { createRouter } from "#lib/server/router.ts"
 import { connect } from "#lib/wire/connect.ts"
 
@@ -233,6 +234,65 @@ describe("receivePort", () => {
   })
 })
 
+describe("the hand-off with the global window", () => {
+  test("receivePort and relayPort use the global window when given no target", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const { dom } = createPortPair()
+    const { deliver, ipc } = createFakeIpc()
+    vi.stubGlobal("window", fake.window)
+
+    try {
+      const received = receivePort("app:port")
+      relayPort(ipc, "app:port")
+      deliver([dom])
+
+      expect(fake.posted).toEqual([
+        { message: { type: "app:port" }, targetOrigin: "https://app.local", transfer: [dom] },
+      ])
+
+      fake.emit({ data: { type: "app:port" }, ports: [dom], source: fake.window })
+      await expect(received).resolves.toBe(dom)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe("the hand-off outside the DOM", () => {
+  test.each([
+    [
+      "receivePort",
+      () => {
+        void receivePort("app:port")
+      },
+    ],
+    [
+      "relayPort",
+      () => {
+        relayPort(createFakeIpc().ipc, "app:port")
+      },
+    ],
+  ])("%s throws no-window without a target or a global window", (caller, start) => {
+    expect(Reflect.get(globalThis, "window")).toBeUndefined()
+
+    const error = (() => {
+      try {
+        start()
+        return null
+      } catch (error) {
+        return error
+      }
+    })()
+
+    expect(error).toBeInstanceOf(SetupError)
+    expect(error).toMatchObject({
+      caller,
+      code: "no-window",
+      message: `${caller} needs a window; outside the DOM, pass one explicitly`,
+    })
+  })
+})
+
 describe("receivePort with a signal", () => {
   test("rejects with the abort reason and detaches its listener", async () => {
     const fake = createFakeWindow()
@@ -309,6 +369,16 @@ describe("relayPort", () => {
     deliver([])
 
     expect(fake.posted[0]?.targetOrigin).toBe("https://other.local")
+  })
+
+  test("relays nothing for an already-aborted signal", () => {
+    const fake = createFakeWindow("https://app.local")
+    const { deliver, ipc } = createFakeIpc()
+
+    relayPort(ipc, "app:port", { signal: AbortSignal.abort(), target: fake.window })
+    deliver([])
+
+    expect(fake.posted).toEqual([])
   })
 
   test("stops relaying once the signal aborts", () => {

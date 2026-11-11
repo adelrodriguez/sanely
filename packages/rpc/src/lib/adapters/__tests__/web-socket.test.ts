@@ -143,6 +143,25 @@ describe("webSocket", () => {
     expect(seen).toEqual([{ kind: "req" }])
   })
 
+  test("unsubscribing detaches the frame listener", async () => {
+    const [socket, peer] = createSocketPair()
+    const seen: unknown[] = []
+
+    const stop = webSocket(socket).onMessage((data) => {
+      seen.push(data)
+    })
+
+    if (typeof stop === "function") {
+      stop()
+    }
+
+    peer.send('{"kind":"req"}')
+    await Promise.resolve()
+
+    expect(socket.listenerCount("message")).toBe(0)
+    expect(seen).toEqual([])
+  })
+
   test("drops malformed frames instead of throwing out of the listener", () => {
     const seen: unknown[] = []
     let handler: MessageListener | undefined

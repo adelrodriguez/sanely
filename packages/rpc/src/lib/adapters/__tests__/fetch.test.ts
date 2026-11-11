@@ -112,6 +112,15 @@ describe("fetchHandler and fetchTransport", () => {
     })
   })
 
+  test("answer a malformed escape in the channel name with unknown-channel", async () => {
+    const { handler } = serve()
+
+    await expect(post(handler, "%E0%A4%A", "{}")).resolves.toMatchObject({
+      body: { error: { detail: { code: "unknown-channel", path: "%E0%A4%A" } } },
+      status: 404,
+    })
+  })
+
   test("decode an escaped channel name", async () => {
     const dotted = defineContract({ "a b": channel({ input: z.string(), output: z.string() }) })
     const handler = fetchHandler(createRouter(dotted, { "a b": ({ input }) => input }))

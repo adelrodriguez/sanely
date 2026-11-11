@@ -391,6 +391,65 @@ describe("connect", () => {
     await expect(closed).resolves.toMatchObject({ cause: reason, code: "closed" })
   })
 
+  test("an already-aborted session signal closes the connection at once", async () => {
+    const reason = new Error("window already closed")
+    const { closed, transport } = connect(createWirePair()[0], {
+      signal: AbortSignal.abort(reason),
+    })
+
+    await expect(closed).resolves.toMatchObject({ cause: reason, code: "closed" })
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      cause: reason,
+      code: "closed",
+    })
+  })
+
+  test("a closed end stops serving, even over a wire it cannot unsubscribe from", async () => {
+    const [pairedWire, clientWire] = createWirePair()
+    // `onMessage` returns nothing, so the listener stays attached after `close`.
+    const serverWire: Wire = {
+      onMessage: (listener) => {
+        pairedWire.onMessage(listener)
+      },
+      send: pairedWire.send,
+    }
+    let calls = 0
+    const server = connect(serverWire, {
+      router: createRouter(pullContract, {
+        "math.add": () => {
+          calls += 1
+          return 1
+        },
+      }),
+    })
+    const { transport } = connect(clientWire, { timeoutMs: 20 })
+
+    server.close()
+
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      code: "timeout",
+    })
+    expect(calls).toBe(0)
+  })
+
+  test("ignores messages that are not objects", async () => {
+    const [serverWire, peerWire] = createWirePair()
+    const seen: unknown[] = []
+
+    connect(serverWire, { router: createRouter(pullContract, { "math.add": () => 1 }) })
+    peerWire.onMessage((data) => {
+      seen.push(data)
+    })
+    for (const data of ["hello", null, 42, ["req"]]) {
+      peerWire.send(data)
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+
+    expect(seen).toEqual([])
+  })
+
   test("closed resolves on close() too", async () => {
     const [wire] = createWirePair()
     const { close, closed } = connect(wire)
@@ -693,6 +752,11 @@ describe("toWire / fromWire", () => {
 
   test("rejects forged or mistyped error details as malformed-envelope", () => {
     for (const forged of [
+      { error: { detail: "validation", message: "x", name: "ChannelError" }, ok: false },
+      {
+        error: { detail: { code: "validation", issues: ["bad"] }, message: "x", name: "E" },
+        ok: false,
+      },
       { error: { detail: { code: "made-up" }, message: "x", name: "ChannelError" }, ok: false },
       {
         error: { detail: { code: "validation", issues: "nope" }, message: "x", name: "E" },
@@ -1039,6 +1103,53 @@ describe("connect over a pending wire", () => {
     expect(sent[0]).toContain('"first"')
     client.close()
     await settled
+  })
+
+  test("closing after the wire arrives detaches the listener from it", async () => {
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending)
+    let attached = 0
+
+    deliver({
+      onMessage: () => {
+        attached += 1
+        return () => {
+          attached -= 1
+        }
+      },
+      send: () => null,
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    expect(attached).toBe(1)
+
+    client.close()
+
+    expect(attached).toBe(0)
+  })
+
+  test("cancels a flushed call on the peer instead of withdrawing it", async () => {
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending, { timeoutMs: Infinity })
+    const controller = new AbortController()
+    const sent: unknown[] = []
+
+    const call = Promise.resolve(
+      client.transport("math.add", { a: 1, b: 2 }, { signal: controller.signal })
+    ).catch((error: unknown) => error)
+    deliver({ onMessage: () => () => null, send: (data) => sent.push(data) })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    controller.abort("gave up")
+
+    await expect(call).resolves.toBe("gave up")
+    expect(sent).toMatchObject([
+      { id: 0, kind: "req" },
+      { id: 0, kind: "cancel" },
+    ])
+    client.close()
   })
 
   test("releases the payload of a queued call that timed out", async () => {
