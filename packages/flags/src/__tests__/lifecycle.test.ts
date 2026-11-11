@@ -486,6 +486,34 @@ describe("first-class cache", () => {
     expect(storeReports(reports).map(({ operation }) => operation)).toEqual(["validate"])
   })
 
+  test.each([{}, { distinctId: "" }, { distinctId: Number.NaN }, { distinctId: true }])(
+    "never shares a decision for an identity without a usable distinctId: %o",
+    async (identity) => {
+      const stored = new Map<string, Decision>()
+      const decideOne = vi.fn((): Decision => TRUE)
+      const flags = createFlags({
+        cache: {
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        provider: defineProvider({ decideOne, name: "test" }),
+      })
+
+      // An untyped session object reaches the reader without a type check.
+      const details = await flags.for(identity as Identity).details(betaAccess)
+      expect(details).toMatchObject({ source: "default", value: false })
+      expect(details.error?._tag).toBe("IdentityNotFoundError")
+      await flushBackground()
+      expect(stored.size).toBe(0)
+      expect(decideOne).not.toHaveBeenCalled()
+    }
+  )
+
   test("reports get and set failures without failing evaluation", async () => {
     const reports: ErrorReport[] = []
     const flags = createFlags({
