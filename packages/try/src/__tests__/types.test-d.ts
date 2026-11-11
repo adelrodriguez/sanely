@@ -165,6 +165,28 @@ class InternalError extends Error {
   expectTypeOf(syncResult).toEqualTypeOf<number | RetryExhaustedError>()
 }
 
+// Keeps runSync() on retry(policy) builders whose policy has no delay.
+{
+  const constantResult = try$.retry({ backoff: "constant", limit: 2 }).runSync(() => 1)
+  const linearResult = try$.retry({ backoff: "linear", limit: 2 }).runSync(() => 1)
+  const jitterResult = try$
+    .retry({ backoff: "exponential", delayMs: 0, jitter: true, limit: 2 })
+    .runSync(() => 1)
+  const unionResult = try$
+    .retry(Math.random() > 0.5 ? 3 : { backoff: "linear" as const, limit: 5 })
+    .runSync(() => 1)
+  const replacedResult = try$
+    .retry({ backoff: "constant", delayMs: 10, limit: 2 })
+    .retry(3)
+    .runSync(() => 1)
+
+  expectTypeOf(constantResult).toEqualTypeOf<number | RetryExhaustedError>()
+  expectTypeOf(linearResult).toEqualTypeOf<number | RetryExhaustedError>()
+  expectTypeOf(jitterResult).toEqualTypeOf<number | RetryExhaustedError>()
+  expectTypeOf(unionResult).toEqualTypeOf<number | RetryExhaustedError>()
+  expectTypeOf(replacedResult).toEqualTypeOf<number | RetryExhaustedError>()
+}
+
 // Adds RetryExhaustedError to retry(policy) builder results.
 {
   const retryBuilder = try$.retry({ backoff: "constant", delayMs: 1, limit: 3 })
@@ -1120,6 +1142,41 @@ function _negativeTypeTests() {
     void signalBuilder.runSync
   }
 
+  // Keeps runSync() hidden when retry() follows timeout() or signal().
+  {
+    const signal = new AbortController().signal
+
+    // @ts-expect-error -- runSync() stays unavailable after timeout()
+    void try$.timeout(100).retry(3).runSync
+    // @ts-expect-error -- runSync() stays unavailable after signal()
+    void try$.signal(signal).retry(3).runSync
+    // @ts-expect-error -- runSync() stays unavailable after timeout()
+    void try$.timeout(100).retry({ backoff: "linear", limit: 2 }).runSync
+    // @ts-expect-error -- runSync() stays unavailable after signal()
+    void try$.signal(signal).retry(3).retry(2).runSync
+
+    const wrappedRetryBuilder = try$
+      .wrap((_ctx, next) => next())
+      .timeout(100)
+      .retry(3)
+
+    // @ts-expect-error -- runSync() stays unavailable after timeout()
+    void wrappedRetryBuilder.runSync
+  }
+
+  // Hides runSync() for retry policies that may wait.
+  {
+    const widenedPolicy: ReturnType<typeof try$.retryOptions> = { backoff: "linear", limit: 2 }
+    const delayMs = Number.parseInt("0", 10)
+
+    // @ts-expect-error -- a delay makes the policy async
+    void try$.retry({ backoff: "linear", delayMs: 10, limit: 2 }).runSync
+    // @ts-expect-error -- a widened delay may be async
+    void try$.retry({ backoff: "constant", delayMs, limit: 2 }).runSync
+    // @ts-expect-error -- a widened policy may be async
+    void try$.retry(widenedPolicy).runSync
+  }
+
   // Rejects invalid literal retry limits.
   {
     // @ts-expect-error -- zero is not a valid retry limit
@@ -1141,7 +1198,7 @@ function _negativeTypeTests() {
   // Hides runSync() for union-typed retry policies and rejects invalid union members.
   {
     const unionBuilder = try$.retry(
-      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, limit: 5 }
+      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delayMs: 10, limit: 5 }
     )
 
     // @ts-expect-error -- runSync is unavailable when the policy may be async

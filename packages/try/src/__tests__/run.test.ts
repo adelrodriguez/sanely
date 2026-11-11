@@ -390,9 +390,33 @@ describe("retry behavior", () => {
   })
 
   it.each([
+    { backoff: "constant", limit: 3 },
+    { backoff: "constant", jitter: true, limit: 3 },
+    { backoff: "linear", delayMs: 0, limit: 3 },
+    { backoff: "linear", limit: 3 },
+    { backoff: "exponential", jitter: true, limit: 3, maxDelayMs: 100 },
+  ] as const)("retries a policy with no delay in runSync: %o", (policy) => {
+    const attempts: number[] = []
+
+    const result = try$.retry(policy).runSync((ctx) => {
+      attempts.push(ctx.retry.attempt)
+
+      if (ctx.retry.attempt < 3) {
+        throw new Error("retry")
+      }
+
+      return "done"
+    })
+
+    expect(result).toBe("done")
+    expect(attempts).toEqual([1, 2, 3])
+  })
+
+  it.each([
     { backoff: "constant", delayMs: 10, limit: 2 },
-    { backoff: "constant", jitter: true, limit: 2 },
+    { backoff: "constant", delayMs: 10, jitter: true, limit: 2 },
     { backoff: "linear", delayMs: 10, limit: 2 },
+    { backoff: "exponential", delayMs: 10, limit: 2 },
   ] as const)("panics when runSync receives an async retry policy via casts: %o", (policy) => {
     const unsafeBuilder = try$.retry(policy) as unknown as {
       runSync(tryFn: () => number): unknown
@@ -761,13 +785,15 @@ describe("timeout and cancellation behavior", () => {
     const reason = new Error("stop")
     let attempts = 0
 
-    const result = try$
-      .signal(AbortSignal.abort(reason))
-      .retry(2)
-      .runSync(() => {
-        attempts += 1
-        return 1
-      })
+    // The types hide runSync after signal(), but untyped code can still call it.
+    const untypedBuilder = try$.signal(AbortSignal.abort(reason)).retry(2) as unknown as {
+      runSync(tryFn: () => number): unknown
+    }
+
+    const result = untypedBuilder.runSync(() => {
+      attempts += 1
+      return 1
+    })
 
     expect(result).toBeInstanceOf(CancellationError)
     expect((result as CancellationError).cause).toBe(reason)
