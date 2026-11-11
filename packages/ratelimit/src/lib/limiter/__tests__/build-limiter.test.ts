@@ -80,6 +80,24 @@ describe("buildLimiter", () => {
     ).toThrow(InvalidOptionError)
   })
 
+  it("reads a timeout given as a time expression", async () => {
+    const limiter = buildLimiter({ store: silentStore, timeout: "1m" })
+    const quick = limiter({ algorithm: threePerMinute, name: "quick", timeout: "10ms" })
+
+    const result = await rateLimit(quick, "k")
+
+    expect(result).toMatchObject({ error: { cause: { timeout: 10 } }, reason: "storeError" })
+  })
+
+  it("rejects a timeout string that is not a time expression", () => {
+    expect(() =>
+      buildLimiter({ store: memoryStore(), timeout: "soon" as "1s" })({
+        algorithm: threePerMinute,
+        name: "x",
+      })
+    ).toThrow(expect.objectContaining({ option: "timeout", value: "soon" }))
+  })
+
   it("lets limiter settings override factory settings", async () => {
     const limiter = buildLimiter({ store: silentStore, timeout: 60_000 })
     const quick = limiter({ algorithm: threePerMinute, name: "quick", timeout: 10 })
