@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import type { JsonTestResults } from "vitest/node"
 import { budgets } from "./bench-budgets.ts"
 
 // Compares the benchmarks of a pull request with its base branch and with `bench-budgets.ts`, and
@@ -57,25 +56,77 @@ function cell(name: string) {
   return code(name).replaceAll("|", "\\|")
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+// Reads the fields this script uses from one `vitest bench --reporter=json` file, and throws when
+// the file lacks one of them.
+function parseReport(text: string, file: string) {
+  function fail(field: string) {
+    return new Error(`${file} is not a Vitest benchmark report: ${field} is missing`)
+  }
+
+  function list(value: unknown, field: string): unknown[] {
+    if (!Array.isArray(value)) throw fail(field)
+    return value
+  }
+
+  function record(value: unknown, field: string) {
+    if (!isRecord(value)) throw fail(field)
+    return value
+  }
+
+  function string(value: unknown, field: string) {
+    if (typeof value !== "string") throw fail(field)
+    return value
+  }
+
+  const report = record(JSON.parse(text), "the report")
+
+  return list(report.testResults, "testResults").flatMap((result) =>
+    list(record(result, "a test file").assertionResults, "assertionResults").map((entry) => {
+      const test = record(entry, "a test")
+
+      return {
+        group: list(test.ancestorTitles, "ancestorTitles")
+          .map((title) => string(title, "an ancestor title"))
+          .join(" > "),
+        tasks: list(test.benchmarks, "benchmarks").flatMap((benchmark) =>
+          list(record(benchmark, "a benchmark").tasks, "tasks").map((value) => {
+            const task = record(value, "a task")
+            const latency = record(task.latency, "latency")
+
+            return {
+              mean: typeof latency.mean === "number" ? latency.mean : Number.NaN,
+              name: string(task.name, "a task name"),
+            }
+          })
+        ),
+        title: string(test.title, "a test title"),
+      }
+    })
+  )
+}
+
 // The mean of each round, by group, algorithm and case, in microseconds.
 function read(directory: string, pattern: RegExp) {
   const results = new Map<string, Map<string, Map<string, number[]>>>()
   const files = existsSync(directory) ? readdirSync(directory) : []
 
   for (const file of files.filter((name) => pattern.test(name))) {
-    const report = JSON.parse(readFileSync(join(directory, file), "utf8")) as JsonTestResults
+    const report = parseReport(readFileSync(join(directory, file), "utf8"), file)
 
-    for (const test of report.testResults.flatMap((result) => result.assertionResults)) {
-      const group = test.ancestorTitles.join(" > ")
+    for (const { group, tasks, title } of report) {
       const algorithms = results.get(group) ?? new Map<string, Map<string, number[]>>()
-      const cases = algorithms.get(test.title) ?? new Map<string, number[]>()
+      const cases = algorithms.get(title) ?? new Map<string, number[]>()
 
-      for (const task of test.benchmarks.flatMap((benchmark) => benchmark.tasks)) {
-        if (!Number.isFinite(task.latency.mean)) continue
-        cases.set(task.name, [...(cases.get(task.name) ?? []), task.latency.mean * 1000])
+      for (const task of tasks) {
+        if (!Number.isFinite(task.mean)) continue
+        cases.set(task.name, [...(cases.get(task.name) ?? []), task.mean * 1000])
       }
 
-      algorithms.set(test.title, cases)
+      algorithms.set(title, cases)
       results.set(group, algorithms)
     }
   }

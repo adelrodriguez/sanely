@@ -31,7 +31,9 @@ const ORDINALS = ["1st", "2nd", "3rd", "15th", "28th"]
 const MINUTES = [2, 5, 10, 15, 30]
 
 function pick<T>(values: readonly T[], index: number): T {
-  return values[index % values.length] as T
+  const value = values[index % values.length]
+  if (value === undefined) throw new Error("pick needs a list without undefined entries")
+  return value
 }
 
 function phrase(index: number): string {

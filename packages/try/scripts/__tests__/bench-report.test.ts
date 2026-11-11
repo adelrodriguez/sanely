@@ -91,6 +91,19 @@ describe("benchmark reporting", () => {
     ).toThrow("Benchmark task is missing name")
   })
 
+  it("throws when the report is not a JSON object", () => {
+    expect(() => parseRawBenchmarkPayload("null")).toThrow("Benchmark payload is not an object")
+  })
+
+  it("throws when a benchmark or task is not an object", () => {
+    expect(() => normalizeBenchmarkPayload(report([null]))).toThrow(
+      "Benchmark unknown is missing tasks"
+    )
+    expect(() => normalizeBenchmarkPayload(report([{ name: "runSync", tasks: [null] }]))).toThrow(
+      "Benchmark task is not an object"
+    )
+  })
+
   it("throws when the report has no test results", () => {
     expect(() => normalizeBenchmarkPayload({})).toThrow("Benchmark payload is missing testResults")
   })
