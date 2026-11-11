@@ -61,6 +61,8 @@ The monitor owns its whole configuration: the target, the schedule, and the `isC
 
 The first subscriber starts the schedule. The last subscriber to leave stops it and cancels a check that is in progress. A monitor has no other lifecycle, so no component can stop it while another still reads it.
 
+[ADR 0001](../adr/0001-one-monitor-per-page.md) records this decision and the designs it replaced.
+
 ## Checks follow the user's attention
 
 A check runs at these times:
