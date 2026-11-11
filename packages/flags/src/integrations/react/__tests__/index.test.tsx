@@ -2,7 +2,7 @@
 
 import { setTimeout as sleep } from "node:timers/promises"
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
-import { Component, type ReactNode, Suspense } from "react"
+import { Component, type ReactNode, StrictMode, Suspense } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -126,6 +126,14 @@ function captureCache() {
     return captured
   }
   return { capture, controls }
+}
+
+function First() {
+  return <span>{`first:${useFlag(beta)}`}</span>
+}
+
+function Second() {
+  return <span>{`second:${useFlag(beta)}`}</span>
 }
 
 function CacheConsumer() {
@@ -455,6 +463,61 @@ describe("React integration", () => {
     })
     expect(await screen.findByText("true:dark")).toBeTruthy()
     expect(decide).toHaveBeenCalledTimes(5)
+  })
+
+  it("re-renders readers on invalidate after React resubscribes them", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const { capture, controls } = captureCache()
+    // Strict mode subscribes, unsubscribes, and subscribes again, as a remount of the same reader
+    // does in production.
+    await renderAsync(
+      <StrictMode>
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <Value item={beta} />
+          </Suspense>
+        </FlagsProvider>
+      </StrictMode>
+    )
+    expect(await screen.findByText("true")).toBeTruthy()
+    const calls = decideOne.mock.calls.length
+
+    state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(calls + 1)
+  })
+
+  it("re-renders a reader that replaces another reader of the same flags", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<First />))
+    expect(await screen.findByText("first:true")).toBeTruthy()
+    // React runs the first reader's cleanup before the second reader subscribes.
+    await act(() => {
+      rerender(tree(<Second />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("second:true")).toBeTruthy()
+    const calls = decideOne.mock.calls.length
+
+    state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("second:false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(calls + 1)
   })
 
   it("re-evaluates only for change notifications naming a read key", async () => {

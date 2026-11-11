@@ -341,11 +341,11 @@ function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionSto
       }
       return () => {
         listeners.delete(listener)
+        // The store stays registered, so `invalidate` and `clear` still reach a reader that React
+        // subscribes again, as in strict mode or when one reader replaces another.
         if (listeners.size === 0) {
           detach?.()
           detach = undefined
-          // Do not evict a newer store that reused this key after the last unsubscribe.
-          if (bucket.stores.get(key) === store) bucket.stores.delete(key)
         }
       }
     },
