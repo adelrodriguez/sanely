@@ -928,6 +928,27 @@ describe("all", () => {
     }
   })
 
+  it("keeps the result when the deadline passes while cleanup runs", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const result = await try$.timeout(50).all({
+        a() {
+          this.$disposer.defer(() => {
+            // Slow teardown: the deadline passes after every task settled.
+            vi.advanceTimersByTime(100)
+          })
+
+          return 1
+        },
+      })
+
+      expect(result).toEqual({ a: 1 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("reports the graph deadline instead of calling catch when a task fails after the deadline elapsed", async () => {
     const boom = new Error("boom")
     let catchCalls = 0

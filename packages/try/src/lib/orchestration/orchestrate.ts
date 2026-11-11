@@ -1,4 +1,5 @@
 import type { BuilderConfig } from "#lib/policies/options.ts"
+import { createSuppressedError } from "#lib/disposal/index.ts"
 import { BaseExecution } from "#lib/execution/base.ts"
 import { Panic, UnhandledException, isPanic } from "#lib/shared/errors.ts"
 import { checkIsPromiseLike, invariant } from "#lib/shared/utils.ts"
@@ -9,6 +10,12 @@ import { type CatchOptions, TaskGraph, type TaskRecord } from "./task-graph.ts"
  * The outcome of an orchestration before control state and Panics are applied.
  */
 type Outcome = { mapped: unknown } | { thrown: unknown } | { panic: Panic }
+
+/**
+ * What running the cleanup on `$disposer` did. It records the thrown value, so a cleanup that
+ * throws `undefined` still counts as a failure.
+ */
+type Cleanup = { status: "done" } | { status: "threw"; error: unknown }
 
 type CatchFn = CatchOptions<Record<string, unknown>, unknown>["catch"]
 
@@ -51,22 +58,36 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
    * tasks to settle before resolving (so no task code is still running once the orchestration
    * returns), and reports the outcome as a value, the same way `run()` does:
    *
-   * - A Panic throws, and wins over everything else.
+   * - A Panic throws, and wins over everything else. A task Panic comes first, then a Panic from
+   *   `catch`, then a Panic for a cleanup that threw.
    * - This call's own cancellation, then its deadline, win over the result or the failure.
    * - A mapped result is returned as is.
    * - An unmapped task failure becomes an {@link UnhandledException} with the failure as `cause`.
    */
   async #runGraph(): Promise<unknown> {
-    await using graph = new TaskGraph(this.#tasks, settlements[this.#mode], this.executionSignal)
+    const graph = new TaskGraph(this.#tasks, settlements[this.#mode], this.executionSignal)
     let outcome: Outcome
+    // The failure that stopped the graph, kept even after catch maps it. A record, so a task that
+    // throws undefined still counts.
+    let stoppedBy: { error: unknown } | undefined
 
     try {
       outcome = { mapped: await this.race(graph.run()) }
     } catch (error) {
+      stoppedBy = { error }
       outcome = await this.#mapFailure(graph, error)
     } finally {
       await graph.waitForTasksToSettle()
     }
+
+    // Control state may have changed while tasks ran or settled, and it takes priority over the
+    // outcome; the shared chain reports cancellation over the graph deadline when both fired. Read
+    // it before the cleanup runs, so the time that cleanup takes never changes the result.
+    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
+    const cleanup = await graph.dispose().then(
+      (): Cleanup => ({ status: "done" }),
+      (error: unknown): Cleanup => ({ error, status: "threw" })
+    )
 
     // A Panic is programmer misuse, so it overrides any result or failure, as in run(): even one
     // that settled after catch mapped an earlier failure, or after cancellation or the deadline.
@@ -80,9 +101,16 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
       throw outcome.panic
     }
 
-    // Control state may have changed while tasks ran or settled, and it takes priority over the
-    // outcome; the shared chain reports cancellation over the graph deadline when both fired.
-    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
+    // A cleanup that throws is misuse, like a catch handler that throws. The Panic keeps this
+    // call's own policy failure, or else the task failure that stopped the graph, as the suppressed
+    // error, so the cleanup does not hide it.
+    if (cleanup.status === "threw") {
+      const suppressed = controlError ? { error: controlError } : stoppedBy
+
+      throw new Panic("TASK_CLEANUP_THROW", {
+        cause: suppressed ? createSuppressedError(cleanup.error, suppressed.error) : cleanup.error,
+      })
+    }
 
     if (controlError) {
       return controlError
