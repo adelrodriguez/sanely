@@ -46,7 +46,7 @@ const limiter = buildLimiter({
 
 const perIp = limiter({
   name: "api:ip",
-  algorithm: slidingWindow({ limit: 30, window: 60 * 60 * 1000 }),
+  algorithm: slidingWindow({ limit: 30, window: "1h" }),
 })
 
 const result = await rateLimit(perIp, ip)
@@ -56,7 +56,7 @@ if (!result.success) {
 }
 ```
 
-For readable durations, such as `ms("1h")`, use [`@sanely/duration`](../duration). The guides use it in their examples.
+A window, an interval, or a timeout takes milliseconds or a time expression from [`@sanely/duration`](../duration), such as `"1h"`.
 
 ## Documentation
 
