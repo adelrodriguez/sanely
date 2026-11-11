@@ -460,6 +460,9 @@ describe("fromSerializable", () => {
     )
   })
 
+  // Each of the 30 cases builds a cause chain of up to 150 links, then serializes and revives it.
+  // That takes about 0.5 s alone on a 4-core machine, and more than 5 s when the root `pnpm test`
+  // runs every package at once, so the 5 s default fails on a busy machine.
   it("caps revived cause chains at the documented depth of 100", () => {
     class LinkError extends Tagged("LinkError")<{ index: number }>() {}
 
@@ -488,5 +491,5 @@ describe("fromSerializable", () => {
       ),
       { numRuns: 30 }
     )
-  })
+  }, 60_000)
 })
