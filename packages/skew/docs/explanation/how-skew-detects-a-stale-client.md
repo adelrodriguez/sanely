@@ -74,7 +74,7 @@ A check runs at these times:
 
 The interval pauses while the tab is hidden. A hidden tab cannot show a notice, so a check there wastes a request. The monitor listens to `visibilitychange` and not to `focus`. The browser also fires `focus` when the user comes back from another window while the page was visible the whole time, so a `focus` check adds a request and no information.
 
-A check that takes longer than 30 seconds stops and records a timeout error. A monitor that you create with `createDeploymentMonitor` can change this limit through `checkTimeout`.
+A check that takes longer than 30 seconds stops and records a timeout error. A monitor that you create with `createDeploymentMonitor` can change this limit through `checkTimeout`, in milliseconds or as a time expression such as `"10s"`.
 
 ## Development builds stay inert
 

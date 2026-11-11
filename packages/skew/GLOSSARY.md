@@ -14,7 +14,7 @@ Each word below belongs to one kind of text. Use it only there.
 
 ## Packages
 
-**Core.** The `@sanely/skew` root export. It holds the protocol and the headless runtime, and it has no runtime dependencies.
+**Core.** The `@sanely/skew` root export. It holds the protocol and the headless runtime. Its only runtime dependency is `@sanely/duration`, which reads time expressions.
 
 **Adapter.** A build-tool or framework package: `@sanely/skew/vite` or `@sanely/skew/next`. An adapter writes the embed into the built app and makes the descriptor available. Adapters can use any mechanism of their framework, but every adapter must give the same runtime result. Do not call an adapter a "producer".
 

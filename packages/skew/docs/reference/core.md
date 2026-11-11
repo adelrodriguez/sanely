@@ -1,15 +1,15 @@
 # `@sanely/skew` reference
 
-The core package: the protocol and the headless runtime. It has no runtime dependencies and does not import React or an adapter.
+The core package: the protocol and the headless runtime. Its only runtime dependency is [`@sanely/duration`](../../../duration), and it does not import React or an adapter.
 
 ## Monitors
 
 ### `createDeploymentMonitor(source?, options?)`
 
 ```ts
-function createDeploymentMonitor(
+function createDeploymentMonitor<const T extends string>(
   source?: DeploymentSource,
-  options?: DeploymentMonitorOptions
+  options?: DeploymentMonitorOptions<T>
 ): DeploymentMonitor
 ```
 
@@ -17,11 +17,11 @@ Creates an independent monitor. The registry does not hold it, so `getMonitor` a
 
 `DeploymentMonitorOptions`:
 
-| Option         | Type                  | Default                   | Description                                                                                     |
-| -------------- | --------------------- | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `checkTimeout` | `number`              | `DEFAULT_CHECK_TIMEOUT`   | Milliseconds before a check stops with a timeout error. Must be finite. You cannot turn it off. |
-| `environment`  | `RuntimeEnvironment`  | The browser environment   | Timers, events, storage, and reload. Replace it in tests or in a runtime that is not a browser. |
-| `isCurrent`    | `IsDeploymentCurrent` | Exact deployment ID match | The comparison that applies when no subscriber sets `isCurrent`.                                |
+| Option         | Type                  | Default                   | Description                                                                                                                            |
+| -------------- | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkTimeout` | `number \| string`    | `DEFAULT_CHECK_TIMEOUT`   | Milliseconds or a time expression, such as `"10s"`, before a check stops with a timeout error. Must be finite. You cannot turn it off. |
+| `environment`  | `RuntimeEnvironment`  | The browser environment   | Timers, events, storage, and reload. Replace it in tests or in a runtime that is not a browser.                                        |
+| `isCurrent`    | `IsDeploymentCurrent` | Exact deployment ID match | The comparison that applies when no subscriber sets `isCurrent`.                                                                       |
 
 ### `getDefaultMonitor()`
 
@@ -54,6 +54,8 @@ Returns the shared monitor for `source`. Each source object has one monitor. Aft
 | `destroy()`                     | Stops the schedule, cancels a check in progress, and removes all listeners. After `destroy()`, `subscribe`, `check`, and `reload` do nothing. |
 
 `DeploymentSubscriberOptions` has `checkInterval`, `checkOnReconnect`, `checkOnSubscribe`, `checkOnVisible`, and `isCurrent`. The [React reference](./react.md#options) gives their types and defaults.
+
+`checkTimeout` and `checkInterval` take milliseconds or a time expression from `@sanely/duration`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from `@sanely/duration` first. `createDeploymentMonitor` and `subscribe` throw `InvalidTimeExpressionError` for a string that is not a time expression.
 
 ## `DeploymentStatus`
 
