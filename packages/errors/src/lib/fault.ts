@@ -63,7 +63,7 @@ function renderStack(fault: Fault): string | undefined {
   if (base.kind === "missing") return undefined
 
   const head = base.kind === "headed" ? `${getHeader(fault)}${base.frames}` : base.stack
-  const cause = causes.get(fault)
+  const { cause } = fault
   return cause instanceof Error && cause.stack
     ? `${head}${CAUSE_BLOCK_MARKER}${cause.stack.replaceAll("\n", "\n  ")}`
     : head
@@ -82,12 +82,6 @@ const causeProperty: PropertyDescriptor = {
     causes.set(this, cause)
     this.stack = renderStack(this)
   },
-}
-
-// Revival sets a cause without writing it into the stack, because a serialized stack already
-// holds its cause block.
-export function restoreCause(fault: Fault, cause: unknown): void {
-  causes.set(fault, cause)
 }
 
 // Revival keeps a serialized stack as it was, and makes it the base that later message and
@@ -216,6 +210,8 @@ export abstract class Fault<
 
   withCause(cause: unknown): this {
     this.cause = cause
+    // A subclass field can replace the cause accessor, so withCause writes the stack itself.
+    this.stack = renderStack(this)
     return this
   }
 

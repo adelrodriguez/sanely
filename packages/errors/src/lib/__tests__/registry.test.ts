@@ -170,6 +170,21 @@ describe("registry", () => {
     )
   })
 
+  it("restores the serialized cause of a subclass with a cause field", () => {
+    class FieldError extends Tagged("FieldError")() {
+      override cause: unknown = new Error("default")
+    }
+    const Faults = registry({ FieldError })
+    const sent = new FieldError().withCause(new Error("wire"))
+
+    const restored = Faults.fromSerializable(sent.toSerializable())
+
+    expect(sent.stack).toContain("Caused by: Error: wire")
+    expect(restored.cause).toBeInstanceOf(Error)
+    expect((restored.cause as Error).message).toBe("wire")
+    expect(restored.stack).toBe(sent.stack)
+  })
+
   it("restores registered causes beneath unregistered faults", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 
