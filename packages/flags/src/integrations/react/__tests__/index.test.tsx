@@ -983,6 +983,30 @@ describe("server rendering", () => {
     expect(client.seen).toContain("client-user")
   })
 
+  it.each([
+    '{"distinctId":"core"}',
+    '{"distinctId":true,"flags":{"beta":{"kind":"boolean","source":"cache","value":true}}}',
+    "null",
+  ])("ignores a snapshot that does not parse and evaluates: %s", async (json) => {
+    const client = makeFlags("bulk")
+    client.state.value = false
+    // A snapshot crosses the network as JSON, so the provider cannot trust its shape.
+    const malformed = JSON.parse(json) as FlagSnapshot
+    await renderAsync(<App flags={client.flags} snapshot={malformed} />)
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("ignores snapshot entries with an unknown source", async () => {
+    const client = makeFlags("bulk")
+    client.state.value = false
+    const snapshot = JSON.parse(
+      '{"distinctId":"core","flags":{"beta":{"kind":"boolean","source":"guess","value":true},"theme":{"kind":"variant","source":"provider","value":"dark"}}}'
+    ) as FlagSnapshot
+    await renderAsync(<App flags={client.flags} snapshot={snapshot} />)
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+    expect(client.decide).toHaveBeenCalled()
+  })
+
   it("drops a snapshot value after a change notification and evaluates", async () => {
     const identity = { distinctId: "user" }
     const { html, snapshot } = await serverRender(identity)

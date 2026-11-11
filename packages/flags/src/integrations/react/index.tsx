@@ -413,6 +413,44 @@ function snapshotApplies(context: FlagsContextValue): boolean {
   return identity === undefined || distinctIdOf(identity) === snapshot.distinctId
 }
 
+const SNAPSHOT_SOURCES: ReadonlySet<unknown> = new Set<FlagResult["source"]>([
+  "cache",
+  "default",
+  "provider",
+])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isSnapshotEntry(entry: unknown): entry is FlagSnapshotEntry {
+  return (
+    isRecord(entry)
+    && (entry.kind === "boolean" || entry.kind === "variant")
+    && SNAPSHOT_SOURCES.has(entry.source)
+    && (typeof entry.value === "boolean" || typeof entry.value === "string")
+  )
+}
+
+/**
+ * Reads a snapshot that crossed the network as JSON. A snapshot whose shape does not parse is
+ * ignored, and so is each entry that does not, so a bad snapshot costs an evaluation, not a render.
+ * `snapshotEntry` checks each entry against its flag when a hook reads it.
+ */
+function parseSnapshot(
+  snapshot: unknown
+): Pick<SnapshotState, "distinctId" | "entries"> | undefined {
+  if (!isRecord(snapshot) || !isRecord(snapshot.flags)) return undefined
+  const { distinctId } = snapshot
+  if (distinctId !== null && typeof distinctId !== "string" && typeof distinctId !== "number") {
+    return undefined
+  }
+  const entries = Object.entries(snapshot.flags).filter(
+    (pair): pair is [string, FlagSnapshotEntry] => isSnapshotEntry(pair[1])
+  )
+  return { distinctId, entries: new Map(entries) }
+}
+
 function createFlagCache(
   flags: AnyFlags,
   cacheOptions: CacheInput | undefined,
@@ -420,15 +458,12 @@ function createFlagCache(
 ): FlagCache {
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
   const clock = getChangeClock(flags)
+  const parsed = parseSnapshot(snapshot)
   return {
     buckets: new Map(),
     maxEntries,
     pendingTtl,
-    snapshot: snapshot && {
-      distinctId: snapshot.distinctId,
-      entries: new Map(Object.entries(snapshot.flags)),
-      watch: { clock, since: clock.count },
-    },
+    snapshot: parsed && { ...parsed, watch: { clock, since: clock.count } },
     ttl,
   }
 }
