@@ -30,7 +30,7 @@ try {
 }
 ```
 
-To check the input without its value, use `isValidTimeExpression(input)`.
+If you need to check the input but not its value, use `isValidTimeExpression(input)`.
 
 ## Accept one time expression for a unit function
 
@@ -44,8 +44,8 @@ if (isTimeExpression(input)) {
 }
 ```
 
-A narrowed `TimeExpression` can be a bare number, which means milliseconds. So only `ms` takes it. For another unit, use `convert(input, "seconds")`, which throws `InvalidTimeExpressionError` for a bare number.
+A narrowed `TimeExpression` can be a bare number, which means milliseconds, so only `ms` takes it. For another unit, use `convert(input, "seconds")`, which throws `InvalidTimeExpressionError` for a bare number.
 
-`isTimeExpression` accepts only the strict form, with at most one space, such as `"1 hour"`, and units in lowercase, Capitalized, or UPPERCASE. It rejects `"1h 30m"` and `"1   HOUR"`. To accept those, use `safeParse` as above, or `convert(input, "seconds")`.
+`isTimeExpression` accepts only the strict form: at most one space between the number and the unit, and a unit in lowercase, Capitalized, or UPPERCASE, such as `"1 hour"` or `"1 HOUR"`. It rejects `"1h 30m"` and `"1   HOUR"`. To accept those, use `safeParse` as above, or `convert(input, "seconds")`.
 
 Refer to the [grammar reference](../reference.md#grammar) for the full rules of each form.

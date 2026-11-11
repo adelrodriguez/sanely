@@ -33,4 +33,4 @@ When a call passes options and options are also bound, the call's options are sh
 
 If the transport declares no options parameter, calls take only the input and the client has no `$with`.
 
-`router.dispatch` and the transport from `connect` already accept `{ signal }`. To use it, see [How to cancel a call](./cancel-calls.md).
+`router.dispatch`, the transport from `connect`, and `fetchTransport` already accept `{ signal }`. To use it, see [How to cancel a call](./cancel-calls.md).

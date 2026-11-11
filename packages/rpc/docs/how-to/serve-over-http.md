@@ -60,7 +60,7 @@ import { ChannelError } from "@sanely/rpc"
 throw new ChannelError({ code: "application", data: { id, reason: "not-found" } })
 ```
 
-The client gets a `ChannelError` with the same code and `data`. rpc never inspects `data`, so validate it before you trust it:
+The client gets a `ChannelError` with the same code and `data`. `@sanely/rpc` never inspects `data`, so validate it before you trust it:
 
 ```typescript
 try {

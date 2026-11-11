@@ -27,7 +27,7 @@ This guide shows you how to add logs, traces, or metrics around a terminal call 
 
 2. Read the context, but do not change it. `ctx` is read-only. `ctx.retry.attempt` is live: after `next()` settles, it shows the final attempt count.
 
-A wrap that never calls `next()`, calls it twice, or throws throws a `Panic`.
+If a wrap never calls `next()`, calls it twice, or throws or rejects, the call throws a `Panic`.
 
 A wrap surrounds the whole terminal call, retries included. To add several wraps, chain them: `.wrap(first).wrap(second)`.
 

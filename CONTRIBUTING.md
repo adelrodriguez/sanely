@@ -1,7 +1,7 @@
 # How to contribute
 
 This guide covers workspace configuration, checks, and releases.
-Use the package's contributor guide for its runtime behavior and tests.
+For a package's runtime behavior and tests, read its `docs/architecture.md` and `docs/testing.md`, or its `CONTRIBUTING.md` when it has one.
 
 ## Add or change a package
 
@@ -25,7 +25,7 @@ To use core in a library:
 2. Import an exported domain subpath and add it to the package's allowed imports in `oxlint.config.ts`.
 3. Add the imported core subpaths, such as `@sanely/core/time`, to `deps.alwaysBundle` in its tsdown configuration.
 4. Set `deps.onlyBundle` and `deps.onlyImport` to `[]` to reject bundled third-party packages and external package imports, including declarations.
-5. Run `build:verify` to check the packed library in an isolated consumer.
+5. Run `pnpm run build:verify` to check the packed library in an isolated consumer.
 
 Turborepo builds core before its consumers, including when starting development watchers.
 Published libraries contain the shared implementation and declarations.
@@ -34,7 +34,7 @@ See the [core architecture](packages/core/docs/architecture.md) for ownership an
 
 ## Change workspace configuration
 
-- To change compiler options, edit the [shared TypeScript configurations](tooling/tsconfig/README.md). A package's `tsconfig.json` only extends `@tooling/tsconfig/library.json`.
+- To change compiler options, edit the [shared TypeScript configurations](tooling/tsconfig/README.md). A package's `tsconfig.json` extends `@tooling/tsconfig/library.json` and sets an option only when that package needs it.
 - To change a tool version shared by packages, edit the catalog in `pnpm-workspace.yaml`. Use `catalog:` in each package that uses the shared version.
 - To add package-specific build or compatibility checks, put them in `packages/<name>/scripts/` and select them with `build:verify` or `test:compat`.
 - Make `build:verify` check the packed tarball in a temporary consumer. Use `scripts/verify-build.ts`, or follow `packages/flags/scripts/verify-package.ts` when an entry point needs optional peers.

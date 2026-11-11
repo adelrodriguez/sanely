@@ -1,6 +1,6 @@
 # How to write your own transport
 
-A transport is a function with the signature `(path, payload, options?) => result`. The package ships no transport functions. You write them in your code, and most fit on one line. The last example builds one with `connect`, which turns a wire into a transport:
+A transport is a function with the signature `(path, payload, options?) => result`. `router.dispatch`, `fetchTransport`, and the transport that `connect` returns are transports already. For any other boundary, you write the function yourself, and most fit on one line. The last example builds one with `connect`, which turns a wire into a transport:
 
 ```typescript
 const memory = router.dispatch

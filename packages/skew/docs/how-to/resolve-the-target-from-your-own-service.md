@@ -10,7 +10,9 @@ Set the adapter `endpoint` to the service URL. The client then fetches it with n
 deploymentCheck({ endpoint: "https://deployments.example.com/current.json" })
 ```
 
-The service must return the [descriptor format](../reference/descriptor.md) with `Cache-Control: no-store`. If the request needs headers or credentials, create a monitor with `fetchDescriptor` at module scope:
+The service must return the [descriptor format](../reference/descriptor.md) with `Cache-Control: no-store`. If the service runs on another origin, it must also allow the app origin with an `Access-Control-Allow-Origin` header, or the browser blocks the response.
+
+If the request needs headers or credentials, create a monitor with `fetchDescriptor` at module scope:
 
 ```ts
 import { createDeploymentMonitor, fetchDescriptor } from "@sanely/skew"
@@ -48,7 +50,7 @@ Follow these rules:
 
 - Send the request to a service that the running deployment does not control. If the old deployment answers, the client never sees a new target.
 - Return IDs in the same form as the adapter's deployment ID. The monitor reads the running ID from the embed. See [How to set the deployment ID](./set-the-deployment-id.md).
-- Pass `signal` to `fetch`. The monitor aborts a check after 30 seconds and when the last subscriber leaves.
+- Pass `signal` to `fetch`. The monitor aborts a check after `checkTimeout`, 30 seconds by default, and when the last subscriber leaves.
 - Throw on a failure. The monitor stores the error in `error` and keeps the last status.
 
 ## Use the monitor without React

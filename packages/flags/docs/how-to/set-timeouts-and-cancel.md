@@ -12,7 +12,7 @@ const flags = createFlags({ provider, identify, timeout: "500ms" })
 export const checkout = flag.boolean("checkout", false, { timeout: 100 })
 ```
 
-The type checker checks a literal expression, so `"1M"` fails to compile with the reason. A string from config needs `isTimeExpression` from `@sanely/duration` first. A string that is not a time expression throws `FlagDefinitionError`.
+TypeScript checks a literal time expression, so `"1M"` fails to compile with the reason. A string from config needs `isTimeExpression` from `@sanely/duration` first. A string that is not a time expression throws `FlagDefinitionError`.
 
 When the deadline passes before the decision is valid, the read returns the default, and `details` reports an `EvaluationTimeoutError`.
 

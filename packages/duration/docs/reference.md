@@ -43,10 +43,10 @@ seconds("1000") // Type error: a number without a unit means milliseconds
 ms("1.h") // Type error: a decimal point needs a digit after it
 ms("1M") // Type error: "M" is ambiguous. Use "m" for minutes or "mo" for months
 ms("hello") // Type error: a time expression starts with a number
-ms("1h 30m") // Type error: use convert or parse for a compound time expression
+ms("1h 30m") // Type error: "h 30m" is not a unit. Use convert or parse for a compound time expression
 ```
 
-The unit functions throw `InvalidTimeExpressionError` for a value that `parse` rejects.
+At run time, the unit functions throw `InvalidTimeExpressionError` for a value that `parse` rejects, and every unit function except `ms` throws it for a bare number.
 
 ## `convert(value, unit)`
 
@@ -107,13 +107,13 @@ function format(milliseconds: number | Duration<"milliseconds">, options?: Forma
 
 Writes milliseconds as a time expression. `parse` accepts every value that `format` returns. `format` takes a plain number or a `Duration` in milliseconds. A `Duration` in another unit is a type error, so `format(seconds("1h"))` fails to compile instead of giving `"4s"`.
 
-The declared signature is generic, so that the type checker can reject a `Duration` in another unit.
+The signature above is simplified. The declared signature is generic, so that the type checker can reject a `Duration` in another unit.
 
-| Option      | Type         | Default   | Description                            |
-| ----------- | ------------ | --------- | -------------------------------------- |
-| `long`      | `boolean`    | `false`   | Use the long form, such as `"1 hour"`. |
-| `precision` | `number`     | `1`       | The most segments to write.            |
-| `units`     | `UnitName[]` | All units | The units that the output can use.     |
+| Option      | Type                  | Default   | Description                            |
+| ----------- | --------------------- | --------- | -------------------------------------- |
+| `long`      | `boolean`             | `false`   | Use the long form, such as `"1 hour"`. |
+| `precision` | `number`              | `1`       | The most segments to write.            |
+| `units`     | `readonly UnitName[]` | All units | The units that the output can use.     |
 
 ```ts
 import { format } from "@sanely/duration"
@@ -286,7 +286,7 @@ try {
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `TimeExpression`                                                                  | One time expression in the strict form, as a template literal type. Some strings, such as `"0x10h"`, satisfy the type. The unit functions reject them. |
 | `TimeExpressionWithUnit`                                                          | A `TimeExpression` with a unit.                                                                                                                        |
-| `ValidateTimeExpression<T, Rule>`                                                 | Checks a literal against the strict form, and gives the reason when it is invalid. `Rule` is `"bare"` or `"unit"`.                                     |
+| `ValidateTimeExpression<T, Rule>`                                                 | Checks a literal against the strict form, and gives the reason when it is invalid. `Rule` is `"bare"` or `"unit"`, and defaults to `"bare"`.           |
 | `UnitRule`                                                                        | The `Rule` of `ValidateTimeExpression`: `"bare"` when a bare number is valid, and `"unit"` when the expression needs a unit.                           |
 | `Duration<U>`                                                                     | A number of the unit `U`, such as the result of `seconds()`. It is a `number`, and arithmetic on it gives a plain `number`.                            |
 | `FormatOptions`                                                                   | The `long`, `precision`, and `units` options of `format`.                                                                                              |

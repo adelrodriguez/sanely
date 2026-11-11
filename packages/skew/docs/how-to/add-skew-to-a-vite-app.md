@@ -57,7 +57,7 @@ The adapter adds Vite `base` to the descriptor URL. You do not need to change an
 
 ## If the descriptor lives on another origin
 
-Set `endpoint` to the full URL. The adapter then writes no descriptor file, and your service must serve the [descriptor format](../reference/descriptor.md).
+Set `endpoint` to the full URL. The adapter then writes no descriptor file, and your service must serve the [descriptor format](../reference/descriptor.md). See [How to resolve the target from your own service](./resolve-the-target-from-your-own-service.md).
 
 ```ts
 deploymentCheck({ endpoint: "https://deployments.example.com/current.json" })
@@ -81,6 +81,6 @@ return (
 )
 ```
 
-A click 10 minutes or more after the last click reloads the page again. A click before that stays blocked and starts the 10 minutes again.
+A click 10 minutes or more after the last reload reloads the page again. A click before that stays blocked and does not restart the 10 minutes.
 
 [The reload guard stops reload loops](../explanation/how-skew-detects-a-stale-client.md#the-reload-guard-stops-reload-loops) explains why.

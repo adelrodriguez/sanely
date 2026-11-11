@@ -1,6 +1,6 @@
-# How to split handlers across files
+# How to split resolvers across files
 
-A flat resolver map passed to `createRouter` gets hard to read past a dozen channels. Use `implement()` to put each handler next to the code it belongs with, and assemble them in one place.
+A flat resolver map passed to `createRouter` gets hard to read past a dozen channels. Use `implement()` to put each resolver next to the code it belongs with, and assemble the resulting fragments in one place.
 
 1. Create a builder from your contract, and declare the context type on it. This is the only place you write the context type.
 
@@ -15,7 +15,7 @@ A flat resolver map passed to `createRouter` gets hard to read past a dozen chan
 
    If your resolvers need no context, leave out `.$context<Session>()`.
 
-2. Build each handler by calling its leaf on the builder. TypeScript infers the input, the return type, and the context. You write no annotations.
+2. Build each fragment by calling its leaf on the builder with a resolver. TypeScript infers the input, the return type, and the context. You write no annotations.
 
    ```typescript
    // files/handlers.ts
@@ -27,7 +27,7 @@ A flat resolver map passed to `createRouter` gets hard to read past a dozen chan
    )
    ```
 
-3. Pass `createRouter` an object with the same shape as the contract. A namespace import of a handler module already has that shape.
+3. Pass `createRouter` a handler tree, an object with the same shape as the contract. A namespace import of a module of fragments already has that shape.
 
    ```typescript
    // router.ts
@@ -41,16 +41,16 @@ A flat resolver map passed to `createRouter` gets hard to read past a dozen chan
    })
    ```
 
-`createRouter` reads the context type back from the handlers. You don't pass type arguments, and `router.dispatch` requires `{ context: Session }` as its third argument.
+`createRouter` reads the context type back from the fragments. You don't pass type arguments, and `router.dispatch` requires `{ context: Session }` as its third argument.
 
 ## What the compiler catches at assembly
 
-- A missing handler is a missing property. The error names the leaf.
-- A handler in the wrong slot is a type error. Each handler carries its dotted path in its type, so `save` can't fill the `open` slot.
-- A handler from another contract is a type error, even when the paths match.
-- A handler built without `$context` can't join a tree whose other handlers expect a `Session`.
+- A missing fragment is a missing property. The error names the leaf.
+- A fragment in the wrong slot is a type error. Each fragment carries its dotted path in its type, so `save` can't fill the `open` slot.
+- A fragment from another contract is a type error when its leaf has other schema types, even when the paths match.
+- A fragment built without `$context` can't join a tree whose other fragments expect a `Session`.
 
-Other exports in a handler module, such as helpers, are ignored. The router walks the contract, not the object you pass it.
+Other exports in a module of fragments, such as helpers, are ignored. The router walks the contract, not the object you pass it.
 
 ## Keep a flat map with a context
 

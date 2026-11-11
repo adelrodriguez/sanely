@@ -14,7 +14,7 @@ A fault also carries two kinds of data. Its fields, such as `id`, belong to the 
 
 ## A tag is a name, and a class is an identity
 
-Each fault has a string tag in `_tag`. Tags make matching easy, and they survive serialization. But two libraries can both define a `NotFoundError`. If a registry matched only by tag, a fault from another library could reach a handler that expects fields that the fault does not have.
+Each fault has a string tag in `_tag`. Code can match a tag with a string comparison, and the tag survives serialization. But two libraries can both define a `NotFoundError`. If a registry matched only by tag, a fault from another library could reach a handler that expects fields that the fault does not have.
 
 So a registry checks the class too. `is`, `findCause`, `matchTag`, and `matchTags` on a registry accept a value only when it is an instance of the registered class with the registered tag. The standalone `matchTag` and `matchTags` do not check membership. They take a value that already has a fault union type, and TypeScript has checked that type.
 

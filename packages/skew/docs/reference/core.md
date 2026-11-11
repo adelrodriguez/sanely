@@ -7,12 +7,12 @@ The core package: the protocol and the headless runtime. Its only runtime depend
 ### `createDeploymentMonitor(options?)`
 
 ```ts
-function createDeploymentMonitor<const T extends string>(
+function createDeploymentMonitor<const T extends string = never>(
   options?: DeploymentMonitorOptions<T>
 ): DeploymentMonitor
 ```
 
-Creates a monitor. Without options, the monitor reads the running deployment and the endpoint from the embed. Without a running deployment, from the embed or from `running`, the monitor is inert: its status stays `"unknown"`, it never checks, and it logs one warning outside production.
+Creates a monitor. Without options, the monitor reads the running deployment and the endpoint from the embed. Without a running deployment, from the embed or from `running`, the monitor is inert: its status stays `"unknown"`, it never checks, and, in a browser outside production, `createDeploymentMonitor` logs a warning.
 
 Each call creates a separate monitor with its own schedule and requests. Create a monitor once, at module scope.
 
@@ -85,7 +85,9 @@ A failed check changes only `checkStatus` and `error`. `status`, `target`, and `
 ```ts
 function fetchDescriptor(
   url: string,
-  init?: Omit<RequestInit, "cache" | "signal"> & { fetch?: typeof fetch }
+  init?: Omit<RequestInit, "cache" | "signal"> & {
+    fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+  }
 ): TargetResolver
 ```
 

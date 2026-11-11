@@ -45,7 +45,7 @@ This guide adds an update notice to a Next.js app. The notice appears when a new
 
    The folder name starts with `%5F`, the encoded `_`, because Next.js treats an `app` folder that starts with `_` as private.
 
-   For the Pages Router, the Pages Router runs API handlers only from `pages/api`. Set `endpoint` in `next.config.ts` to the handler's path:
+   For the Pages Router, set `endpoint` in `next.config.ts` to the handler's path, because the Pages Router runs API handlers only from `pages/api`:
 
    ```ts
    export default withDeploymentCheck(

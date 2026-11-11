@@ -49,7 +49,7 @@ const result = await try$
 - **Sync and async parity.** `runSync(...)` maps failures and builds result unions the same way as `run(...)`. Policies that wait or interrupt are async only.
 - **Named task orchestration.** Run concurrent and ordered workflows as objects of named tasks.
 - **Instrumentation hooks.** Observe execution with `wrap(...)` for logs, traces, and metrics.
-- **Resource cleanup.** Register teardown that works across async boundaries with `disposer()` and task disposers.
+- **Resource cleanup.** Register cleanup that runs when a scope or an orchestration ends, with `disposer()` and `this.$disposer`.
 - **No external dependencies.** The only runtime dependency is [`@sanely/duration`](../duration), which reads time expressions such as `"500ms"`.
 
 ## Install

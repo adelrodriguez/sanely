@@ -32,7 +32,11 @@ The adapters do nothing in `vite dev` and `next dev`, so your update notice neve
 3. To see the `current` state, give the target the running ID:
 
    ```ts
-   { running: { id: "dev" }, target: () => Promise.resolve({ id: "dev" }) }
+   createDeploymentMonitor(
+     import.meta.env.DEV
+       ? { running: { id: "dev" }, target: () => Promise.resolve({ id: "dev" }) }
+       : {}
+   )
    ```
 
 In a production build, the monitor gets no options and reads the embed.

@@ -27,7 +27,7 @@ This guide shows you how to turn milliseconds into a time expression for a perso
 
 ## Keep the output exact
 
-Months and years are approximations: a year is 365.25 days, and a month is one twelfth of a year. If the output must not use them, list the units that it can use:
+Months and years are approximations: a year is 365.25 days, and a month is one twelfth of a year. [About the forms of a time expression](../explanation/about-time-expression-forms.md#why-months-and-years-are-approximations) gives the reason. If the output must not use them, list the units that it can use:
 
 ```ts
 import { format, MS_PER_WEEK } from "@sanely/duration"
@@ -47,6 +47,8 @@ format(12_096_000_000, { units: ["days"] }) // "140d"
 `parse` accepts every value that `format` returns, so you can store the formatted value and read it back:
 
 ```ts
+import { format, parse } from "@sanely/duration"
+
 const expression = format(5_400_000, { precision: 2 }) // "1h 30m"
 parse(expression) // 5_400_000
 ```

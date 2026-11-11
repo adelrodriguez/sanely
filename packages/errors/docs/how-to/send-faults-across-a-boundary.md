@@ -35,7 +35,7 @@ This guide shows you how to send a fault from a server to a client, or between p
 
 ## If the receiver has no registry
 
-Use the standalone `fromSerializable`. It builds a generic `Fault.Base` with the tag, the messages, the metadata, the fields, and the causes, but not the subclass:
+Use the standalone `fromSerializable`. It builds a generic `Fault.Base` with the tag, the message, the description, the metadata, the fields, and the causes, but not the subclass:
 
 ```ts
 import * as Fault from "@sanely/errors"
