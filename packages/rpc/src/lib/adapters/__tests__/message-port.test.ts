@@ -102,7 +102,7 @@ describe("mainPort / domPort", () => {
     await expect(api.math.add({ a: 2, b: 3 })).resolves.toBe(5)
   })
 
-  test("unsubscribing detaches the listener from both flavors", () => {
+  test("unsubscribing detaches the listener from both flavors", async () => {
     const { main, dom } = createPortPair()
 
     const mainSeen: unknown[] = []
@@ -126,6 +126,9 @@ describe("mainPort / domPort", () => {
     dom.postMessage("to main")
     // oxlint-disable-next-line require-post-message-target-origin -- MessagePortMain.postMessage takes a transfer list, not a targetOrigin
     main.postMessage("to dom")
+    // The pair delivers in a microtask; wait for it, or a listener that stayed attached would
+    // still look detached.
+    await Promise.resolve()
 
     expect(mainSeen).toEqual([])
     expect(domSeen).toEqual([])

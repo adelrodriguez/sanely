@@ -46,12 +46,17 @@ describe("createClient", () => {
   })
 
   test("validates input at the call site before sending", async () => {
-    const { client, saved } = createTestClient()
+    // A transport that records calls: the router would reject the input too, so only an empty
+    // record proves the client stopped it.
+    const sent: string[] = []
+    const client = createClient(contract, (path) => {
+      sent.push(path)
+    })
 
     await expect(
       client.localFiles.save({ contents: 1 as unknown as string, path: "/tmp/a.txt" })
-    ).rejects.toThrow()
-    expect(saved).toEqual([])
+    ).rejects.toMatchObject({ code: "validation", issues: [{ path: ["contents"] }] })
+    expect(sent).toEqual([])
   })
 
   test("sends one-way leaves with a validated payload", async () => {
