@@ -426,6 +426,64 @@ describe.each(cleanupOrchestrations)("$name reports a task cleanup failure", (or
 })
 
 describe("task cleanup failures", () => {
+  it("keeps a task failure that catch mapped as the suppressed error", async () => {
+    const cleanupError = new Error("cleanup")
+    const failure = new Error("boom")
+
+    const error: unknown = await try$
+      .all(
+        {
+          a() {
+            this.$disposer.defer(() => {
+              throw cleanupError
+            })
+
+            throw failure
+          },
+        },
+        { catch: () => "mapped" as const }
+      )
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error_: unknown) => error_
+      )
+
+    expectPanic(error, "TASK_CLEANUP_THROW")
+    expect((error as Panic).cause).toMatchObject({
+      error: cleanupError,
+      name: "SuppressedError",
+      suppressed: failure,
+    })
+  })
+
+  it("keeps the call's own CancellationError as the suppressed error", async () => {
+    const cleanupError = new Error("cleanup")
+    const controller = new AbortController()
+
+    const error: unknown = await try$
+      .signal(controller.signal)
+      .all({
+        async a() {
+          this.$disposer.defer(() => {
+            throw cleanupError
+          })
+
+          const aborted = waitForAbort(this.$signal)
+          controller.abort(new Error("stop"))
+          await aborted
+          return 1
+        },
+      })
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error_: unknown) => error_
+      )
+
+    expectPanic(error, "TASK_CLEANUP_THROW")
+    expect((error as Panic).cause).toMatchObject({ error: cleanupError, name: "SuppressedError" })
+    expect((error as Panic).cause).toHaveProperty("suppressed", expect.any(CancellationError))
+  })
+
   it("lets a task Panic win over a cleanup failure", async () => {
     const error: unknown = await try$
       .all({
