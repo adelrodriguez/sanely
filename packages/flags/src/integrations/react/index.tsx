@@ -180,19 +180,26 @@ class FreshMarks {
   }
 
   /**
-   * Whether an evaluation of `flags` for `identity` must read fresh. It records the read, so the
-   * marks it consumes do not apply again.
+   * The current epoch when an evaluation of `flags` for `identity` must read fresh, and otherwise
+   * `undefined`. It records nothing, so another list that reads the same flags while this read is
+   * in flight also reads fresh.
    */
-  take(identity: string, flags: readonly Flag[]): boolean {
+  stale(identity: string, flags: readonly Flag[]): number | undefined {
     const marked = epochsOf(this.#marked, identity)
     const read = epochsOf(this.#read, identity)
     const stale = flags.some(
       ({ key }) => Math.max(this.#cleared, marked.get(key) ?? 0) > (read.get(key) ?? 0)
     )
-    if (stale) {
-      for (const { key } of flags) read.set(key, this.#epoch)
-    }
-    return stale
+    return stale ? this.#epoch : undefined
+  }
+
+  /**
+   * Records a fresh read of `flags` that started at `epoch` and succeeded. Marks made after it
+   * started still apply.
+   */
+  read(identity: string, flags: readonly Flag[], epoch: number): void {
+    const read = epochsOf(this.#read, identity)
+    for (const { key } of flags) read.set(key, Math.max(read.get(key) ?? 0, epoch))
   }
 }
 
@@ -397,13 +404,25 @@ function storeEntry(
     }, 0)
     return null
   }
-  const fresh = cache.fresh.take(key, bucket.flags)
+  const freshEpoch = cache.fresh.stale(key, bucket.flags)
+  const fresh = freshEpoch !== undefined
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
       if (bucket.entries.get(key) === entry) bucket.entries.delete(key)
     }, 0)
   })
   void entry.promise.then(settle, settle)
+  if (freshEpoch !== undefined) {
+    // Only a flag that the provider answered has a fresh stored decision. Another keeps its mark.
+    void entry.promise.then(
+      (results) => {
+        const answered = bucket.flags.filter((_, index) => results[index]?.source === "provider")
+        cache.fresh.read(key, answered, freshEpoch)
+        return null
+      },
+      () => null
+    )
+  }
   bucket.entries.set(key, entry)
   prune(cache, bucket)
   return entry.promise

@@ -581,6 +581,58 @@ describe("React integration", () => {
     expect(await screen.findByText("dark:true")).toBeTruthy()
   })
 
+  it("reads fresh for every flag list that mounts while a refresh is in flight", async () => {
+    const provider = makeProvider()
+    // A slow provider keeps the first fresh read in flight while the second list reads.
+    const slow = defineProvider({
+      decideOne: async (item: Flag) => {
+        await sleep(20)
+        return item.kind === "variant"
+          ? decision.variant("dark")
+          : decision.boolean(provider.state.value)
+      },
+      name: "slow",
+    })
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: slow,
+    })
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<Value item={beta} />))
+    expect(await screen.findByText("true")).toBeTruthy()
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    // Both lists read beta in one render, so the second starts before the first refresh ends.
+    await act(() => {
+      rerender(
+        tree(
+          <>
+            <Value item={beta} />
+            <BetaAndTheme />
+          </>
+        )
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
   it("reads fresh when it prefetches a snapshot flag after clear", async () => {
     const provider = makeProvider()
     const flags = createFlags({
