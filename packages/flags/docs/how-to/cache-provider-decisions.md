@@ -37,7 +37,7 @@ A store failure does not fail the evaluation. The package discards an invalid st
 
 ## Drop decisions when the provider changes a flag
 
-Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). With a store that has `delete`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote, and drops the running provider calls for them. Decisions that another process stored stay until the store expires them, so give a shared store an expiry.
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags and deletes their stored decisions. Give the store a `deleteFlags` method, so it can delete every stored decision of a flag, including the ones that other processes stored. `set` passes each decision's `flagKey` for that. A store with only `delete` loses just the entries that this reader read or wrote. See [`DecisionStore`](../reference.md#decisionstore).
 
 If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
 

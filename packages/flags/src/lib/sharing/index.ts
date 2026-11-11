@@ -23,24 +23,44 @@ import { createResolutionState } from "./resolution-state"
  */
 export type DecisionStore = {
   delete?(key: string): Promise<unknown>
+  /**
+   * Deletes every stored decision of these flag keys, or of every flag without keys, including the
+   * decisions that other processes stored. A change notification calls it. A store with it needs no
+   * `delete`, and the reader keeps no index of the keys it stored.
+   */
+  deleteFlags?(flagKeys?: readonly string[]): Promise<unknown>
   get(key: string): Promise<Decision | null | undefined>
-  set(key: string, decision: Decision): Promise<void>
+  /**
+   * Stores a decision. `entry.flagKey` names its flag, so a store with `deleteFlags` can find it.
+   */
+  set(key: string, decision: Decision, entry: { readonly flagKey: string }): Promise<void>
 }
 
 /**
- * A store operation failed. The evaluation continued without the store.
+ * A store operation failed. The evaluation continued without the store. `operation` tells an
+ * operation on one entry from `deleteFlags`, which has no entry.
  */
-export type StoreFailedReport<TIdentity extends Subject = Subject> = {
-  readonly _tag: "StoreFailed"
-  readonly error: Error
-  readonly flagKey: string
-  readonly identity: TIdentity | null
-  /**
-   * The evaluation key, or the flag key when the `key` function failed.
-   */
-  readonly key: string
-  readonly operation: "delete" | "get" | "key" | "set" | "validate"
-}
+export type StoreFailedReport<TIdentity extends Subject = Subject> =
+  | {
+      readonly _tag: "StoreFailed"
+      readonly error: Error
+      readonly flagKey: string
+      readonly identity: TIdentity | null
+      /**
+       * The evaluation key, or the flag key when the `key` function failed.
+       */
+      readonly key: string
+      readonly operation: "delete" | "get" | "key" | "set" | "validate"
+    }
+  | {
+      readonly _tag: "StoreFailed"
+      readonly error: Error
+      /**
+       * The changed flag keys, or `undefined` when the notification named none.
+       */
+      readonly flagKeys: readonly string[] | undefined
+      readonly operation: "deleteFlags"
+    }
 
 /**
  * The provider's `subscribe` threw. Evaluations continue without live invalidation, and the next
@@ -133,7 +153,7 @@ function accept(decision: unknown, flag: Flag): { decision: Decision; payload: u
 function reportStoreError<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: StoreContext<TIdentity>,
-  operation: StoreFailedReport["operation"],
+  operation: Exclude<StoreFailedReport["operation"], "deleteFlags">,
   key: string,
   error: unknown
 ): void {
@@ -159,7 +179,11 @@ function mutateStore<TIdentity extends Subject>(
   mutation: () => Promise<unknown> | undefined
 ): void {
   const { mutations } = config.state
-  const queue = mutations.get(key) ?? { deletes: 0, tail: Promise.resolve() }
+  const queue = mutations.get(key) ?? {
+    deletes: 0,
+    flagKey: context.flagKey,
+    tail: Promise.resolve(),
+  }
   if (operation === "delete") {
     queue.deletes += 1
   }
@@ -199,7 +223,8 @@ function indexCacheKey<TIdentity extends Subject>(
   store: DecisionStore,
   key: string
 ): void {
-  if (!store.delete || !config.changes) {
+  // A store with `deleteFlags` finds a flag's entries itself, so the reader indexes nothing.
+  if (!store.delete || store.deleteFlags || !config.changes) {
     return
   }
 
@@ -207,6 +232,48 @@ function indexCacheKey<TIdentity extends Subject>(
   const keys = state.keysByFlag.get(context.flag.key) ?? new Map<string, TIdentity | null>()
   keys.set(key, context.identity)
   state.keysByFlag.set(context.flag.key, keys)
+}
+
+/**
+ * Calls the store's `deleteFlags` for a change, after the writes of the changed flags that already
+ * started, so none of them lands after the delete. Until it completes, reads of those flags skip
+ * the store. A failure is reported and leaves the entries to the store's expiry.
+ */
+function deleteFlags<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  remove: (flagKeys?: readonly string[]) => Promise<unknown>,
+  flagKeys: readonly string[] | undefined
+): void {
+  const { flagDeletes, mutations } = config.state
+  const changed = flagKeys && new Set(flagKeys)
+  const writes = [...mutations.values()]
+    .filter((queue) => !changed || changed.has(queue.flagKey))
+    .map((queue) => queue.tail)
+  const track = (step: 1 | -1) => {
+    if (!flagKeys) {
+      flagDeletes.all += step
+      return
+    }
+    for (const flagKey of flagKeys) {
+      const count = (flagDeletes.byFlag.get(flagKey) ?? 0) + step
+      if (count === 0) flagDeletes.byFlag.delete(flagKey)
+      else flagDeletes.byFlag.set(flagKey, count)
+    }
+  }
+  track(1)
+  void Promise.allSettled(writes)
+    .then(() => remove(flagKeys))
+    .catch((error: unknown) => {
+      reportInBackground(config.onError, {
+        _tag: "StoreFailed",
+        error: normalizeError(error),
+        flagKeys,
+        operation: "deleteFlags",
+      })
+    })
+    .finally(() => {
+      track(-1)
+    })
 }
 
 /**
@@ -263,6 +330,10 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
     if (!store) {
       return
     }
+    if (store.deleteFlags) {
+      deleteFlags(config, store.deleteFlags.bind(store), changedFlagKeys)
+      return
+    }
     const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
     for (const flagKey of flagKeys) {
       const cacheKeys = state.keysByFlag.get(flagKey)
@@ -292,7 +363,12 @@ async function consultStore<TIdentity extends Subject>(
   const { state } = config
   const generationBeforeRead = state.writes.generation
   // The delete for an earlier change has not completed, so the store can hold a stale decision.
-  if (state.mutations.get(key)?.deletes) {
+  const { flagDeletes } = state
+  if (
+    state.mutations.get(key)?.deletes
+    || flagDeletes.all > 0
+    || (flagDeletes.byFlag.get(flag.key) ?? 0) > 0
+  ) {
     return { generation: generationBeforeRead }
   }
 
@@ -334,7 +410,7 @@ function writeThrough<TIdentity extends Subject>(
     // A change during the read removed this key from the index, so index it again for the decision
     // that this write stores.
     indexCacheKey(config, context, store, key)
-    return store.set(key, decision)
+    return store.set(key, decision, { flagKey: context.flag.key })
   })
 }
 

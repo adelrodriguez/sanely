@@ -433,7 +433,8 @@ describe("batches", () => {
     expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["theme"])
     expect(store.set).toHaveBeenCalledWith(
       '["bulk","theme","variant",["light","dark"],"string","user123"]',
-      { type: "variant", variant: "dark" }
+      { type: "variant", variant: "dark" },
+      { flagKey: "theme" }
     )
   })
 

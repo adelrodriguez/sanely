@@ -27,8 +27,15 @@ export type PendingResolution = {
  */
 export type StoreMutations = {
   deletes: number
+  flagKey: string
   tail: Promise<unknown>
 }
+
+/**
+ * The `deleteFlags` calls that have not completed, for each flag key and for every flag. Until one
+ * completes, the store can still hold a stale decision of those flags.
+ */
+export type FlagDeletes = { all: number; byFlag: Map<string, number> }
 
 /**
  * Decision memory for one reader: in-flight coalesced provider calls plus cache invalidation
@@ -38,6 +45,7 @@ export type StoreMutations = {
 export type ResolutionState<TIdentity extends Subject> = {
   // A disposed reader keeps no decision memory: its reads go straight to the provider.
   disposed: boolean
+  flagDeletes: FlagDeletes
   keysByFlag: Map<string, Map<string, TIdentity | null>>
   mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
@@ -53,6 +61,7 @@ export type ResolutionState<TIdentity extends Subject> = {
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
   return {
     disposed: false,
+    flagDeletes: { all: 0, byFlag: new Map() },
     keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),

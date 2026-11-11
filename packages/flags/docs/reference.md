@@ -131,12 +131,18 @@ The default evaluation key holds the provider's `name`, the flag key, the flag k
 ```ts
 type DecisionStore = {
   get(key: string): Promise<Decision | null | undefined>
-  set(key: string, decision: Decision): Promise<void>
+  set(key: string, decision: Decision, entry: { readonly flagKey: string }): Promise<void>
   delete?(key: string): Promise<unknown>
+  deleteFlags?(flagKeys?: readonly string[]): Promise<unknown>
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote since it was created. A decision that another process or an earlier reader stored stays until the store expires it, so give a shared store an expiry.
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With a provider `subscribe`, a change notification deletes the stored decisions of the changed flags:
+
+- With `deleteFlags`, the package calls it with the changed flag keys, or with none for a notification that names no flags. The store deletes those flags' decisions, including those that other processes stored. `set` passes each decision's `flagKey` so that the store can find them. The package waits for the writes of those flags that already started, and reads of those flags skip the store until the delete completes.
+- With only `delete`, the package deletes the entries that this reader read or wrote since it was created, and it remembers each of those keys until its flag changes. A decision that another process stored stays until the store expires it.
+
+Give a store that several processes share `deleteFlags`, or an expiry.
 
 ## Readers
 
@@ -254,11 +260,11 @@ Evaluations return these errors in `details().error` and never throw them. Each 
 
 `onError` receives an `ErrorReport`, a union of three reports with a literal `_tag`:
 
-| Report            | Fields                                             | When                                                                                                                   |
-| ----------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `HookFailed`      | `phase`, `hookIndex`, `error`, `context`           | A hook threw or rejected. The other hooks still run, and the result does not change.                                   |
-| `StoreFailed`     | `operation`, `key`, `flagKey`, `identity`, `error` | A store operation or the `key` function failed. `operation` is `"get"`, `"set"`, `"delete"`, `"validate"`, or `"key"`. |
-| `SubscribeFailed` | `error`                                            | The provider's `subscribe` threw. Evaluations continue without live invalidation.                                      |
+| Report            | Fields                                                                                  | When                                                                                                                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HookFailed`      | `phase`, `hookIndex`, `error`, `context`                                                | A hook threw or rejected. The other hooks still run, and the result does not change.                                                                                                                              |
+| `StoreFailed`     | `operation`, `key`, `flagKey`, `identity`, `error`, or `operation`, `flagKeys`, `error` | A store operation or the `key` function failed. `operation` is `"get"`, `"set"`, `"delete"`, `"validate"`, or `"key"` for one entry. For `"deleteFlags"`, `flagKeys` holds the changed flag keys, or `undefined`. |
+| `SubscribeFailed` | `error`                                                                                 | The provider's `subscribe` threw. Evaluations continue without live invalidation.                                                                                                                                 |
 
 ## Types
 

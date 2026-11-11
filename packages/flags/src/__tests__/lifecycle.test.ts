@@ -309,7 +309,8 @@ describe("first-class cache", () => {
       {
         type: "variant",
         variant: "dark",
-      }
+      },
+      { flagKey: "theme" }
     )
     const cacheDetails = await flags.details(theme)
     expect(cacheDetails.source).toBe("cache")
@@ -1084,6 +1085,125 @@ describe("first-class cache", () => {
 
     expect(await flags.get(betaAccess)).toBe(true)
     write.resolve(null)
+  })
+})
+
+// A store shared by two processes. Each `createFlags` call stands for one process.
+function sharedStore() {
+  const entries = new Map<string, { decision: Decision; flagKey: string }>()
+  const deleteFlags = vi.fn((flagKeys?: readonly string[]) => {
+    for (const [key, entry] of entries) {
+      if (!flagKeys || flagKeys.includes(entry.flagKey)) entries.delete(key)
+    }
+    return Promise.resolve()
+  })
+  const store: DecisionStore = {
+    deleteFlags,
+    get: (key) => Promise.resolve(entries.get(key)?.decision),
+    set: (key, decision, { flagKey }) => {
+      entries.set(key, { decision, flagKey })
+      return Promise.resolve()
+    },
+  }
+  return { deleteFlags, entries, store }
+}
+
+describe("store invalidation by flag", () => {
+  test("deletes another process's stored decisions for a changed flag", async () => {
+    const { deleteFlags, entries, store } = sharedStore()
+    const first = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "p" }),
+    })
+    await first.get(betaAccess)
+    await flushBackground()
+    expect(entries.size).toBe(1)
+
+    // The second process never read beta-access, but its notification still reaches the entry.
+    const { control, provider } = controlledProvider()
+    const second = createFlags({
+      cache: { store },
+      identify: () => ({ distinctId: "other" }),
+      provider,
+    })
+    await second.get(flag.boolean("other-flag", false))
+    control.notify(["beta-access"])
+    await flushBackground()
+
+    expect(deleteFlags).toHaveBeenCalledWith(["beta-access"])
+    expect([...entries.values()].map(({ flagKey }) => flagKey)).toEqual(["other-flag"])
+  })
+
+  test("deletes a flag only after its writes in flight, and skips the store meanwhile", async () => {
+    const entries = new Map<string, Decision>()
+    const write = createDeferred<null>()
+    const removal = createDeferred<null>()
+    const order: string[] = []
+    const store: DecisionStore = {
+      deleteFlags: async () => {
+        order.push("deleteFlags")
+        await removal.promise
+        entries.clear()
+      },
+      get: (key) => Promise.resolve(entries.get(key)),
+      set: async (key, decision) => {
+        await write.promise
+        order.push("set")
+        entries.set(key, decision)
+      },
+    }
+    const { control, decideOne, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+
+    await flags.get(betaAccess)
+    // The write started before the change, so the delete waits for it.
+    control.notify(["beta-access"])
+    write.resolve(null)
+    await flushBackground()
+    expect(order).toEqual(["set", "deleteFlags"])
+
+    // The stored decision is still there until the delete completes, so reads skip the store.
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "provider" })
+    removal.resolve(null)
+    await flushBackground()
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("reports a deleteFlags failure", async () => {
+    const reports: ErrorReport[] = []
+    const failure = new Error("store down")
+    const { control, provider } = controlledProvider()
+    const flags = createFlags({
+      cache: {
+        store: {
+          deleteFlags: () => Promise.reject(failure),
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+        },
+      },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider,
+    })
+    await flags.get(betaAccess)
+    control.notify(["beta-access"])
+    await flushBackground()
+    expect(reports).toEqual([
+      { _tag: "StoreFailed", error: failure, flagKeys: ["beta-access"], operation: "deleteFlags" },
+    ])
+  })
+
+  test("deletes every flag for a notification without keys", async () => {
+    const { deleteFlags, entries, store } = sharedStore()
+    const { control, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+    await flags.get(betaAccess)
+    await flushBackground()
+    control.notify()
+    await flushBackground()
+    expect(deleteFlags).toHaveBeenCalledWith(undefined)
+    expect(entries.size).toBe(0)
   })
 })
 
