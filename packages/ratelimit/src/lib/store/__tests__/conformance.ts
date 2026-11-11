@@ -40,7 +40,24 @@ export function testStore(createStore: () => Store) {
     tokenBucket: tokenBucket({ capacity: 5, interval: 2000, refillRate: 1 }),
   } satisfies Record<Algorithm["type"], Algorithm>
 
+  // The same algorithms with a lower limit, as after a deploy that lowers a limit in use.
+  const lowered = {
+    fixedWindow: fixedWindow({ limit: 2, window: 2000 }),
+    slidingWindow: slidingWindow({ limit: 2, window: 2000 }),
+    tokenBucket: tokenBucket({ capacity: 2, interval: 2000, refillRate: 1 }),
+  } satisfies Record<Algorithm["type"], Algorithm>
+
   describe.each(Object.values(algorithms))("$type", (algorithm) => {
+    it("reports no units left after the limit drops below the units spent", async () => {
+      const store = createStore()
+      const key = await freshKey(store, algorithm)
+
+      await store.consume({ algorithm, cost: 4, key })
+      const result = await store.consume({ algorithm: lowered[algorithm.type], cost: 1, key })
+
+      expect(result.remaining).toBe(0)
+    })
+
     it("allows exactly the capacity when requests arrive together", async () => {
       const store = createStore()
       const key = await freshKey(store, algorithm)
@@ -160,6 +177,28 @@ export function testStore(createStore: () => Store) {
       })
     })
   })
+
+  // A limiter whose algorithm changes keeps its key, so the new algorithm finds the old state.
+  const pairs = Object.values(algorithms).flatMap((first) =>
+    Object.values(algorithms)
+      .filter((second) => second.type !== first.type)
+      .map((second) => ({ first, second }))
+  )
+
+  it.each(pairs)(
+    "counts the state of $first.type as no state after $second.type writes the key",
+    async ({ first, second }) => {
+      const store = createStore()
+      const key = await freshKey(store, first)
+
+      await store.consume({ algorithm: first, cost: 4, key })
+      const spent = await store.consume({ algorithm: second, cost: 1, key })
+      const read = await store.consume({ algorithm: first, cost: 0, key })
+
+      expect(spent).toMatchObject({ remaining: 4, success: true })
+      expect(read).toMatchObject({ remaining: 5, success: true })
+    }
+  )
 
   it("ends fixed windows at multiples of the window size", async () => {
     const store = createStore()

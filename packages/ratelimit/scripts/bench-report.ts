@@ -90,6 +90,8 @@ let overBudget = 0
 let faster = 0
 const lowerBudgets: string[] = []
 const missing: string[] = []
+// The group, algorithm and case of every result, to find the budgets that match no benchmark.
+const measured = new Set<string>()
 const sections: string[] = []
 
 for (const { gated, name } of stores) {
@@ -106,6 +108,7 @@ for (const { gated, name } of stores) {
 
     for (const [algorithm, cases] of algorithms) {
       for (const [caseName, rounds] of cases) {
+        measured.add(JSON.stringify([group, algorithm, caseName]))
         const before = base.get(group)?.get(algorithm)?.get(caseName)
         const budget = budgets[group]?.[algorithm]?.[caseName]
         const after = median(rounds)
@@ -172,12 +175,23 @@ for (const { gated, name } of stores) {
   }
 }
 
+// A budget that matches no result fails the check, because a renamed case would otherwise go
+// unchecked.
+const unmatched = Object.entries(budgets).flatMap(([group, algorithms]) =>
+  Object.entries(algorithms).flatMap(([algorithm, cases]) =>
+    Object.keys(cases)
+      .filter((caseName) => !measured.has(JSON.stringify([group, algorithm, caseName])))
+      .map((caseName) => `| ${cell(group)} | ${cell(algorithm)} | ${cell(caseName)} |`)
+  )
+)
+
 // A store without results fails the check, because nothing shows that it did not regress. A base
 // branch without results is valid: it has no benchmarks yet.
 const problems = [
   regressions > 0 && `${regressions} regressions`,
   overBudget > 0 && `${overBudget} over budget`,
   missing.length > 0 && `${missing.length} without results`,
+  unmatched.length > 0 && `${unmatched.length} budgets without a benchmark`,
 ].filter((problem) => problem !== false)
 const passed = problems.length === 0
 const summary = `${passed ? "✅ No regressions" : `❌ ${problems.join(", ")}`} · 🚀 ${faster} faster`
@@ -187,6 +201,18 @@ const output = [`**${summary}**`]
 if (missing.length > 0) {
   output.push(
     `> [!WARNING]\n> No results for ${missing.join(", ")}. Their jobs failed, or their results did not download. See the workflow run.`
+  )
+}
+
+if (unmatched.length > 0) {
+  output.push(
+    [
+      "> [!WARNING]\n> These budgets in `scripts/bench-budgets.ts` match no benchmark. Rename or remove them.",
+      "",
+      "| Group | Algorithm | Case |",
+      "| --- | --- | --- |",
+      ...unmatched,
+    ].join("\n")
   )
 }
 

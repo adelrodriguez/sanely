@@ -18,7 +18,7 @@ export default defineConfig({
         test: {
           benchmark: { exclude: ["src/lib/stores/redis/**"], include: ["src/**/*.bench.ts"] },
           exclude: ["src/lib/stores/redis/**"],
-          include: ["src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
           name: "unit",
         },
       },
