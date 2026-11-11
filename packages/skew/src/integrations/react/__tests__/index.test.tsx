@@ -1,11 +1,12 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
-import { act, cleanup, render, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from "vitest"
 import type { DeploymentMonitor, DeploymentStatus } from "#integrations/react/index.ts"
 import { useDeploymentStatus } from "#integrations/react/index.ts"
+import { FakeEnvironment, MemoryStorage } from "#lib/runtime/__tests__/helpers.ts"
 import { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
 
 /**
@@ -45,6 +46,39 @@ function StatusOf({
   const deployment = useDeploymentStatus(monitor)
   states.set(id, deployment)
   return <output>{deployment.status}</output>
+}
+
+function ReloadButton({ monitor }: { readonly monitor: DeploymentMonitor }): React.ReactNode {
+  const { reload, reloadStatus, status } = useDeploymentStatus(monitor)
+  return (
+    <button onClick={reload} type="button">
+      {`${status}:${reloadStatus}`}
+    </button>
+  )
+}
+
+/**
+ * Loads a new page that runs deployment A and finds target B. Each page has its own environment,
+ * and every page shares `storage`, as session storage survives a reload.
+ */
+async function loadStalePage(storage: MemoryStorage) {
+  const environment = new FakeEnvironment(storage)
+  const monitor = createDeploymentMonitor({
+    environment,
+    running: { id: "A" },
+    target: () => Promise.resolve({ id: "B" }),
+  })
+  const view = render(<ReloadButton monitor={monitor} />)
+  await waitFor(() => {
+    expect(view.getByRole("button").textContent).toBe("stale:ready")
+  })
+
+  return { environment, view }
+}
+
+function readReloadMarker(storage: MemoryStorage): unknown {
+  const value = storage.getItem("deployment-check:reload")
+  return value === null ? null : JSON.parse(value)
 }
 
 function countingMonitor(target = "running") {
@@ -247,5 +281,34 @@ describe("react deployment integration", () => {
     })
 
     expect(view.getByText("stale")).toBeDefined()
+  })
+
+  it("sends reload() from the hook through the reload guard", async () => {
+    expect.hasAssertions()
+    setupDom()
+    const storage = new MemoryStorage()
+
+    const first = await loadStalePage(storage)
+    fireEvent.click(first.view.getByRole("button"))
+
+    expect(readReloadMarker(storage)).toStrictEqual({ at: 0, attempts: 0, from: "A", to: "B" })
+    expect(first.environment.reloadCalls).toBe(1)
+    first.view.unmount()
+
+    // The reload landed on deployment A again, and the page reloads a second time.
+    const second = await loadStalePage(storage)
+    fireEvent.click(second.view.getByRole("button"))
+
+    expect(readReloadMarker(storage)).toStrictEqual({ at: 0, attempts: 1, from: "A", to: "B" })
+    expect(second.environment.reloadCalls).toBe(1)
+    second.view.unmount()
+
+    // The guard blocks a third reload that would land on deployment A again.
+    const third = await loadStalePage(storage)
+    fireEvent.click(third.view.getByRole("button"))
+
+    expect(third.view.getByRole("button").textContent).toBe("stale:blocked")
+    expect(third.environment.reloadCalls).toBe(0)
+    expect(readReloadMarker(storage)).toStrictEqual({ at: 0, attempts: 1, from: "A", to: "B" })
   })
 })
