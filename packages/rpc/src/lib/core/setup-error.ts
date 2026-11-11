@@ -5,6 +5,7 @@ export type SetupErrorDetail =
   | { code: "dotted-key"; key: string; path: string }
   | { code: "duplicate-channel"; path: string }
   | { code: "invalid-handler"; expected: "branch" | "fragment"; path: string }
+  | { code: "invalid-timeout"; timeoutMs: number }
   | { code: "misplaced-handler"; fragmentPath: string; path: string }
   | { code: "missing-resolver"; path: string }
   | { code: "no-window"; caller: string }
@@ -20,6 +21,8 @@ function messageFor(detail: SetupErrorDetail): string {
       return detail.expected === "fragment"
         ? `Handler for "${detail.path}" is not a fragment`
         : `Expected a branch of handlers at "${detail.path}"`
+    case "invalid-timeout":
+      return `timeoutMs must be a positive number of milliseconds or Infinity, not ${detail.timeoutMs}`
     case "misplaced-handler":
       return `Handler for "${detail.fragmentPath}" placed at "${detail.path}"`
     case "missing-resolver":
@@ -53,6 +56,8 @@ class SetupBaseError extends Error {
  * - `duplicate-channel` (`path`) — a channel that two routers passed to `mergeRouters` both declare
  * - `invalid-handler` (`path`, `expected`) — a handler-tree slot holding something other than the
  *   fragment or branch the contract demands
+ * - `invalid-timeout` (`timeoutMs`) — a `connect` timeout that is not a positive number or
+ *   `Infinity`, such as `NaN` from an unset environment variable
  * - `misplaced-handler` (`path`, `fragmentPath`) — a fragment built for another leaf
  * - `no-window` (`caller`) — a port hand-off called outside the DOM without an explicit window
  *

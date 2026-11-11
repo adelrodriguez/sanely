@@ -2,6 +2,7 @@ import type { Transport } from "#lib/core/transport.ts"
 import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { isRecord } from "#lib/core/guards.ts"
+import { SetupError } from "#lib/core/setup-error.ts"
 import type { Wire } from "./types"
 import { deferWire, directWire, subscribe } from "./deferred"
 import { type ExposeOptions, fromWire, toWire } from "./envelope"
@@ -84,13 +85,6 @@ export function connect<Context = void>(
   closed: Promise<ChannelError>
   transport: Transport<CallOptions>
 } {
-  // A wire that is already here has nothing buffered, so nothing to withdraw.
-  const { wire: source, withdraw } =
-    "send" in wire
-      ? { wire: directWire(wire), withdraw: (): boolean => false }
-      : deferWire(wire, (reason) => {
-          close(reason)
-        })
   const {
     context,
     expose,
@@ -99,6 +93,19 @@ export function connect<Context = void>(
     signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options ?? {}
+
+  // `NaN` would silently disable the timeout, and zero or less would time out every call at once.
+  if (!(timeoutMs > 0)) {
+    throw new SetupError({ code: "invalid-timeout", timeoutMs })
+  }
+
+  // A wire that is already here has nothing buffered, so nothing to withdraw.
+  const { wire: source, withdraw } =
+    "send" in wire
+      ? { wire: directWire(wire), withdraw: (): boolean => false }
+      : deferWire(wire, (reason) => {
+          close(reason)
+        })
   // `Router<Context>`'s rest tuple is a conditional TypeScript cannot resolve for a generic Context
   const dispatch = router?.dispatch as
     | ((

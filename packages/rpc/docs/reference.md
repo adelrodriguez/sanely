@@ -192,6 +192,7 @@ The class of every wiring mistake. It is thrown when you build something, and it
 | `missing-resolver`  | A contract leaf has no resolver                                            | `path`                 |
 | `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel              | `path`                 |
 | `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch   | `expected`, `path`     |
+| `invalid-timeout`   | `connect` gets a `timeoutMs` that isn't a positive number or `Infinity`    | `timeoutMs`            |
 | `misplaced-handler` | A fragment sits at a path other than its own                               | `fragmentPath`, `path` |
 | `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window` | `caller`               |
 
@@ -253,14 +254,14 @@ type WireResult =
 
 Turns a `Wire` into a transport for calling the peer, and serves the peer's calls with `router`.
 
-| Option      | Type                          | Description                                                                                                                                                |
-| ----------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, the peer's calls fail with `no-router`                                                                             |
-| `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                             |
-| `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close` |
-| `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                |
-| `expose`    | `(error: unknown) => boolean` | Decides which failures this end sends to the peer as-is                                                                                                    |
-| `onHidden`  | `(error: unknown) => void`    | Receives the failures this end hides from the peer                                                                                                         |
+| Option      | Type                          | Description                                                                                                                                                                                                                                                                |
+| ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, the peer's calls fail with `no-router`                                                                                                                                                                                             |
+| `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                                                                                                                                             |
+| `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close`. Any other value that isn't a positive number, such as `NaN`, throws a `SetupError` with code `invalid-timeout` |
+| `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                                                                                                                                |
+| `expose`    | `(error: unknown) => boolean` | Decides which failures this end sends to the peer as-is                                                                                                                                                                                                                    |
+| `onHidden`  | `(error: unknown) => void`    | Receives the failures this end hides from the peer                                                                                                                                                                                                                         |
 
 `connect` returns an object with these properties:
 

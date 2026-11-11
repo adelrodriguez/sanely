@@ -536,6 +536,20 @@ describe("connect", () => {
     }
   })
 
+  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY])(
+    "rejects timeoutMs %s when it connects",
+    (timeoutMs) => {
+      expect(() => connect(createWirePair()[0], { timeoutMs })).toThrow(
+        expect.objectContaining({
+          code: "invalid-timeout",
+          message: `timeoutMs must be a positive number of milliseconds or Infinity, not ${timeoutMs}`,
+          name: "SetupError",
+          timeoutMs,
+        })
+      )
+    }
+  )
+
   test("timeoutMs: Infinity leaves calls pending until close", async () => {
     vi.useFakeTimers()
 
