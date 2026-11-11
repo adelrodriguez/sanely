@@ -1389,6 +1389,69 @@ describe("disposal", () => {
     expect(decideOne).toHaveBeenCalledTimes(2)
     expect(flags.subscribe(() => null)).toBeTypeOf("function")
   })
+
+  test.each([
+    [
+      "dispose()",
+      (flags: { dispose(): void }) => {
+        flags.dispose()
+      },
+    ],
+    [
+      "Symbol.dispose",
+      (flags: Disposable) => {
+        flags[Symbol.dispose]()
+      },
+    ],
+  ])("drops decision memory with %s when the provider's detach throws", async (_, dispose) => {
+    const detachError = new Error("detach failed")
+    const calls: Array<ReturnType<typeof createDeferred<Decision>>> = []
+    const decideOne = vi.fn(() => {
+      const call = createDeferred<Decision>()
+      calls.push(call)
+      return call.promise
+    })
+    const subscribe = vi.fn(() => () => {
+      throw detachError
+    })
+    const provider = defineProvider({ decideOne, name: "throwing-detach", subscribe })
+    const set = vi.fn(() => Promise.resolve())
+    const flags = createFlags({
+      cache: { store: { get: () => Promise.resolve(null), set } },
+      identify,
+      provider,
+    })
+
+    const first = flags.get(betaAccess)
+    await vi.waitFor(() => {
+      expect(decideOne).toHaveBeenCalledTimes(1)
+    })
+    expect(() => {
+      dispose(flags)
+    }).toThrow(detachError)
+
+    // A later read starts its own provider call instead of joining the call from before dispose.
+    const second = flags.get(betaAccess)
+    await vi.waitFor(() => {
+      expect(decideOne).toHaveBeenCalledTimes(2)
+    })
+    calls[1]?.resolve(FALSE)
+    expect(await second).toBe(false)
+
+    // The call from before dispose does not write its decision to the store.
+    calls[0]?.resolve(TRUE)
+    expect(await first).toBe(true)
+    await flushBackground()
+    expect(set).not.toHaveBeenCalled()
+
+    // A second dispose does nothing, and a later subscription does not attach the provider again.
+    expect(() => {
+      dispose(flags)
+    }).not.toThrow()
+    const listener = vi.fn()
+    flags.subscribe(listener)
+    expect(subscribe).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe("request coalescing", () => {
