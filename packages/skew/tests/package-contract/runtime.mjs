@@ -40,3 +40,10 @@ for (const [name, exportedValue] of Object.entries(runtimeExports)) {
 }
 
 assert.equal(typeof DEFAULT_DESCRIPTOR_ENDPOINT, "string")
+
+// `@sanely/duration` resolves from the built package, and reads a time expression.
+const contractSource = createStaticSource({ id: "contract" }, { id: "contract" })
+assert.throws(() => createDeploymentMonitor(contractSource, { checkTimeout: "soon" }), {
+  name: "InvalidTimeExpressionError",
+})
+createDeploymentMonitor(contractSource, { checkTimeout: "10s" }).destroy()

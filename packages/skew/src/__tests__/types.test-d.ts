@@ -55,6 +55,28 @@ describe("useDeploymentStatus", () => {
   })
 })
 
+describe("durations", () => {
+  const deployment: Deployment = { id: "A" }
+  const source = createStaticSource(deployment, deployment)
+
+  it("take milliseconds or a time expression", () => {
+    const monitor = createDeploymentMonitor(source, { checkTimeout: "10s" })
+    createDeploymentMonitor(source, { checkTimeout: 10_000 })
+    monitor.subscribe(() => null, { checkInterval: "5m" })
+    monitor.subscribe(() => null, { checkInterval: 300_000 })
+    useDeploymentStatus({ checkInterval: "1 minute" })
+  })
+
+  it("reject an invalid time expression literal", () => {
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    createDeploymentMonitor(source, { checkTimeout: "1M" })
+    // @ts-expect-error -- a time expression starts with a number.
+    createDeploymentMonitor(source).subscribe(() => null, { checkInterval: "soon" })
+    // @ts-expect-error -- a compound expression needs parse from @sanely/duration.
+    useDeploymentStatus({ checkInterval: "1m 30s" })
+  })
+})
+
 describe("adapters", () => {
   it("return a Vite plugin and a Next.js config", () => {
     expectTypeOf(deploymentCheck()).toEqualTypeOf<Plugin>()

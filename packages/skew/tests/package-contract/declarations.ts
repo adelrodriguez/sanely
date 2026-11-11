@@ -31,7 +31,8 @@ import {
 
 const deployment: Deployment = parseDescriptor('{"v":1,"id":"package-contract"}')
 const monitor: DeploymentMonitor = createDeploymentMonitor(
-  createStaticSource(deployment, deployment)
+  createStaticSource(deployment, deployment),
+  { checkTimeout: "10s" }
 )
 const platform: DeploymentPlatform = "vercel"
 const deploymentIdOption: DeploymentIdOption = { platform }
@@ -41,7 +42,7 @@ const vitePlugin = deploymentCheck({
 const nextConfig: NextConfigExport = withDeploymentCheck({}, {
   deploymentId: { env: ["DEPLOYMENT_CHECK_SHA", "GIT_SHA"] },
 } satisfies NextAdapterOptions)
-const hookOptions = {} satisfies DeploymentStatusOptions
+const hookOptions = { checkInterval: "5m" } satisfies DeploymentStatusOptions<"5m">
 const declarationContract = {
   appRoute: GET,
   checkStatus: undefined as unknown as CheckStatus,
