@@ -164,25 +164,34 @@ type SnapshotState = {
  */
 type FreshRead = { epoch: number; start: number }
 
+/**
+ * The marks of one identity. `all` is the epoch of the latest `clear` that covered the identity.
+ * `started` holds the latest fresh read of each flag, because only that read retires the flag's
+ * mark: a newer fresh read voids the store write of an older one.
+ */
+type FreshRecord = {
+  all: number
+  marked: Map<string, number>
+  read: Map<string, number>
+  started: Map<string, number>
+}
+
 class FreshMarks {
-  #cleared = 0
   #epoch = 0
   #starts = 0
-  readonly #marked = new Map<string, Map<string, number>>()
-  readonly #read = new Map<string, Map<string, number>>()
-  // The latest fresh read started for each flag. Only that read retires the flag's mark, because a
-  // newer fresh read voids the store write of an older one.
-  readonly #started = new Map<string, Map<string, number>>()
+  // Only identities that `invalidate` or `clear` marked have a record, and a record leaves once
+  // nothing is marked or in flight, so reads without marks keep nothing.
+  readonly #records = new Map<string, FreshRecord>()
 
   mark(identity: string, flagKeys: Iterable<string>): void {
     this.#epoch += 1
-    const marked = epochsOf(this.#marked, identity)
-    for (const flagKey of flagKeys) marked.set(flagKey, this.#epoch)
+    const record = this.#recordOf(identity)
+    for (const flagKey of flagKeys) record.marked.set(flagKey, this.#epoch)
   }
 
-  clear(): void {
+  clear(identities: Iterable<string>): void {
     this.#epoch += 1
-    this.#cleared = this.#epoch
+    for (const identity of identities) this.#recordOf(identity).all = this.#epoch
   }
 
   /**
@@ -191,15 +200,14 @@ class FreshMarks {
    * read is in flight also reads fresh.
    */
   begin(identity: string, flags: readonly Flag[]): FreshRead | undefined {
-    const marked = epochsOf(this.#marked, identity)
-    const read = epochsOf(this.#read, identity)
+    const record = this.#records.get(identity)
+    if (!record) return undefined
     const stale = flags.some(
-      ({ key }) => Math.max(this.#cleared, marked.get(key) ?? 0) > (read.get(key) ?? 0)
+      ({ key }) => Math.max(record.all, record.marked.get(key) ?? 0) > (record.read.get(key) ?? 0)
     )
     if (!stale) return undefined
     this.#starts += 1
-    const started = epochsOf(this.#started, identity)
-    for (const { key } of flags) started.set(key, this.#starts)
+    for (const { key } of flags) record.started.set(key, this.#starts)
     return { epoch: this.#epoch, start: this.#starts }
   }
 
@@ -208,19 +216,29 @@ class FreshMarks {
    * each flag. Marks made after it started still apply.
    */
   read(identity: string, flags: readonly Flag[], fresh: FreshRead): void {
-    const read = epochsOf(this.#read, identity)
-    const started = epochsOf(this.#started, identity)
+    const record = this.#records.get(identity)
+    if (!record) return
     for (const { key } of flags) {
-      if (started.get(key) !== fresh.start) continue
-      read.set(key, Math.max(read.get(key) ?? 0, fresh.epoch))
+      if (record.started.get(key) !== fresh.start) continue
+      record.started.delete(key)
+      record.read.set(key, Math.max(record.read.get(key) ?? 0, fresh.epoch))
+      if ((record.marked.get(key) ?? 0) <= fresh.epoch) record.marked.delete(key)
+    }
+    if (record.all === 0 && record.marked.size === 0 && record.started.size === 0) {
+      this.#records.delete(identity)
     }
   }
-}
 
-function epochsOf(marks: Map<string, Map<string, number>>, identity: string) {
-  const epochs = marks.get(identity) ?? new Map<string, number>()
-  marks.set(identity, epochs)
-  return epochs
+  #recordOf(identity: string): FreshRecord {
+    const record = this.#records.get(identity) ?? {
+      all: 0,
+      marked: new Map(),
+      read: new Map(),
+      started: new Map(),
+    }
+    this.#records.set(identity, record)
+    return record
+  }
 }
 
 type FlagCache = {
@@ -714,7 +732,13 @@ export function useFlagCache(): FlagCacheControls {
     return {
       clear() {
         cache.snapshot?.entries.clear()
-        cache.fresh.clear()
+        // Clear covers the identities that this cache has read for, and the provider's own.
+        const identities = new Set([key])
+        for (const bucket of cache.buckets.values()) {
+          for (const identity of bucket.entries.keys()) identities.add(identity)
+          for (const store of storesOf(bucket)) identities.add(store.key)
+        }
+        cache.fresh.clear(identities)
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
           for (const store of storesOf(bucket)) store.bump()
