@@ -1,5 +1,5 @@
 /**
- * The discriminated payload of a `SetupError`, one variant per way wiring typedport up can fail.
+ * The discriminated payload of a `SetupError`, one variant per way wiring the library up can fail.
  */
 export type SetupErrorDetail =
   | { code: "dotted-key"; key: string; path: string }
@@ -41,9 +41,9 @@ class SetupBaseError extends Error {
 }
 
 /**
- * The error class for misusing typedport outside a call: a contract that can't be defined, a router
- * that can't be assembled or merged, a port hand-off with no window. `ChannelError` is the other
- * half — failures of a call, serializable across the wire. A `SetupError` never travels: it
+ * The error class for misusing the library outside a call: a contract that can't be defined, a
+ * router that can't be assembled or merged, a port hand-off with no window. `ChannelError` is the
+ * other half — failures of a call, serializable across the wire. A `SetupError` never travels: it
  * surfaces where the wiring happens, as a bug to fix rather than a condition to handle.
  *
  * - `reserved-key` (`key`, `path`) — a contract key the client proxy claims (`$`-helpers, `_kind`,
