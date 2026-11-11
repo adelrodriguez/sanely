@@ -16,6 +16,7 @@ import {
   type Transport,
 } from "#index.ts"
 import { connect } from "#wire.ts"
+import { fetchHandler } from "#wire/fetch.ts"
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 type Sender = { sender: string }
@@ -187,6 +188,13 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
   }
 }
 
+// fetchHandler takes no options for a context-free router, and a context function otherwise.
+{
+  void fetchHandler(pingRouter)
+  void fetchHandler(meRouter, { context: () => ({ userId: 1 }) })
+  void fetchHandler(meRouter, { context: () => Promise.resolve({ userId: 1 }) })
+}
+
 // ── Negative type tests ──────────────────────────────────────────────────────
 // These verify that invalid usage produces compile-time errors.
 // The function bodies never execute — only the type checker matters.
@@ -305,6 +313,18 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- connect needs a union context when the options omit it
   connect(wire, { router: sessionRouter })
+
+  // @ts-expect-error -- fetchHandler needs a context function for a router with a context
+  void fetchHandler(meRouter)
+
+  // @ts-expect-error -- the options alone do not supply the context
+  void fetchHandler(meRouter, { onHidden: () => null })
+
+  // @ts-expect-error -- the context function must return the router's context
+  void fetchHandler(meRouter, { context: () => ({ userId: "1" }) })
+
+  // @ts-expect-error -- a context-free router takes no context function
+  void fetchHandler(pingRouter, { context: () => ({ userId: 1 }) })
 
   // @ts-expect-error -- a timeout detail needs its fields
   void new ChannelError({ code: "timeout" })
