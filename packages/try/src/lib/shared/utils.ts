@@ -62,21 +62,22 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 /**
  * Calls `callback` once `ms` milliseconds have passed, and returns a function that cancels the
- * call. A delay above the timer limit runs as a chain of shorter timers, so it never ends early.
+ * call. A delay above the timer limit runs as a chain of shorter timers. Each one measures the time
+ * left on the monotonic clock, so a timer that runs late never extends the delay.
  */
 export function startTimer(callback: () => void, ms: number): () => void {
+  const endsAt = performance.now() + ms
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const schedule = (remainingMs: number) => {
-    const chunkMs = Math.min(remainingMs, MAX_TIMER_DELAY_MS)
+    if (remainingMs <= MAX_TIMER_DELAY_MS) {
+      timer = setTimeout(callback, remainingMs)
+      return
+    }
 
     timer = setTimeout(() => {
-      if (remainingMs > chunkMs) {
-        schedule(remainingMs - chunkMs)
-      } else {
-        callback()
-      }
-    }, chunkMs)
+      schedule(endsAt - performance.now())
+    }, MAX_TIMER_DELAY_MS)
   }
 
   schedule(ms)
