@@ -2,7 +2,7 @@ import { runInNewContext } from "node:vm"
 import { describe, expect, it, vi } from "vitest"
 import { CancellationError, TimeoutError, UnhandledException } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { blockEventLoop, expectPanic, expectUnhandled, sleep } from "./test-utils"
+import { expectPanic, expectUnhandled, sleep } from "./test-utils"
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -950,28 +950,42 @@ describe("all", () => {
   })
 
   it("reports the graph deadline instead of calling catch when a task fails after the deadline elapsed", async () => {
+    // Fake only the timers, so the deadline's timer never fires, and drive the monotonic clock by
+    // hand. With the real clock, a slow runner can pass the deadline before the task runs, and the
+    // timeout then has no failure to carry.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let now = 0
+    vi.spyOn(performance, "now").mockImplementation(() => now)
     const boom = new Error("boom")
+    let taskCalls = 0
     let catchCalls = 0
 
-    const error = await try$.timeout(10).all(
-      {
-        async a() {
-          await Promise.resolve()
-          // The deadline elapses, but its timer cannot fire before the failure is mapped.
-          blockEventLoop(20)
-          throw boom
+    try {
+      const error = await try$.timeout(10).all(
+        {
+          async a() {
+            taskCalls += 1
+            await Promise.resolve()
+            // The deadline passes inside the task, before its timer can fire.
+            now = 20
+            throw boom
+          },
         },
-      },
-      {
-        catch: () => {
-          catchCalls += 1
-          return "mapped" as const
-        },
-      }
-    )
+        {
+          catch: () => {
+            catchCalls += 1
+            return "mapped" as const
+          },
+        }
+      )
 
-    expect(error).toBeInstanceOf(TimeoutError)
-    expect((error as TimeoutError).cause).toBe(boom)
-    expect(catchCalls).toBe(0)
+      expect(taskCalls).toBe(1)
+      expect(error).toBeInstanceOf(TimeoutError)
+      expect((error as TimeoutError).cause).toBe(boom)
+      expect(catchCalls).toBe(0)
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
   })
 })
