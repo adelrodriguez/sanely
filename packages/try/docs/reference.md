@@ -2,11 +2,11 @@
 
 The package has three entry points:
 
-| Entry point          | Exports                                                                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `@sanely/try`        | `run`, `runSync`, `retry`, `retryOptions`, `timeout`, `signal`, `wrap`, `all`, `allSettled`, `flow`, `gen`, `disposer`                 |
-| `@sanely/try/errors` | `CancellationError`, `TimeoutError`, `RetryExhaustedError`, `UnhandledException`, `Panic`, their type guards, and the type `PanicCode` |
-| `@sanely/try/types`  | The types `AllSettledResult`, `SettledResult`, `SettledFulfilled`, `SettledRejected`, `AsyncDisposer`, and `FlowExit`                  |
+| Entry point          | Exports                                                                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@sanely/try`        | `run`, `runSync`, `retry`, `retryOptions`, `timeout`, `signal`, `wrap`, `all`, `allSettled`, `flow`, `gen`, `disposer`, and every export of `@sanely/try/errors` |
+| `@sanely/try/errors` | `CancellationError`, `TimeoutError`, `RetryExhaustedError`, `UnhandledException`, `Panic`, their type guards, and the type `PanicCode`                           |
+| `@sanely/try/types`  | The types `AllSettledResult`, `SettledResult`, `SettledFulfilled`, `SettledRejected`, `AsyncDisposer`, and `FlowExit`                                            |
 
 ```ts
 import type { SettledResult } from "@sanely/try/types"
@@ -250,7 +250,7 @@ Returns an `AsyncDisposer`:
 
 ## Errors
 
-The errors come from `@sanely/try/errors`.
+The errors come from `@sanely/try/errors`, and `@sanely/try` exports them too.
 
 | Error                 | `name`                  | When                                                                                                                        |
 | --------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |

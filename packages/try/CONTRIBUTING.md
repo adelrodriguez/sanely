@@ -58,7 +58,7 @@ Each public API has a `*.bench.ts` file next to its tests in `src/__tests__/`. E
 
 Follow these rules when you write a benchmark:
 
-- Import from the typed `src` entrypoint, so `check` does not depend on a prior `build`. Vite's module runner adds a small getter overhead to each import. The overhead is constant across runs, so trends stay valid.
+- Import from the typed `src` entry point, so `check` does not depend on a prior `build`. Vite's module runner adds a small getter overhead to each import. The overhead is constant across runs, so trends stay valid.
 - Keep cases deterministic and timer-free. Do not use `sleep`, real timeout expiry, or cancellation races.
 - Set up task graphs and builders outside the measured function.
 - Pass each result to `consume()` from `test-utils.ts`, so the runtime cannot optimize the work away.
@@ -75,13 +75,15 @@ Read the results like this:
 
 ## Follow the code style
 
-- Use the vocabulary defined in [GLOSSARY.md](GLOSSARY.md) when naming things in code, tests, issues, and docs
-- Follow the existing TypeScript style in the repository
-- Prefer type inference when it already produces the correct type
-- Avoid explicit return types unless required for tooling or public API contracts
-- Keep implementation straightforward and local; prefer obvious duplication over premature abstraction while behavior is still evolving
-- Use meaningful names and keep public APIs well documented through readable code and tests
-- Avoid `any` unless there is a strong justification
+Follow these rules when you write code:
+
+- Use the terms in [GLOSSARY.md](GLOSSARY.md) when you name things in code, tests, issues, and docs.
+- Follow the existing TypeScript style in the repository.
+- Prefer type inference when it already produces the correct type.
+- Write an explicit return type only when tooling or a public API contract needs one.
+- Keep the implementation simple and local. While behavior still changes, prefer plain duplication to an early abstraction.
+- Use meaningful names, and document public APIs through readable code and tests.
+- Avoid `any` unless you have a strong reason for it.
 
 ## Write tests
 

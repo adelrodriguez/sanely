@@ -72,7 +72,7 @@ The package has three layers:
 2. Policy builders configure the next terminal call. `retry`, `timeout`, and `signal` do not run work. `timeout` and `signal` add their policy failures to the result union. `retry` changes the failure only when you give no `catch`: a failure after the last attempt is a `RetryExhaustedError`, not an `UnhandledException`.
 3. Orchestration is terminal execution for a group of named tasks, with the same result rules as `run`. `all` stops at the first failure, `allSettled` keeps every outcome, and `flow` runs until a task calls `$exit`.
 
-Three more tools sit around the layers. `wrap` observes execution without a change to it. `gen` composes result unions in a linear style. `disposer` registers cleanup that runs when the work ends.
+The package has three more tools outside the layers. `wrap` observes execution without a change to it. `gen` composes result unions in a linear style. `disposer` registers cleanup that runs when the work ends.
 
 ## Three kinds of failure
 
