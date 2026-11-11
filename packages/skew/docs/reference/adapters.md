@@ -45,6 +45,8 @@ An endpoint is **external** when it is an absolute URL (`https://...`) or a prot
 - An external endpoint goes into the embed unchanged. The adapter does not write a descriptor, and your service must serve one.
 - A local endpoint is relative to the base path of the app. The adapter adds the base path in front of it and writes a descriptor for it.
 
+A local endpoint can have a query string and a fragment, such as `/descriptor.json?tenant=a#v1`. The embed keeps both, so the monitor requests the endpoint with its query string. A browser never sends the fragment, so it has no effect on the request. The adapters ignore the query string and the fragment when they choose where to serve the descriptor.
+
 ## `@sanely/skew/vite`
 
 ```ts
@@ -55,7 +57,7 @@ A Vite plugin that runs only in `vite build`. Put it after the framework plugin.
 
 - It adds the embed as the first `<script>` in `<head>` of each HTML page.
 - It names `vite:preloadError` as the embed's load error event, so the monitor checks when a lazy chunk fails to load.
-- For a local endpoint, it writes the descriptor as a file in the build output. The path is the endpoint without its leading `/`.
+- For a local endpoint, it writes the descriptor as a file in the build output. The path is the endpoint without its leading `/`, its query string, and its fragment. For example, `/descriptor.json?tenant=a` writes `descriptor.json`.
 - It adds Vite `base` in front of a local endpoint when `base` starts with `/`. When `base` is relative (`./`) or a full URL, the endpoint stays an absolute path on the application origin.
 
 The descriptor file is static. Your host decides its headers. See [How to stop hosts from caching the descriptor](../how-to/stop-hosts-from-caching-the-descriptor.md).
@@ -79,7 +81,7 @@ Wraps a Next.js config object or config function.
 
 - It keeps every value of your config.
 - It adds two values to `env`, `DEPLOYMENT_CHECK_EMBED` and `DEPLOYMENT_CHECK_DESCRIPTOR`. Both are empty in `next dev`.
-- For a local endpoint, it adds a `headers()` rule that sets `Cache-Control: no-store` on the endpoint. It keeps your own `headers()` rules first.
+- For a local endpoint, it adds a `headers()` rule that sets `Cache-Control: no-store` on the endpoint path. The rule leaves out the query string and the fragment. It keeps your own `headers()` rules first.
 - It adds `basePath` in front of a local endpoint.
 - It adds `@sanely/skew` to `transpilePackages`, so that Next.js bundles the package and puts the `env` values in it. Without this, the Pages Router loads the package from `node_modules` unchanged, and the embed and the descriptor are empty.
 - If `options.deploymentId` is not set, it uses the Next.js `deploymentId` config value as the strategy. It never sets the Next.js `deploymentId`, because that value controls host skew protection.

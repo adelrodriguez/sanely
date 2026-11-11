@@ -4,9 +4,9 @@ import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import type { Deployment } from "#lib/protocol/types.ts"
 import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
-  checkIsExternalEndpoint,
   embedScript,
   resolveDeploymentId,
+  resolveOutputPath,
   resolvePublicEndpoint,
   serializeEmbed,
 } from "#adapters/shared.ts"
@@ -38,7 +38,7 @@ export function deploymentCheck(options: ViteAdapterOptions = {}): Plugin {
     },
     generateBundle() {
       const currentDeployment = requireDeployment(deployment)
-      const fileName = descriptorFileName(descriptorEndpoint)
+      const fileName = resolveOutputPath(descriptorEndpoint)
       if (fileName !== undefined) {
         this.emitFile({
           fileName,
@@ -69,14 +69,6 @@ export function deploymentCheck(options: ViteAdapterOptions = {}): Plugin {
       ]
     },
   }
-}
-
-function descriptorFileName(endpoint: string): string | undefined {
-  if (checkIsExternalEndpoint(endpoint)) {
-    return undefined
-  }
-
-  return endpoint.replace(/^\/+/, "")
 }
 
 function requireDeployment(deployment: Deployment | undefined): Deployment {

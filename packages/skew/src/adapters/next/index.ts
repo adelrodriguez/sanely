@@ -10,6 +10,7 @@ import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
   checkIsExternalEndpoint,
   embedScript,
+  removeQueryAndFragment,
   resolveDeploymentId,
   resolvePublicEndpoint,
   serializeEmbed,
@@ -132,10 +133,12 @@ function createDescriptorHeader(
   }
 
   const headers = [{ key: "Cache-Control", value: "no-store" }]
+  // Next matches `source` against the request path, and reads `?` in it as a pattern modifier.
+  const source = removeQueryAndFragment(endpoint)
 
   if (hasBasePath) {
-    return { basePath: false, headers, source: endpoint }
+    return { basePath: false, headers, source }
   }
 
-  return { headers, source: endpoint }
+  return { headers, source }
 }
