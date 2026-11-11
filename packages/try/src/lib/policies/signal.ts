@@ -2,7 +2,10 @@ import { CancellationError } from "#lib/shared/errors.ts"
 import { discardOutcome, resolveWithAbort } from "#lib/shared/utils.ts"
 
 export class SignalController {
-  readonly signal?: AbortSignal
+  /**
+   * Aborts when an external signal or the deadline signal aborts.
+   */
+  readonly signal: AbortSignal
   /**
    * Cancellation detection reads only the external signals, never the composed execution signal:
    * `AbortSignal.any` latches the first abort reason, so a timeout firing first would otherwise
@@ -20,9 +23,8 @@ export class SignalController {
       (value): value is AbortSignal => value !== undefined
     )
 
-    if (composedSignals.length > 0) {
-      this.signal = AbortSignal.any(composedSignals)
-    }
+    // The execution creates a controller only when it has an external or a deadline signal.
+    this.signal = AbortSignal.any(composedSignals)
   }
 
   checkDidCancel(cause?: unknown): CancellationError | undefined {
@@ -43,14 +45,10 @@ export class SignalController {
       return Promise.resolve(cancelled)
     }
 
-    if (!this.signal) {
-      return promise
-    }
-
     return resolveWithAbort(
       this.signal,
       promise,
-      () => new CancellationError(undefined, { cause: cause ?? this.signal?.reason })
+      () => new CancellationError(undefined, { cause: cause ?? this.signal.reason })
     )
   }
 }
