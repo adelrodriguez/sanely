@@ -92,7 +92,7 @@ export function joinPath(prefix: string, key: string): string {
  * @yields {{ key: string; node: Channel | ContractTree; path: string }} Every node of the tree,
  *   depth-first, with its key and dotted path.
  */
-export function* walk(
+function* walk(
   tree: ContractTree,
   prefix = ""
 ): Generator<{ key: string; node: Channel | ContractTree; path: string }> {
