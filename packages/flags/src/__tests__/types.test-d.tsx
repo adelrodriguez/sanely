@@ -85,6 +85,10 @@ const user: UserIdentity = { distinctId: "u1", plan: "pro" }
 // ── Readers ─────────────────────────────────────────────────────────────────
 const flags = createFlags({ identify: () => user, provider: userProvider })
 const serverFlags = createFlags({ provider: userProvider })
+const signedUpAt = new Date(0)
+const dateFlags = createFlags({
+  provider: defineProvider({ decideOne: () => decision.boolean(true), name: "dates" }),
+})
 {
   expectTypeOf(flags).toEqualTypeOf<Flags<UserIdentity>>()
   expectTypeOf(serverFlags).toEqualTypeOf<CallerFlags<UserIdentity>>()
@@ -191,6 +195,13 @@ export function Components() {
       </FlagsProvider>
       {/* @ts-expect-error A reader without `identify` needs an identity. */}
       <FlagsProvider flags={serverFlags}>child</FlagsProvider>
+      <FlagsProvider flags={serverFlags} identity={{ ...user, tags: ["beta"] }}>
+        child
+      </FlagsProvider>
+      {/* @ts-expect-error The flag cache keys the identity, and it cannot key a Date. */}
+      <FlagsProvider flags={dateFlags} identity={{ distinctId: "u1", signedUpAt }}>
+        child
+      </FlagsProvider>
       {/* @ts-expect-error The identity must match the reader's identity type. */}
       <FlagsProvider flags={flags} identity={{ distinctId: "u1" }}>
         child

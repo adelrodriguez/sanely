@@ -22,14 +22,14 @@ import {
   type VariantFlag,
 } from "#lib/definition/index.ts"
 import { FlagDefinitionError, IdentityNotFoundError } from "#lib/errors/index.ts"
-import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
+import { type Anonymous, anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import {
   DEFAULT_MAX_ENTRIES,
   DEFAULT_TTL,
   evictOnRejection,
   type FlagCacheOptions,
 } from "#lib/promise-cache/index.ts"
-import { serializeKey } from "#lib/promise-cache/key.ts"
+import { type FlagCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
 import { milliseconds } from "#lib/shared/utils.ts"
 
 /**
@@ -59,7 +59,25 @@ type IdentityOf<TFlags extends AnyFlags> = TFlags extends {
   ? TIdentity
   : never
 
-export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never> = {
+/**
+ * Limits the named fields of an identity to what the flag cache can key. The cache serializes the
+ * identity, so a field such as a `Date`, a `bigint`, or a class instance is a type error at the
+ * `identity` prop instead of a throw during render. An index signature from `Identity` is left
+ * alone, so a value typed as the reader's identity still passes.
+ */
+type CacheableFields<TSubject> = TSubject extends Anonymous
+  ? unknown
+  : {
+      readonly [
+        K in keyof TSubject as string extends K ? never : number extends K ? never : K
+      ]: FlagCacheKey
+    }
+
+export type FlagsProviderProps<
+  TFlags extends AnyFlags,
+  T extends string = never,
+  TIdentity extends IdentityOf<TFlags> = IdentityOf<TFlags>,
+> = {
   /**
    * The reader from `createFlags`.
    */
@@ -76,9 +94,9 @@ export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never
       /**
        * Evaluates for this identity instead of the reader's `identify`.
        */
-      identity?: IdentityOf<TFlags>
+      identity?: TIdentity & CacheableFields<TIdentity>
     }
-  : { identity: IdentityOf<TFlags> })
+  : { identity: TIdentity & CacheableFields<TIdentity> })
 
 type VersionStore = {
   // The identity key whose entry the store's readers read.
@@ -532,9 +550,11 @@ function createFlagCache(
  *     <App />
  *   </FlagsProvider>
  */
-export function FlagsProvider<TFlags extends AnyFlags, const T extends string = never>(
-  props: FlagsProviderProps<TFlags, T>
-): ReactNode {
+export function FlagsProvider<
+  TFlags extends AnyFlags,
+  const T extends string = never,
+  const TIdentity extends IdentityOf<TFlags> & Subject = IdentityOf<TFlags> & Subject,
+>(props: FlagsProviderProps<TFlags, T, TIdentity>): ReactNode {
   const { cache: cacheOptions, children, flags, snapshot } = props
   const identity: Subject | undefined = props.identity
   const [mounted, setMounted] = useState(() => ({
@@ -550,7 +570,7 @@ export function FlagsProvider<TFlags extends AnyFlags, const T extends string = 
     cache = next.cache
   }
   const key = identityKey(identity)
-  const value = useMemo(
+  const value = useMemo<FlagsContextValue>(
     () => ({ cache, flags, identity, identityKey: key }),
     [cache, flags, identity, key]
   )

@@ -290,7 +290,7 @@ Every export is client-only. The module has a `"use client"` directive. A compon
 
 Each mount creates its own flag cache, so a server never shares one between requests. A provider without `identity` accepts any snapshot, because its reader resolves the identity itself.
 
-An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. Other values throw a `TypeError`.
+An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. The type of the `identity` prop rejects a named field of another type, such as a `Date`. A value that reaches the cache without that check throws a `TypeError`.
 
 ### `FlagCacheOptions`
 
