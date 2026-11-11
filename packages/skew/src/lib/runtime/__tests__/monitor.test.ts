@@ -107,6 +107,8 @@ describe("deployment monitor", () => {
     ["checkTimeout", "soon"],
     ["checkTimeout", "0ms"],
     ["checkTimeout", "30d"],
+    ["checkTimeout", "0.5ms"],
+    ["checkTimeout", "1.0005s"],
     ["checkInterval", 0],
     ["checkInterval", -1],
     ["checkInterval", 0.5],
@@ -116,6 +118,8 @@ describe("deployment monitor", () => {
     ["checkInterval", "0ms"],
     ["checkInterval", "30d"],
     ["checkInterval", "soon"],
+    ["checkInterval", "0.5ms"],
+    ["checkInterval", "1.0005s"],
   ] as const)("rejects %s %o, which no timer can wait for", (option, value) => {
     const source = { resolveTarget: neverSettles, running: { id: "running" } }
 
@@ -125,6 +129,31 @@ describe("deployment monitor", () => {
     expect(create).toThrow(InvalidOptionError)
     expect(create).toThrow(expect.objectContaining({ option, value }))
   })
+
+  it.each([
+    ["1.1h", 3_960_000],
+    ["4.1m", 246_000],
+  ] as const)(
+    "reads %s as %i ms though decimal arithmetic misses the whole number",
+    async (expression, expected) => {
+      const environment = new FakeEnvironment()
+      const source = { resolveTarget: neverSettles, running: { id: "running" } }
+      const monitor = monitorOf(source, {
+        checkInterval: expression,
+        checkOnSubscribe: false,
+        checkTimeout: expression,
+        environment,
+      })
+      const unsubscribe = monitor.subscribe(noop)
+      onTestFinished(unsubscribe)
+      const check = monitor.check()
+
+      expect(environment.intervalDelays).toStrictEqual([expected])
+      expect(environment.timeoutDelays).toStrictEqual([expected])
+      unsubscribe()
+      await check
+    }
+  )
 
   it("uses the longest delay a timer can wait for without shortening it", async () => {
     const environment = new FakeEnvironment()
