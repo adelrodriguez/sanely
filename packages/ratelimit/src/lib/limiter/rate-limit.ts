@@ -1,5 +1,5 @@
 import { InvalidOptionError } from "#lib/options/index.ts"
-import type { AllowedResult, LimitResult, Limiter, Remaining } from "./build-limiter.ts"
+import type { LimitResult, Limiter, Remaining } from "./build-limiter.ts"
 import { internal } from "./build-limiter.ts"
 
 export type RateLimitOptions = {
@@ -18,9 +18,10 @@ type Limiters<Input> = readonly [Limiter<Input>, ...Array<Limiter<Input>>]
 
 /**
  * Spends `cost` units. With several limiters, it runs them in order and stops at the first denial
- * or store error. The result is that denial or store error, or, when every limiter allows the
- * request, the allowed result with the fewest units remaining. An enforced limiter's result decides
- * before a dry-run limiter's, so a trial limit never replaces the headers of an enforced one.
+ * or enforced store error. The result is that denial or store error, or otherwise the allowed
+ * result with the fewest units remaining. An enforced limiter's result decides before a dry-run
+ * limiter's, so a trial limit never replaces the headers of an enforced one. A dry-run limiter's
+ * store error does not stop the chain, and it decides only when no limiter allowed the request.
  *
  * It does not reject when the store fails: the result is a store error, which is never a success.
  */
@@ -74,9 +75,9 @@ export async function rateLimit<Input>(
     first[internal].blocked(firstKey, cost) ?? (await first[internal].consume(firstKey, cost))
   const results = [head]
 
-  if (!head.success) return { ...head, results }
+  if (stops(head)) return { ...head, results }
 
-  let tightest: AllowedResult = head
+  let decision = head
 
   for (const [limiter, key] of others) {
     const blocked = limiter[internal].blocked(key, cost)
@@ -84,16 +85,27 @@ export async function rateLimit<Input>(
     const result = blocked ?? (await limiter[internal].consume(key, cost))
     results.push(result)
 
-    if (!result.success) return { ...result, results }
-
-    const tighter =
-      result.mode === tightest.mode
-        ? result.remaining < tightest.remaining
-        : result.mode === "enforce"
-    if (tighter) tightest = result
+    if (stops(result)) return { ...result, results }
+    if (decidesBefore(result, decision)) decision = result
   }
 
-  return { ...tightest, results }
+  return { ...decision, results }
+}
+
+// A denial or an enforced store error stops the chain. A dry-run limiter's store error does not.
+function stops(result: LimitResult) {
+  return result.reason === "storeError" ? result.mode === "enforce" : !result.success
+}
+
+// Among results that do not stop the chain, an allowed result decides before a dry-run store error,
+// an enforced result before a dry-run one, and then the result with the fewest units remaining.
+function decidesBefore(result: LimitResult, current: LimitResult) {
+  if (!result.success) return false
+  if (!current.success) return true
+
+  return result.mode === current.mode
+    ? result.remaining < current.remaining
+    : result.mode === "enforce"
 }
 
 /**

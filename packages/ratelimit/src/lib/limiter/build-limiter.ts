@@ -107,6 +107,11 @@ export type StoreErrorResult = {
   readonly success: false
   readonly reason: "storeError"
   readonly error: StoreError
+  /**
+   * The limiter's mode. In a chain, a dry-run limiter's store error decides only when no other
+   * limiter allowed or denied the request.
+   */
+  readonly mode: Mode
 }
 
 export type LimitResult = AllowedResult | DeniedResult | StoreErrorResult
@@ -228,7 +233,13 @@ export function buildLimiter<Supported extends Algorithm, const T extends string
           try {
             result = await ask(key, cost)
           } catch (error) {
-            return { error: new StoreError(error), name, reason: "storeError", success: false }
+            return {
+              error: new StoreError(error),
+              mode,
+              name,
+              reason: "storeError",
+              success: false,
+            }
           }
 
           if (result.success) {

@@ -25,4 +25,4 @@ This guide shows you how to see how often a new limit would deny requests before
 
 3. When the logs show the rate that you expect, remove `mode: "dryRun"`.
 
-A dry-run limiter counts normally, but it allows each request that it would deny. It never stops a chain of limiters, and it never decides a chain that has an enforced limiter. It does not use the denial cache, and it produces no headers.
+A dry-run limiter counts normally, but it allows each request that it would deny. It never stops a chain of limiters, even when its store fails, and it never decides a chain that has an enforced limiter. A store error from a dry-run limiter has `mode: "dryRun"`. It does not use the denial cache, and it produces no headers.

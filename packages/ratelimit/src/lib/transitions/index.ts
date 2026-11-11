@@ -178,7 +178,7 @@ function applyTokenBucket(
 
 function refill(
   state: State | undefined,
-  { capacity, interval, refillRate }: Omit<TokenBucket, "type">,
+  { capacity, interval, refillRate }: Pick<TokenBucket, "capacity" | "interval" | "refillRate">,
   now: number
 ) {
   if (state?.type !== "tokenBucket") return { refilledAt: now, tokens: capacity }

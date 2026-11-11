@@ -71,6 +71,14 @@ describe("limiter", () => {
     limiter({ algorithm, identify: (request: Request) => request.ip.length, name: "length" })
   })
 
+  it("accepts only algorithms that an algorithm function made", () => {
+    limiter({
+      // @ts-expect-error -- an object literal skips the checks of fixedWindow.
+      algorithm: { limit: 10, type: "fixedWindow", window: 0 },
+      name: "literal",
+    })
+  })
+
   it("accepts only algorithms the store supports", () => {
     const fixedLimiter = buildLimiter({ store: fixedOnly })
 
@@ -123,13 +131,14 @@ describe("LimitResult", () => {
     if (result.success) expectTypeOf(result.reason).toEqualTypeOf<"store" | "dryRun">()
   })
 
-  it("carries the mode only on an allowed result", async () => {
+  it("carries the mode on an allowed result and a store error, not on a denial", async () => {
     const result = await rateLimit(perIp, request)
 
-    // @ts-expect-error -- a denial is always enforced, and a store error has no mode.
+    // @ts-expect-error -- a denial is always enforced, so it has no mode.
     void result.mode
 
     if (result.success) expectTypeOf(result.mode).toEqualTypeOf<Mode>()
+    if (result.reason === "storeError") expectTypeOf(result.mode).toEqualTypeOf<Mode>()
   })
 })
 
