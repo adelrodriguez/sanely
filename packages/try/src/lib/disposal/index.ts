@@ -128,14 +128,10 @@ export class InternalDisposableStack implements Disposable {
     this.#disposed = true
 
     let error: unknown
+    const stack = this.#stack
+    this.#stack = []
 
-    while (this.#stack.length > 0) {
-      const disposer = this.#stack.pop()
-
-      if (!disposer) {
-        continue
-      }
-
+    for (const disposer of stack.toReversed()) {
       try {
         disposer()
       } catch (caughtError) {
@@ -189,14 +185,10 @@ class AsyncDisposerStack implements AsyncDisposer {
     this.#disposed = true
 
     let error: unknown
+    const stack = this.#stack
+    this.#stack = []
 
-    while (this.#stack.length > 0) {
-      const disposer = this.#stack.pop()
-
-      if (!disposer) {
-        continue
-      }
-
+    for (const disposer of stack.toReversed()) {
       try {
         // Cleanup must remain sequential so LIFO teardown order is preserved.
         // oxlint-disable-next-line no-await-in-loop
