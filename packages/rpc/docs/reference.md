@@ -172,15 +172,15 @@ Returns `true` if `node` is a leaf.
 
 The class of every failure that the package raises during a call. `code` selects the extra fields.
 
-| `code`               | Raised when                                                    | Extra fields        |
-| -------------------- | -------------------------------------------------------------- | ------------------- |
-| `validation`         | The input fails its schema                                     | `issues`            |
-| `output-validation`  | A round-trip resolver returns a value that fails `output`      | `issues`            |
-| `unknown-channel`    | The path isn't in the contract                                 | `path`              |
-| `internal`           | `toWire` or `connect` hid a failure from the caller            |                     |
-| `timeout`            | A `connect` call gets no response within `timeoutMs`           | `path`, `timeoutMs` |
-| `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`             |
-| `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                     |
+| `code`               | Raised when                                                    | Extra fields                      |
+| -------------------- | -------------------------------------------------------------- | --------------------------------- |
+| `validation`         | The input fails its schema                                     | `issues`                          |
+| `output-validation`  | A round-trip resolver returns a value that fails `output`      | `issues`                          |
+| `unknown-channel`    | The path isn't in the contract                                 | `path`                            |
+| `internal`           | `toWire` or `connect` hid a failure from the caller            |                                   |
+| `timeout`            | A `connect` call gets no response within its `timeout`         | `path`, `timeout` in milliseconds |
+| `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`                           |
+| `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                                   |
 
 `issues` holds the Standard Schema issues.
 
@@ -188,16 +188,16 @@ The class of every failure that the package raises during a call. `code` selects
 
 The class of every wiring mistake. It is thrown when you build something, and it never crosses the wire.
 
-| `code`              | Raised when                                                                                 | Extra fields           |
-| ------------------- | ------------------------------------------------------------------------------------------- | ---------------------- |
-| `reserved-key`      | A contract key is reserved                                                                  | `key`, `path`          |
-| `dotted-key`        | A contract key contains `.`                                                                 | `key`, `path`          |
-| `missing-resolver`  | A contract leaf has no resolver                                                             | `path`                 |
-| `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel                               | `path`                 |
-| `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch                    | `expected`, `path`     |
-| `invalid-timeout`   | `connect` gets a `timeoutMs` that isn't a positive number up to 2,147,483,647 or `Infinity` | `timeoutMs`            |
-| `misplaced-handler` | A fragment sits at a path other than its own                                                | `fragmentPath`, `path` |
-| `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window`                  | `caller`               |
+| `code`              | Raised when                                                                                                   | Extra fields           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `reserved-key`      | A contract key is reserved                                                                                    | `key`, `path`          |
+| `dotted-key`        | A contract key contains `.`                                                                                   | `key`, `path`          |
+| `missing-resolver`  | A contract leaf has no resolver                                                                               | `path`                 |
+| `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel                                                 | `path`                 |
+| `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch                                      | `expected`, `path`     |
+| `invalid-timeout`   | `connect` gets a `timeout` that isn't a time expression, a positive number up to 2,147,483,647, or `Infinity` | `timeout`              |
+| `misplaced-handler` | A fragment sits at a path other than its own                                                                  | `fragmentPath`, `path` |
+| `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window`                                    | `caller`               |
 
 ### Types
 
@@ -257,14 +257,14 @@ type WireResult =
 
 Turns a `Wire` into a transport for calling the peer, and serves the peer's calls with `router`.
 
-| Option      | Type                          | Description                                                                                                                                                                                                                                                                |
-| ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, this end only calls, and leaves the peer's calls to the wire's serving end                                                                                                                                                         |
-| `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                                                                                                                                             |
-| `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close`. Any other value that isn't a positive number, such as `NaN`, throws a `SetupError` with code `invalid-timeout` |
-| `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                                                                                                                                |
-| `expose`    | `(error: unknown) => boolean` | Decides which failures this end sends to the peer as-is                                                                                                                                                                                                                    |
-| `onHidden`  | `(error: unknown) => void`    | Receives the failures this end hides from the peer                                                                                                                                                                                                                         |
+| Option     | Type                                  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`   | `Router<Context>`                     | Serves calls from the peer. Without it, this end only calls, and leaves the peer's calls to the wire's serving end                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `context`  | `Context`                             | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `timeout`  | `number \| ValidateTimeExpression<T>` | Fails a call with `timeout` after this many milliseconds, or after a time expression such as `"5s"`. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close`. A literal that isn't a time expression, such as `"1M"`, fails to compile. A string from config needs `isTimeExpression` from `@sanely/duration` first. Any other value that isn't a positive length of time up to 2,147,483,647 ms, such as `NaN` or `"soon"`, throws a `SetupError` with code `invalid-timeout` |
+| `signal`   | `AbortSignal`                         | Closes the session when it aborts, with the signal's reason                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `expose`   | `(error: unknown) => boolean`         | Decides which failures this end sends to the peer as-is                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `onHidden` | `(error: unknown) => void`            | Receives the failures this end hides from the peer                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 `connect` returns an object with these properties:
 
@@ -274,9 +274,9 @@ Turns a `Wire` into a transport for calling the peer, and serves the peer's call
 | `close(reason?)` | Closes the session. `reason` may be any value                     |
 | `closed`         | Resolves with the `closed` `ChannelError` once the session closes |
 
-A call's `signal` rejects that call with `signal.reason` and drops its late reply. When a call is aborted or hits `timeoutMs`, `connect` tells the peer, and the peer aborts the `signal` its resolver received.
+A call's `signal` rejects that call with `signal.reason` and drops its late reply. When a call is aborted or hits `timeout`, `connect` tells the peer, and the peer aborts the `signal` its resolver received.
 
-`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason. A queued call whose payload the wire can't send, such as a BigInt over a WebSocket, rejects alone with the wire's error once the wire arrives.
+`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeout` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason. A queued call whose payload the wire can't send, such as a BigInt over a WebSocket, rejects alone with the wire's error once the wire arrives.
 
 When the session closes, every pending call and every later call rejects with a `ChannelError` with code `closed` and the reason as `cause`. This end stops serving and aborts every resolver it is running.
 

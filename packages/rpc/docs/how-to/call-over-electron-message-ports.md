@@ -18,7 +18,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
      const { close, transport } = connect(mainPort(port1), {
        context: { windowId: win.id },
        router: mainRouter, // serves calls from the renderer
-       timeoutMs: 5_000, // fails pending calls if the renderer dies
+       timeout: "5s", // fails pending calls if the renderer dies
      })
      const push = createClient(pushContract, transport) // calls into the renderer
 
@@ -58,7 +58,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
 
    const { transport } = connect(port.then(domPort), {
      router: pushRouter,
-     timeoutMs: 5_000,
+     timeout: "5s",
    })
 
    export const api = createClient(contract, transport)
@@ -97,7 +97,7 @@ const { port1, port2 } = new MessageChannelMain()
 utilityProcess.fork(indexerPath).postMessage({ type: "port" }, [port2])
 const indexer = createClient(
   indexerContract,
-  connect(mainPort(port1), { timeoutMs: 30_000 }).transport
+  connect(mainPort(port1), { timeout: "30s" }).transport
 )
 
 // indexer.js

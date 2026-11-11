@@ -5,7 +5,15 @@
 // Usage, from packages/rpc after a build: node scripts/verify-package.ts
 
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
@@ -41,12 +49,28 @@ try {
     join(temporaryDirectory, "package.json"),
     `${JSON.stringify({ name: "sanely-rpc-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
-  run("npm", ["install", "--ignore-scripts", "--no-package-lock", tarballPath], temporaryDirectory)
+  // npm may not have the workspace dependency versions that the tarball names, so install each
+  // from its own tarball.
+  const dependencyDirectory = join(temporaryDirectory, "dependencies")
+  mkdirSync(dependencyDirectory)
+  for (const [dependency, version] of Object.entries(packageJson.dependencies)) {
+    if (!version.startsWith("workspace:")) continue
+    const dependencyRoot = realpathSync(join(packageRoot, "node_modules", dependency))
+    run("pnpm", ["pack", "--pack-destination", dependencyDirectory], dependencyRoot)
+  }
+  const dependencyTarballs = readdirSync(dependencyDirectory).map((file) =>
+    join(dependencyDirectory, file)
+  )
+  run(
+    "npm",
+    ["install", "--ignore-scripts", "--no-package-lock", tarballPath, ...dependencyTarballs],
+    temporaryDirectory
+  )
 
   writeFileSync(
     join(temporaryDirectory, "runtime.mjs"),
     `import assert from "node:assert/strict"
-import { channel, createClient, createRouter, defineContract, implement } from "@sanely/rpc"
+import { channel, createClient, createRouter, defineContract, implement, SetupError } from "@sanely/rpc"
 import { connect, fromWire, toWire } from "@sanely/rpc/wire"
 import { fetchHandler, fetchTransport } from "@sanely/rpc/wire/fetch"
 import { mainPort, nodePort, sendPort } from "@sanely/rpc/wire/message-port"
@@ -71,6 +95,10 @@ for (const value of [
 ]) {
   assert.equal(typeof value, "function")
 }
+
+const wire = { onMessage: () => () => {}, send: () => {} }
+connect(wire, { timeout: "1.5s" }).close()
+assert.throws(() => connect(wire, { timeout: "soon" }), SetupError)
 `
   )
   run(process.execPath, ["runtime.mjs"], temporaryDirectory)
@@ -83,7 +111,14 @@ import type { FetchHandlerOptions } from "@sanely/rpc/wire/fetch"
 import type { NodePortLike } from "@sanely/rpc/wire/message-port"
 import type { WebSocketLike } from "@sanely/rpc/wire/web-socket"
 
+import { connect } from "@sanely/rpc/wire"
+
 export type Exports = [InferClient<never>, Router, Transport, Wire, WireResult, FetchHandlerOptions, NodePortLike, WebSocketLike]
+
+declare const wire: Wire
+connect(wire, { timeout: "5s" })
+// @ts-expect-error -- a literal that is not a time expression fails to compile
+connect(wire, { timeout: "1M" })
 `
   )
   writeFileSync(

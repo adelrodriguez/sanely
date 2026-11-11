@@ -1,3 +1,4 @@
+import { safeParse, type ValidateTimeExpression } from "@sanely/duration"
 import type { Transport } from "#lib/core/transport.ts"
 import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
@@ -40,14 +41,15 @@ type CallOptions = {
 // `connect` passes `context` to every dispatch it serves, so it demands `context` as `dispatch`
 // does: required unless the context type is `void`. The optional `context` below is where
 // `Context` is inferred from when the options give no router.
-type ConnectOptions<Context> = ExposeOptions & {
+type ConnectOptions<Context, T extends string> = ExposeOptions & {
   context?: Context
   router?: Router<Context>
   signal?: AbortSignal
   /**
-   * Bounds each outgoing call. Defaults to 30 seconds; `Infinity` disables it.
+   * Bounds each outgoing call, in milliseconds or as a time expression such as `"5s"`. Defaults to
+   * 30 seconds; `Infinity` disables it.
    */
-  timeoutMs?: number
+  timeout?: number | ValidateTimeExpression<T>
 } & Pick<DispatchOptions<Context>, "context">
 
 /**
@@ -63,8 +65,8 @@ type ConnectOptions<Context> = ExposeOptions & {
  * codes cross intact, everything else crosses as code `internal` and goes to `onHidden`. A trusted
  * peer (a worker, your own processes) can see everything with `expose: () => true`.
  *
- * `timeoutMs` bounds each outgoing call (default 30 seconds) so a dead peer rejects calls instead
- * of leaving them pending forever; pass `Infinity` to opt out when something else, such as `close`,
+ * `timeout` bounds each outgoing call (default 30 seconds) so a dead peer rejects calls instead of
+ * leaving them pending forever; pass `Infinity` to opt out when something else, such as `close`,
  * covers liveness. The transport also takes `{ signal }` per call, so `api.$with({ signal })`
  * cancels from the client; the call rejects with `signal.reason`. A call that is aborted or times
  * out tells the peer, which aborts the `signal` its resolver received; closing the session aborts
@@ -77,31 +79,28 @@ type ConnectOptions<Context> = ExposeOptions & {
  * happens.
  *
  * The wire may be a promise — a port that hasn't been handed over yet, a socket that hasn't opened.
- * Calls made in the meantime queue (bounded by `timeoutMs`) and flush when it resolves; `close`
+ * Calls made in the meantime queue (bounded by `timeout`) and flush when it resolves; `close`
  * before it arrives wins the race, and a rejected wire promise closes the connection with the
  * rejection as the reason.
  */
-export function connect<Context = void>(
+export function connect<Context = void, const T extends string = never>(
   wire: Wire | Promise<Wire>,
-  options?: ConnectOptions<Context>
+  options?: ConnectOptions<Context, T>
 ): {
   close: (reason?: unknown) => void
   closed: Promise<ChannelError>
   transport: Transport<CallOptions>
 } {
-  const {
-    context,
-    expose,
-    onHidden,
-    router,
-    signal,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-  } = options ?? {}
+  const { context, expose, onHidden, router, signal, timeout = DEFAULT_TIMEOUT_MS } = options ?? {}
+  const timeoutMs = typeof timeout === "number" ? timeout : safeParse(timeout)
 
   // `NaN` would silently disable the timeout, and zero or less, or more than a timer holds, would
   // time out every call at once.
-  if (!(timeoutMs > 0 && (timeoutMs <= MAX_TIMER_DELAY_MS || timeoutMs === Infinity))) {
-    throw new SetupError({ code: "invalid-timeout", timeoutMs })
+  if (
+    timeoutMs === null
+    || !(timeoutMs > 0 && (timeoutMs <= MAX_TIMER_DELAY_MS || timeoutMs === Infinity))
+  ) {
+    throw new SetupError({ code: "invalid-timeout", timeout })
   }
 
   // A wire that is already here has nothing buffered, so nothing to withdraw.
@@ -220,7 +219,7 @@ export function connect<Context = void>(
           ? setTimeout(() => {
               cleanup()
               cancelRemote(request)
-              reject(new ChannelError({ code: "timeout", path, timeoutMs }))
+              reject(new ChannelError({ code: "timeout", path, timeout: timeoutMs }))
             }, timeoutMs)
           : undefined
 

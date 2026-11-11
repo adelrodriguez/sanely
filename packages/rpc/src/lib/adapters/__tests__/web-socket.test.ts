@@ -114,7 +114,7 @@ describe("webSocket", () => {
 
     const api = createClient(
       contract,
-      connect(webSocket(clientSocket), { timeoutMs: 1000 }).transport
+      connect(webSocket(clientSocket), { timeout: 1000 }).transport
     )
 
     await expect(api.ping()).resolves.toBe("pong")

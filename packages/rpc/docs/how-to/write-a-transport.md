@@ -6,7 +6,7 @@ A transport is a function with the signature `(path, payload, options?) => resul
 const memory = router.dispatch
 const electron = (path, input) => ipcRenderer.invoke(path, input)
 const queue = async (path, body) => queueClient.publishJSON({ body, url: `${baseUrl}/${path}` })
-const socket = connect(whenOpen(ws).then(webSocket), { timeoutMs: 5000 }).transport
+const socket = connect(whenOpen(ws).then(webSocket), { timeout: "5s" }).transport
 ```
 
 ## Pick the tool for your boundary
