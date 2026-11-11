@@ -492,6 +492,8 @@ describe("React integration", () => {
     )
     expect(await screen.findByText("false")).toBeTruthy()
     expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
   it("asks the provider again on invalidate when the reader has a store", async () => {
     const provider = makeProvider()
     const flags = createFlags({
