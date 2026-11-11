@@ -7,7 +7,13 @@ const MAX_LENGTH = 200
 
 // Each segment is an unsigned number with an optional unit. Signs are handled once for the whole
 // expression, before segment matching.
-const SEGMENT_RE = new RegExp(`(?:${NUMBER_PATTERN})\\s*(${LENIENT_UNIT_PATTERN})?`, "gi")
+const SEGMENT_RE = new RegExp(`(${NUMBER_PATTERN})\\s*(${LENIENT_UNIT_PATTERN})?`, "gi")
+
+// The parts of a number that NUMBER_PATTERN matched: whole digits, fraction digits, and exponent.
+const NUMBER_PARTS_RE = /^(\d*)\.?(\d*)(?:e([+-]?\d+))?$/i
+
+// 10 ** 22 is the largest power of ten that a double holds exactly.
+const MAX_EXACT_POWER_OF_TEN = 22
 
 const WHITESPACE_RE = /^\s*$/
 const COMMA_SEPARATOR_RE = /^\s*,\s*$/
@@ -111,9 +117,9 @@ export function parseExpression(value: string): ParsedExpression {
       throw new InvalidTimeExpressionError(value, "value is not a valid time expression")
     }
 
-    // The segment starts with its number, and `parseFloat` stops at the unit.
     const segment = match[0]
-    const unitToken = match[1]
+    const number = match[1] ?? ""
+    const unitToken = match[2]
 
     // Without this check, "1h.5m" reads as "1h 0.5m".
     if (segmentCount > 0 && gap === "" && segment.startsWith(".")) {
@@ -138,7 +144,7 @@ export function parseExpression(value: string): ParsedExpression {
       multiplier = unit.ms
     }
 
-    total += Number.parseFloat(segment) * multiplier
+    total += segmentMilliseconds(number, multiplier)
 
     if (!Number.isFinite(total)) {
       throw new InvalidTimeExpressionError(value, "value overflows the representable range")
@@ -186,4 +192,24 @@ export function safeParse(value: string): Duration<"milliseconds"> | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Multiplies a decimal number by a unit's milliseconds, rounding once. `"1.1h"` is 11 tenths of an
+ * hour, so the result is `11 * 3_600_000 / 10`, exactly 3_960_000. Multiplying the parsed float
+ * instead rounds twice, and `1.1 * 3_600_000` is 3_960_000.0000000005. A number with too many
+ * digits for one rounding falls back to the float product.
+ */
+function segmentMilliseconds(number: string, multiplier: number): number {
+  const parts = NUMBER_PARTS_RE.exec(number)
+  const whole = parts?.[1] ?? ""
+  const fraction = parts?.[2] ?? ""
+  const exponent = Number(parts?.[3] ?? 0) - fraction.length
+  const scaled = Number(whole + fraction) * multiplier
+
+  if (!Number.isSafeInteger(scaled) || Math.abs(exponent) > MAX_EXACT_POWER_OF_TEN) {
+    return Number.parseFloat(number) * multiplier
+  }
+
+  return exponent < 0 ? scaled / 10 ** -exponent : scaled * 10 ** exponent
 }
