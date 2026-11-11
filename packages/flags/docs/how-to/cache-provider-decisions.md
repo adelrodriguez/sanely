@@ -4,19 +4,39 @@ This guide shows you how to store provider decisions, drop them when the provide
 
 ## Add a store
 
-1. Write a store with `get`, `set`, and an optional `delete`. The store controls serialization and expiry:
+1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This one stamps each decision with a version for its flag. `deleteFlags` advances the version, and `get` ignores a decision with an older one, so there is no index to keep in step with writes, and old decisions leave with their expiry:
 
    ```typescript
    import type { DecisionStore, Decision } from "@sanely/flags"
 
+   type Entry = { decision: Decision; flagKey: string; version: string }
+
+   // A notification without keys advances the version of every flag at once.
+   async function versionOf(flagKey: string): Promise<string> {
+     const [all, flag] = await redis.mget<[number | null, number | null]>(
+       "flag-version",
+       `flag-version:${flagKey}`
+     )
+     return `${all ?? 0}.${flag ?? 0}`
+   }
+
    const store: DecisionStore = {
-     get: (key) => redis.get<Decision>(key),
-     set: async (key, decision) => {
-       await redis.set(key, decision, { ex: 60 })
+     get: async (key) => {
+       const entry = await redis.get<Entry>(key)
+       return entry && entry.version === (await versionOf(entry.flagKey)) ? entry.decision : null
+     },
+     set: async (key, decision, { flagKey }) => {
+       await redis.set(key, { decision, flagKey, version: await versionOf(flagKey) }, { ex: 60 })
      },
      delete: (key) => redis.del(key),
+     deleteFlags: async (flagKeys) => {
+       const versions = flagKeys?.map((flagKey) => `flag-version:${flagKey}`) ?? ["flag-version"]
+       await Promise.all(versions.map((version) => redis.incr(version)))
+     },
    }
    ```
+
+   A write that read the version before a change stores the old version, so `get` never returns it.
 
    A variant payload can hold values that are not JSON-safe. A persistent store must keep them, or the provider must return JSON-safe payloads. The store keeps the raw payload, and the flag's parser runs after each read.
 
@@ -28,7 +48,7 @@ This guide shows you how to store provider decisions, drop them when the provide
      identify,
      cache: { store },
      onError: (report) => {
-       if (report._tag === "StoreFailed") logger.warn(report.operation, report.key, report.error)
+       if (report._tag === "StoreFailed") logger.warn(report.operation, report.error)
      },
    })
    ```
@@ -37,7 +57,7 @@ A store failure does not fail the evaluation. The package discards an invalid st
 
 ## Drop decisions when the provider changes a flag
 
-Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags and deletes their stored decisions. Give the store a `deleteFlags` method, so it can delete every stored decision of a flag, including the ones that other processes stored. `set` passes each decision's `flagKey` for that. A store with only `delete` loses just the entries that this reader read or wrote. See [`DecisionStore`](../reference.md#decisionstore).
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags. With a store that has `deleteFlags`, it also deletes their stored decisions, including the ones that other processes stored. A store without `deleteFlags` keeps them until it expires them. See [`DecisionStore`](../reference.md#decisionstore).
 
 If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
 

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest"
-import { evictOnRejection } from "#lib/promise-cache/index.ts"
+import { evictOnRejection } from "#integrations/react/options.ts"
 
 describe("evictOnRejection", () => {
   test("resolves with the evaluation without evicting", async () => {

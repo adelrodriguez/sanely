@@ -940,7 +940,10 @@ describe("first-class cache", () => {
     const flags = createFlags({
       cache: {
         store: {
-          delete: (key) => Promise.resolve(cached.delete(key)),
+          deleteFlags: () => {
+            cached.clear()
+            return Promise.resolve()
+          },
           get: (key) => Promise.resolve(cached.get(key)),
           set: (key, value) => {
             cached.set(key, value)
@@ -971,50 +974,21 @@ describe("first-class cache", () => {
     expect(subscribe).toHaveBeenCalledTimes(1)
   })
 
-  test("reports delete failures without failing invalidation", async () => {
-    const reports: ErrorReport[] = []
-    let notify!: ChangeListener
-    const flags = createFlags({
-      cache: {
-        store: {
-          delete: () => Promise.reject(new Error("delete failed")),
-          get: () => Promise.resolve(null),
-          set: () => Promise.resolve(),
-        },
-      },
-      identify,
-      onError: (report) => void reports.push(report),
-      provider: defineProvider({
-        decideOne: () => TRUE,
-        name: "test",
-        subscribe: (listener) => {
-          notify = listener
-          return () => null
-        },
-      }),
-    })
-
-    expect(await flags.get(betaAccess)).toBe(true)
-    notify(["beta-access"])
-    await flushBackground()
-    expect(storeReports(reports).map(({ operation }) => operation)).toContain("delete")
-  })
-
   test.each([
-    { expected: ["first", "second"], keys: "first" },
-    { expected: ["first", "second"], keys: null },
+    { expected: undefined, keys: "first" },
+    { expected: undefined, keys: null },
     { expected: ["first"], keys: ["first", 7] },
   ])(
     "reads a malformed change notification $keys as a change to $expected",
     async ({ expected, keys }) => {
       let notify!: ChangeListener
-      const removed: string[] = []
+      const deleted: Array<readonly string[] | undefined> = []
       const flags = createFlags({
         cache: {
           store: {
-            delete: (key: string) => {
-              removed.push(key)
-              return Promise.resolve(true)
+            deleteFlags: (flagKeys) => {
+              deleted.push(flagKeys)
+              return Promise.resolve()
             },
             get: () => Promise.resolve(null),
             set: () => Promise.resolve(),
@@ -1034,27 +1008,23 @@ describe("first-class cache", () => {
       flags.subscribe((changed) => void changes.push(changed))
 
       await flags.get(flag.boolean("first", false))
-      await flags.get(flag.boolean("second", false))
       // A JavaScript provider can send any value.
       notify(keys as never)
       await flushBackground()
-      const removedFlags = removed.map((key) =>
-        expected.find((flagKey) => key.includes(`"${flagKey}"`))
-      )
-      expect(removedFlags).toEqual(expected)
-      expect(changes).toEqual([Array.isArray(keys) ? ["first"] : undefined])
+      expect(deleted).toEqual([expected])
+      expect(changes).toEqual([expected])
     }
   )
 
-  test("invalidates only notified flags and supports keyless invalidation", async () => {
+  test("passes the notified flag keys to deleteFlags, or none for a keyless change", async () => {
     let notify!: ChangeListener
-    const removed: string[] = []
+    const deleted: Array<readonly string[] | undefined> = []
     const flags = createFlags({
       cache: {
         store: {
-          delete: (key: string) => {
-            removed.push(key)
-            return Promise.resolve(true)
+          deleteFlags: (flagKeys) => {
+            deleted.push(flagKeys)
+            return Promise.resolve()
           },
           get: () => Promise.resolve(null),
           set: () => Promise.resolve(),
@@ -1070,20 +1040,12 @@ describe("first-class cache", () => {
         },
       }),
     })
-    const first = flag.boolean("first", false)
-    const second = flag.boolean("second", false)
 
-    await flags.get(first)
-    await flags.get(second)
+    await flags.get(flag.boolean("first", false))
     notify(["first"])
-    await flushBackground()
-    expect(removed).toHaveLength(1)
-    expect(removed[0]).toContain("first")
-
     notify()
     await flushBackground()
-    expect(removed).toHaveLength(2)
-    expect(removed[1]).toContain("second")
+    expect(deleted).toEqual([["first"], undefined])
   })
 
   test("does not write a provider decision after its flag is invalidated", async () => {
@@ -1131,7 +1093,10 @@ describe("first-class cache", () => {
     const write = createDeferred<null>()
     const writeStarted = createDeferred<null>()
     const { control, flags } = changingFlag({
-      delete: (key) => Promise.resolve(stored.delete(key)),
+      deleteFlags: () => {
+        stored.clear()
+        return Promise.resolve()
+      },
       get: (key) => Promise.resolve(stored.get(key)),
       set: async (key, value) => {
         writeStarted.resolve(null)
@@ -1185,9 +1150,9 @@ describe("first-class cache", () => {
     const stored = new Map<string, Decision>()
     const deletion = createDeferred<null>()
     const { control, flags } = changingFlag({
-      delete: async (key) => {
+      deleteFlags: async () => {
         await deletion.promise
-        return stored.delete(key)
+        stored.clear()
       },
       get: (key) => Promise.resolve(stored.get(key)),
       set: (key, value) => {
@@ -1212,7 +1177,10 @@ describe("first-class cache", () => {
     const written = createDeferred<null>()
     let reads = 0
     const { control, decideOne, flags } = changingFlag({
-      delete: (key) => Promise.resolve(stored.delete(key)),
+      deleteFlags: () => {
+        stored.clear()
+        return Promise.resolve()
+      },
       get: (key) => {
         reads += 1
         if (reads === 1) {

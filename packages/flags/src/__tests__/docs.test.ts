@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url"
 import { describe, expect, test } from "vitest"
 import * as core from "#index.ts"
 import * as react from "#integrations/react/index.tsx"
-import { DEFAULT_MAX_ENTRIES, DEFAULT_TTL } from "#lib/promise-cache/index.ts"
+import { DEFAULT_MAX_ENTRIES, DEFAULT_TTL } from "#integrations/react/options.ts"
 import * as testing from "#testing/index.ts"
 
 // The docs repeat facts that the code and configuration own. These checks fail when one side
@@ -121,7 +121,8 @@ describe("docs/architecture.md", () => {
     expect(Object.keys(documented).toSorted()).toEqual(Object.keys(allowed).toSorted())
     for (const [domain, lower] of Object.entries(allowed)) {
       const text = documented[domain] ?? ""
-      const everyAbove = text.startsWith("Every domain above except")
+      // "Every domain above" may name exceptions after "except".
+      const everyAbove = text.startsWith("Every domain above")
       const names =
         text === "Nothing."
           ? []

@@ -60,14 +60,11 @@ export type Decide<TIdentity extends Subject> = (
 ) => Promise<unknown>
 
 /**
- * The deadline for one evaluation. With `signal`, the engine adds the flag's timeout, or the
- * reader's, to the caller's signal. `deadline` is a signal that the caller already built, such as a
- * batch entry signal that includes the caller signal and the entry timeout.
+ * How one evaluation reads. With `signal`, the engine adds the flag's timeout, or the reader's, to
+ * the caller's signal. `deadline` is a signal that the caller already built, such as a batch entry
+ * signal that includes the caller signal and the entry timeout. `BatchRead` is the batch's form.
  */
-export type EvaluationDeadline = (
-  | { signal: AbortSignal | undefined }
-  | { deadline: AbortSignal }
-) & {
+export type EvaluationRead = ({ signal: AbortSignal | undefined } | { deadline: AbortSignal }) & {
   /**
    * Skips stored decisions and provider calls in flight, and stores the new decision.
    */
@@ -101,12 +98,12 @@ export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(
   flag: TFlag,
   identify: IdentitySource<TIdentity>,
   decide: Decide<TIdentity>,
-  deadline: EvaluationDeadline
+  read: EvaluationRead
 ): Promise<EvaluationDetails<TFlag>> {
   const { cleanup, signal } =
-    "deadline" in deadline
-      ? createEvaluationSignal(deadline.deadline)
-      : createEvaluationSignal(deadline.signal, timeoutOf(evaluator, flag))
+    "deadline" in read
+      ? createEvaluationSignal(read.deadline)
+      : createEvaluationSignal(read.signal, timeoutOf(evaluator, flag))
   const state: { identity: TIdentity | null } = { identity: null }
   const context: EvaluationContext<TIdentity> = {
     flag,
@@ -134,7 +131,7 @@ export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(
       flag,
       (providerSignal) => decide(flag, identity, { signal: providerSignal }),
       signal,
-      deadline.fresh === true
+      read.fresh === true
     )
     const { payload } = resolution
     const value = extractDecisionValue(resolution.decision)
