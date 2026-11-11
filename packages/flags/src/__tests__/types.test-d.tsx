@@ -86,6 +86,14 @@ const user: UserIdentity = { distinctId: "u1", plan: "pro" }
 const flags = createFlags({ identify: () => user, provider: userProvider })
 const serverFlags = createFlags({ provider: userProvider })
 const signedUpAt = new Date(0)
+declare const datedOrAnonymous: (Identity & { signedUpAt: Date }) | Anonymous
+declare const userOrAnonymous: (Identity & { plan: "pro" }) | Anonymous
+const anonymousFlags = createFlags({
+  provider: defineProvider({
+    decideOne: (_flag, _identity: Identity | Anonymous) => decision.boolean(true),
+    name: "anonymous",
+  }),
+})
 const dateFlags = createFlags({
   provider: defineProvider({ decideOne: () => decision.boolean(true), name: "dates" }),
 })
@@ -196,6 +204,13 @@ export function Components() {
       {/* @ts-expect-error A reader without `identify` needs an identity. */}
       <FlagsProvider flags={serverFlags}>child</FlagsProvider>
       <FlagsProvider flags={serverFlags} identity={{ ...user, tags: ["beta"] }}>
+        child
+      </FlagsProvider>
+      {/* @ts-expect-error Each object in an identity union must be keyable, also with anonymous. */}
+      <FlagsProvider flags={anonymousFlags} identity={datedOrAnonymous}>
+        child
+      </FlagsProvider>
+      <FlagsProvider flags={anonymousFlags} identity={userOrAnonymous}>
         child
       </FlagsProvider>
       {/* @ts-expect-error The flag cache keys the identity, and it cannot key a Date. */}

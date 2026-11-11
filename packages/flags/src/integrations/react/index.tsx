@@ -65,8 +65,10 @@ type IdentityOf<TFlags extends AnyFlags> = TFlags extends {
  * `identity` prop instead of a throw during render. An index signature from `Identity` is left
  * alone, so a value typed as the reader's identity still passes.
  */
+// `Anonymous` maps to itself, not `unknown`, so the check of each object in an identity union
+// survives the union with `anonymous`: `unknown | X` would accept anything.
 type CacheableFields<TSubject> = TSubject extends Anonymous
-  ? unknown
+  ? TSubject
   : {
       readonly [
         K in keyof TSubject as string extends K ? never : number extends K ? never : K
