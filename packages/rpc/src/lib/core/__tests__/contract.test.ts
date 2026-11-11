@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest"
 import * as z from "zod"
+import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel, flatten, type OneWayContract } from "#lib/core/contract.ts"
 import { SetupError } from "#lib/core/setup-error.ts"
+import { implement } from "#lib/server/implement.ts"
+import { createRouter } from "#lib/server/router.ts"
 
 describe("channel", () => {
   test("a bare schema builds a one-way leaf", () => {
@@ -94,6 +97,28 @@ describe("defineContract", () => {
     })
 
     expect(Object.keys(flatten(tree))).toEqual(["publish.created"])
+  })
+})
+
+describe("contracts not built with defineContract", () => {
+  // A plain object skips defineContract, so every entry point must apply its key rules itself.
+  const colliding = {
+    a: { b: channel({ input: z.number(), output: z.number() }) },
+    "a.b": channel({ input: z.string(), output: z.string() }),
+  }
+
+  test.each([
+    ["createClient", () => createClient(colliding, () => null)],
+    ["createRouter", () => createRouter(colliding, { "a.b": () => null } as never)],
+    ["implement", () => implement(colliding)],
+  ])("%s rejects a dotted key", (_name, build) => {
+    expect(build).toThrow(expect.objectContaining({ code: "dotted-key", key: "a.b" }))
+  })
+
+  test("createClient rejects a reserved key", () => {
+    expect(() => createClient({ files: { $open: channel(z.string()) } }, () => null)).toThrow(
+      expect.objectContaining({ code: "reserved-key", key: "$open" })
+    )
   })
 })
 

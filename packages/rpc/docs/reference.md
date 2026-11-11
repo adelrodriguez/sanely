@@ -1,9 +1,10 @@
 # API reference
 
-`@sanely/rpc` has four entry points:
+`@sanely/rpc` has five entry points:
 
 - `@sanely/rpc`
 - `@sanely/rpc/wire`
+- `@sanely/rpc/wire/fetch`
 - `@sanely/rpc/wire/message-port`
 - `@sanely/rpc/wire/web-socket`
 
@@ -32,6 +33,8 @@ Returns `tree` unchanged. Branches are plain objects, and leaves are channels. T
 | `_kind`          | `reserved-key` | Marks a leaf                                                           |
 | `then`, `toJSON` | `reserved-key` | Would make a client node look like a promise or break `JSON.stringify` |
 | Contains `.`     | `dotted-key`   | Would collide with the dotted path of a nested leaf                    |
+
+`createClient`, `createRouter`, `implement`, and `flatten` apply the same rules, so a contract written as a plain object fails the same way.
 
 ### `createRouter(contract, resolvers)`
 
@@ -137,6 +140,8 @@ Nodes are stable. `client.files === client.files` is `true`.
 
 `then` and `toJSON` are `undefined` on every node. Awaiting a node returns the node, and no call is made.
 
+Every other `$` key is `undefined` too, so a probe such as `$$typeof` makes no call. `defineContract` rejects `$` keys, so no channel is hidden.
+
 ### `Transport<Options>`
 
 ```typescript
@@ -157,6 +162,8 @@ Parses `value` with a Standard Schema and resolves with the parsed value. Reject
 
 Returns an object from dotted path to `Channel`. The object has no prototype. Use `Object.hasOwn(result, path)` to test for a path.
 
+Throws a `SetupError` for a reserved or dotted key, as `defineContract` does.
+
 ### `isChannel(node)`
 
 Returns `true` if `node` is a leaf.
@@ -173,7 +180,6 @@ The class of every failure that the package raises during a call. `code` selects
 | `internal`           | `toWire` or `connect` hid a failure from the caller            |                     |
 | `timeout`            | A `connect` call gets no response within `timeoutMs`           | `path`, `timeoutMs` |
 | `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`             |
-| `no-router`          | A request reaches a `connect` end that has no router           |                     |
 | `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                     |
 
 `issues` holds the Standard Schema issues.
@@ -189,6 +195,7 @@ The class of every wiring mistake. It is thrown when you build something, and it
 | `missing-resolver`  | A contract leaf has no resolver                                            | `path`                 |
 | `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel              | `path`                 |
 | `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch   | `expected`, `path`     |
+| `invalid-timeout`   | `connect` gets a `timeoutMs` that isn't a positive number or `Infinity`    | `timeoutMs`            |
 | `misplaced-handler` | A fragment sits at a path other than its own                               | `fragmentPath`, `path` |
 | `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window` | `caller`               |
 
@@ -216,7 +223,7 @@ Takes a promise, or a function that may throw synchronously. Resolves with a `Wi
 
 `toWire` hides failures by default. These cross with their message, code, and fields:
 
-- a `ChannelError` with code `validation`, `unknown-channel`, `no-router`, or `internal`
+- a `ChannelError` with code `validation`, `unknown-channel`, or `internal`
 - any error for which `options.expose` returns `true`
 
 Every other failure crosses as a `ChannelError` with code `internal`. `toWire` passes the original error to `options.onHidden`.
@@ -250,14 +257,14 @@ type WireResult =
 
 Turns a `Wire` into a transport for calling the peer, and serves the peer's calls with `router`.
 
-| Option      | Type                          | Description                                                                                                                                                |
-| ----------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, the peer's calls fail with `no-router`                                                                             |
-| `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                             |
-| `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close` |
-| `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                |
-| `expose`    | `(error: unknown) => boolean` | Decides which failures this end sends to the peer as-is                                                                                                    |
-| `onHidden`  | `(error: unknown) => void`    | Receives the failures this end hides from the peer                                                                                                         |
+| Option      | Type                          | Description                                                                                                                                                                                                                                                                |
+| ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, this end only calls, and leaves the peer's calls to the wire's serving end                                                                                                                                                         |
+| `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                                                                                                                                             |
+| `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close`. Any other value that isn't a positive number, such as `NaN`, throws a `SetupError` with code `invalid-timeout` |
+| `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                                                                                                                                |
+| `expose`    | `(error: unknown) => boolean` | Decides which failures this end sends to the peer as-is                                                                                                                                                                                                                    |
+| `onHidden`  | `(error: unknown) => void`    | Receives the failures this end hides from the peer                                                                                                                                                                                                                         |
 
 `connect` returns an object with these properties:
 
@@ -269,9 +276,13 @@ Turns a `Wire` into a transport for calling the peer, and serves the peer's call
 
 A call's `signal` rejects that call with `signal.reason` and drops its late reply. When a call is aborted or hits `timeoutMs`, `connect` tells the peer, and the peer aborts the `signal` its resolver received.
 
-`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason.
+`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason. A queued call whose payload the wire can't send, such as a BigInt over a WebSocket, rejects alone with the wire's error once the wire arrives.
 
 When the session closes, every pending call and every later call rejects with a `ChannelError` with code `closed` and the reason as `cause`. This end stops serving and aborts every resolver it is running.
+
+Several sessions can call over one wire. Each message carries the protocol version and the calling session's id, so a session settles only with the replies to its own calls, and a cancel reaches only its own request. A message from another protocol, or from another version of this one, is ignored.
+
+A wire has one serving end. If two sessions serve the same wire, both answer every request and the caller takes the first reply. Serve several routers from one session with `mergeRouters`.
 
 ### `Wire`
 
@@ -284,28 +295,69 @@ type Wire = {
 
 If `onMessage` returns a function, `close` calls it to unsubscribe.
 
+## `@sanely/rpc/wire/fetch`
+
+Serves a router over HTTP with the Fetch API's `Request` and `Response`, and calls it with `fetch`. Each call is one `POST` to `<url>/<path>` with a JSON body, and every response carries a `WireResult`.
+
+### `fetchHandler(router, options?)`
+
+Returns `(request: Request) => Promise<Response>`. The last segment of the request's URL names the channel.
+
+| Option     | Type                            | Description                                                                                                                                         |
+| ---------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context`  | `(request: Request) => Context` | Derives each call's context. May be async. Required when the router's context type isn't `void`. If it throws, the call fails like a resolver would |
+| `expose`   | `(error: unknown) => boolean`   | Decides which failures the caller sees as-is, as in `toWire`                                                                                        |
+| `onHidden` | `(error: unknown) => void`      | Receives every hidden failure, except one caused by a client that disconnected                                                                      |
+
+| Outcome                                 | Status |
+| --------------------------------------- | ------ |
+| Success                                 | 200    |
+| `validation`, or a body that isn't JSON | 400    |
+| `unknown-channel`                       | 404    |
+| A method other than `POST`              | 405    |
+| `internal` and every other failure      | 500    |
+
+The request's `signal` reaches the resolver, so a client that disconnects aborts it.
+
+### `fetchTransport(url, options?)`
+
+Returns a `Transport<{ signal?: AbortSignal }>` that calls a `fetchHandler` at `url`.
+
+| Option    | Type                                                    | Description                                                  |
+| --------- | ------------------------------------------------------- | ------------------------------------------------------------ |
+| `headers` | `HeadersInit` or a function that returns one            | Sent with every call. A function runs per call. May be async |
+| `fetch`   | `(url: string, init: RequestInit) => Promise<Response>` | Replaces the global `fetch`, for a test or a custom client   |
+
+A call's `signal` cancels the request, and the call rejects with `signal.reason`. A response that isn't an envelope rejects with a `ChannelError` with code `malformed-envelope`. A network failure rejects with the error `fetch` raised.
+
+Payloads must survive `JSON.stringify`. A call with an `undefined` payload sends no body, so `undefined` and `null` stay distinct.
+
 ## `@sanely/rpc/wire/message-port`
 
 Every parameter is typed by shape. You don't need Electron or DOM types installed.
 
-| Export                                   | Runs in                      | Description                                                                 |
-| ---------------------------------------- | ---------------------------- | --------------------------------------------------------------------------- |
-| `mainPort(port)`                         | Main, utility                | Wraps an Electron `MessagePortMain` as a `Wire`                             |
-| `domPort(port)`                          | Renderer, iframe, web worker | Wraps a DOM `MessagePort` as a `Wire`                                       |
-| `nodePort(port)`                         | Node                         | Wraps a `node:worker_threads` port, a `Worker`, or `parentPort` as a `Wire` |
-| `sendPort(win, port, type)`              | Main                         | Posts `port` to `win` once its page has loaded                              |
-| `relayPort(ipcRenderer, type, options?)` | Preload                      | Forwards every port that arrives on the IPC channel `type` into the page    |
-| `receivePort(type, options?)`            | Renderer                     | Resolves with the first port relayed on `type`                              |
+| Export                                   | Runs in                      | Description                                                                        |
+| ---------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------- |
+| `mainPort(port)`                         | Main, utility                | Wraps an Electron `MessagePortMain` as a `Wire`                                    |
+| `domPort(port)`                          | Renderer, iframe, web worker | Wraps a DOM `MessagePort` as a `Wire`                                              |
+| `nodePort(port)`                         | Node                         | Wraps a `node:worker_threads` port, a `Worker`, or `parentPort` as a `Wire`        |
+| `sendPort(win, port, type)`              | Main                         | Posts `port` to `win` once its page has loaded                                     |
+| `relayPort(ipcRenderer, type, options?)` | Preload                      | Holds each port that arrives on the IPC channel `type` until the page asks for one |
+| `receivePort(type, options?)`            | Renderer                     | Asks the relay for a port on `type` and resolves with it                           |
 
 `mainPort` and `domPort` start the port after they attach their listener.
 
-`sendPort` posts immediately if the page has finished loading, and otherwise waits for `did-finish-load`.
+`sendPort` posts immediately if the page has stopped loading, and otherwise waits for `did-stop-loading`. `loadURL` resolves before the page stops loading, so you can call `sendPort` right after it.
+
+`relayPort` and `receivePort` can start in either order. `receivePort` asks for a port when it starts listening, and asks again when a relay starts. `relayPort` posts each port it holds to one receiver, in the order the receivers asked. A `receivePort` that aborts withdraws its request, and a port already on its way to it goes back to the relay for the next receiver.
+
+Call `relayPort` before the preload awaits anything. Electron drops an IPC message that arrives before its listener exists, so a port that main sends during the wait is lost.
 
 `relayPort` takes these options:
 
 | Option         | Description                                                                                                 |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |
-| `signal`       | Stops the relay when it aborts                                                                              |
+| `signal`       | Stops the relay when it aborts, and drops the ports it holds                                                |
 | `target`       | The window to post to. Defaults to the global `window`                                                      |
 | `targetOrigin` | The origin to post to. Defaults to the window's own origin, or `"*"` for an opaque origin such as `file://` |
 

@@ -1,7 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
 import { describe, expect, test } from "vitest"
 import * as z from "zod"
-import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { parseWith } from "#lib/core/schema.ts"
@@ -13,21 +12,6 @@ const contract = defineContract({
 })
 
 describe("ChannelError", () => {
-  test("client input failures carry code validation and Standard Schema issues", async () => {
-    const client = createClient(contract, () => "hi")
-
-    const error = await client
-      .greet({ name: 1 as unknown as string })
-      .catch((error: unknown) => error)
-
-    expect(error).toBeInstanceOf(ChannelError)
-
-    const channelError = error as Extract<ChannelError, { code: "validation" }>
-
-    expect(channelError.code).toBe("validation")
-    expect(channelError.issues.length).toBeGreaterThan(0)
-  })
-
   test("router distinguishes library failures from resolver failures", async () => {
     const router = createRouter(contract, {
       greet: () => {

@@ -48,6 +48,11 @@
       "import": "./dist/wire.js",
       "default": "./dist/wire.js"
     },
+    "./wire/fetch": {
+      "types": "./dist/wire/fetch.d.ts",
+      "import": "./dist/wire/fetch.js",
+      "default": "./dist/wire/fetch.js"
+    },
     "./wire/message-port": {
       "types": "./dist/wire/message-port.d.ts",
       "import": "./dist/wire/message-port.js",

@@ -11,9 +11,10 @@ const socket = connect(whenOpen(ws).then(webSocket), { timeoutMs: 5000 }).transp
 
 ## Pick the tool for your boundary
 
-- If the boundary serializes values, as HTTP, Electron `invoke`, and structured clone do, wrap the outcome with `toWire` on the receiving side and unwrap it with `fromWire` on the calling side. A `ChannelError` keeps its code and fields. Server-side failures arrive with the code `internal` unless you pass `expose`.
+- If the boundary is HTTP, use `fetchHandler` and `fetchTransport` from `@sanely/rpc/wire/fetch`. See [How to serve a contract over HTTP](./serve-over-http.md).
+- If the boundary serializes values in another way, as Electron `invoke` and structured clone do, wrap the outcome with `toWire` on the receiving side and unwrap it with `fromWire` on the calling side. A `ChannelError` keeps its code and fields. Server-side failures arrive with the code `internal` unless you pass `expose`.
 - If the boundary is a message pipe, such as a MessagePort, a worker, or a WebSocket, use `connect`. It adds request/response matching, timeouts, cancellation, and teardown. Use a shipped wire from `@sanely/rpc/wire/message-port` or `@sanely/rpc/wire/web-socket` if one fits. Otherwise, write a `Wire` inline. It has two properties, `send` and `onMessage`.
-- If the edge must register every endpoint up front, as HTTP routes and IPC handlers do, loop over `router.channels` on the server or `flatten(contract)` anywhere.
+- If the edge must register every endpoint up front, as IPC handlers and per-route HTTP frameworks do, loop over `router.channels` on the server or `flatten(contract)` anywhere.
 
 ## Restrict a one-way transport to one-way contracts
 

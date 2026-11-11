@@ -10,35 +10,80 @@ export type ChannelErrorDetail =
   | { code: "closed" }
   | { code: "internal" }
   | { code: "malformed-envelope" }
-  | { code: "no-router" }
   | { code: "output-validation"; issues: readonly StandardSchemaV1.Issue[] }
   | { code: "timeout"; path: string; timeoutMs: number }
   | { code: "unknown-channel"; path: string }
   | { code: "validation"; issues: readonly StandardSchemaV1.Issue[] }
 
-function messageFor(detail: ChannelErrorDetail): string {
-  switch (detail.code) {
-    case "closed":
-      return "Wire closed"
-    case "internal":
-      return "Internal error"
-    case "malformed-envelope":
-      return "Received a value that is not a WireResult envelope"
-    case "no-router":
-      return "This end does not serve requests"
-    case "output-validation":
-    case "validation":
-      return detail.issues.map((issue) => issue.message).join("; ")
-    case "timeout":
-      return `Call to "${detail.path}" timed out after ${detail.timeoutMs}ms`
-    case "unknown-channel":
-      return `Unknown channel: "${detail.path}"`
-  }
+type Code = ChannelErrorDetail["code"]
+
+type Guard<T> = (value: unknown) => value is T
+
+type CodeSpec<Detail> = {
+  /**
+   * Whether the code reveals nothing about the server, so `toWire` and `connect` always let it
+   * cross. The rest cross only when the `expose` policy accepts them.
+   */
+  exposed: boolean
+  /**
+   * One guard per field, which checks the field when a detail arrives over a wire.
+   */
+  fields: { [Name in Exclude<keyof Detail, "code">]-?: Guard<Detail[Name]> }
+  message: (detail: Detail) => string
+}
+
+const isString = (value: unknown): value is string => typeof value === "string"
+
+const isNumber = (value: unknown): value is number => typeof value === "number"
+
+const joinIssues = ({ issues }: { issues: readonly StandardSchemaV1.Issue[] }): string =>
+  issues.map((issue) => issue.message).join("; ")
+
+/**
+ * How the library handles each code: the wire parser, the field copy, the message, and whether it
+ * always crosses a wire all come from here. The type demands one entry per code and one guard per
+ * field, so the build fails when this table and `ChannelErrorDetail` disagree.
+ */
+const CODES: { [C in Code]: CodeSpec<Extract<ChannelErrorDetail, { code: C }>> } = {
+  closed: { exposed: false, fields: {}, message: () => "Wire closed" },
+  // Exposed so a relayed hidden failure passes through instead of reaching `onHidden` again.
+  internal: { exposed: true, fields: {}, message: () => "Internal error" },
+  "malformed-envelope": {
+    exposed: false,
+    fields: {},
+    message: () => "Received a value that is not a WireResult envelope",
+  },
+  // The server's own data failed its schema, so its issues describe the server.
+  "output-validation": { exposed: false, fields: { issues: isIssueList }, message: joinIssues },
+  timeout: {
+    exposed: false,
+    fields: { path: isString, timeoutMs: isNumber },
+    message: ({ path, timeoutMs }) => `Call to "${path}" timed out after ${timeoutMs}ms`,
+  },
+  "unknown-channel": {
+    exposed: true,
+    fields: { path: isString },
+    message: ({ path }) => `Unknown channel: "${path}"`,
+  },
+  validation: { exposed: true, fields: { issues: isIssueList }, message: joinIssues },
+}
+
+// One detail's spec, read the way every code allows. Indexing the table by a union of codes yields
+// a union of specs, whose `message` TypeScript cannot call with the matching detail.
+type AnySpec = {
+  exposed: boolean
+  fields: Readonly<Record<string, Guard<unknown>>>
+  message: (detail: ChannelErrorDetail) => string
+}
+
+function specOf(detailCode: Code): AnySpec {
+  // Each entry's `message` accepts its own code's detail, which is what every caller passes
+  return CODES[detailCode] as AnySpec
 }
 
 class ChannelBaseError extends Error {
   constructor(detail: ChannelErrorDetail, options?: ErrorOptions) {
-    super(messageFor(detail), options)
+    super(specOf(detail.code).message(detail), options)
     // oxlint-disable-next-line custom-error-definition -- instances present under the public name, ChannelError
     this.name = "ChannelError"
     // Copy the known fields only: a detail rehydrated from a peer must not
@@ -59,7 +104,6 @@ class ChannelBaseError extends Error {
  * - `closed` — the wire was torn down; the close reason is in `cause`
  * - `internal` — the other side failed and hid why (`toWire` and `connect` hide failures by default);
  *   the real error went to its `onHidden`
- * - `no-router` — the peer's `connect` has no router to serve requests
  * - `malformed-envelope` — `fromWire` received a value that is not a `WireResult` (a gateway error
  *   page, a proxy 502)
  *
@@ -77,28 +121,25 @@ export const ChannelError = ChannelBaseError as unknown as new (
 ) => ChannelError
 
 /**
+ * Whether a code always crosses a wire with its message and fields. See `CodeSpec.exposed`.
+ */
+export function isAlwaysExposed(detailCode: Code): boolean {
+  return CODES[detailCode].exposed
+}
+
+/**
  * Recovers the serializable detail from an instance (or narrows a detail to its known fields) — the
  * wire envelope's half of the round trip `new ChannelError(detailOf(error))`.
  */
 export function detailOf(detail: ChannelErrorDetail): ChannelErrorDetail {
-  switch (detail.code) {
-    case "closed":
-      return { code: "closed" }
-    case "internal":
-      return { code: "internal" }
-    case "malformed-envelope":
-      return { code: "malformed-envelope" }
-    case "no-router":
-      return { code: "no-router" }
-    case "output-validation":
-      return { code: "output-validation", issues: detail.issues }
-    case "timeout":
-      return { code: "timeout", path: detail.path, timeoutMs: detail.timeoutMs }
-    case "unknown-channel":
-      return { code: "unknown-channel", path: detail.path }
-    case "validation":
-      return { code: "validation", issues: detail.issues }
+  const copy: Record<string, unknown> = { code: detail.code }
+
+  for (const name of Object.keys(specOf(detail.code).fields)) {
+    copy[name] = Reflect.get(detail, name)
   }
+
+  // The copy holds exactly the fields the table lists for this code
+  return copy as ChannelErrorDetail
 }
 
 /**
@@ -106,30 +147,22 @@ export function detailOf(detail: ChannelErrorDetail): ChannelErrorDetail {
  * only as trustworthy as the peer. Returns `undefined` for an unknown code or mistyped fields.
  */
 export function parseDetail(value: unknown): ChannelErrorDetail | undefined {
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !isCode(value.code)) {
     return undefined
   }
 
-  const { code, issues, path, timeoutMs } = value
+  const guards = Object.entries(specOf(value.code).fields)
 
-  switch (code) {
-    case "closed":
-    case "internal":
-    case "malformed-envelope":
-    case "no-router":
-      return { code }
-    case "output-validation":
-    case "validation":
-      return isIssueList(issues) ? { code, issues } : undefined
-    case "timeout":
-      return typeof path === "string" && typeof timeoutMs === "number"
-        ? { code: "timeout", path, timeoutMs }
-        : undefined
-    case "unknown-channel":
-      return typeof path === "string" ? { code: "unknown-channel", path } : undefined
-    default:
-      return undefined
+  if (!guards.every(([name, guard]) => guard(value[name]))) {
+    return undefined
   }
+
+  // Every field the table lists for this code passed its guard
+  return detailOf(value as ChannelErrorDetail)
+}
+
+function isCode(value: unknown): value is Code {
+  return typeof value === "string" && Object.hasOwn(CODES, value)
 }
 
 function isIssueList(value: unknown): value is readonly StandardSchemaV1.Issue[] {

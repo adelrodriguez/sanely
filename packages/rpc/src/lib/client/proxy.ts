@@ -1,7 +1,13 @@
 import { INERT_KEYS } from "#lib/core/contract.ts"
 
+/**
+ * A callable Proxy that records the path it was reached by. Calling a node runs `call` with that
+ * path. Reading a `$`-prefixed key runs `helper` with the key and the node's path instead of
+ * recursing, so helpers such as `$path` resolve on property access.
+ */
 export function createRecursiveProxy(
-  callback: (opts: { path: readonly string[]; args: readonly unknown[] }) => unknown,
+  call: (opts: { path: readonly string[]; args: readonly unknown[] }) => unknown,
+  helper: (opts: { key: string; parent: readonly string[] }) => unknown,
   path: readonly string[]
 ): unknown {
   // Each node remembers its children, so `api.a.b === api.a.b`: a node is safe as a Map key or a
@@ -15,27 +21,21 @@ export function createRecursiveProxy(
     },
     {
       apply(_1, _2, args) {
-        return callback({ args, path })
+        return call({ args, path })
       },
       get: (_obj, key) => {
         if (typeof key !== "string" || INERT_KEYS.has(key)) {
           return
         }
 
-        const nextPath = [...path, key]
-
-        // `$`-prefixed helpers (`$path`, `$input`, `$with`, ...) are accessed directly
-        // as properties, so we invoke the callback immediately.
         if (key.startsWith("$")) {
-          return callback({ args: [], path: nextPath })
+          return helper({ key, parent: path })
         }
 
-        // For all other keys, keep recursing and treat the final value as
-        // a callable function (handled in the `apply` trap).
         let child = children.get(key)
 
         if (child === undefined) {
-          child = createRecursiveProxy(callback, nextPath)
+          child = createRecursiveProxy(call, helper, [...path, key])
           children.set(key, child)
         }
 

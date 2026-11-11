@@ -16,7 +16,7 @@ What sits between them is up to you. A transport is one function, `(path, payloa
 - Schemas can come from any [Standard Schema](https://standardschema.dev) library, such as [Zod](https://zod.dev), [Valibot](https://valibot.dev), or [ArkType](https://arktype.io).
 - The router parses the input before a resolver runs and parses the result before it leaves. A resolver that returns the wrong shape fails on the server, so the caller never gets bad data.
 - A missing resolver is a compile error.
-- `@sanely/rpc/wire` carries errors across serialization, hiding server-side details by default. It also turns message pipes into request/response calls you can cancel, and it ships wires for MessagePorts and WebSockets.
+- `@sanely/rpc/wire` carries errors across serialization, hiding server-side details by default. It also turns message pipes into request/response calls you can cancel, and it ships an HTTP handler and transport and wires for MessagePorts and WebSockets.
 
 ## Install
 

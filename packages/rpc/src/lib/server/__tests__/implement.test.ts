@@ -113,6 +113,30 @@ describe("createRouter with a handler tree", () => {
     )
   })
 
+  test("throws at assembly when a leaf slot holds something other than a fragment", () => {
+    const notes = { open: { $path: "notes.open" }, save }
+
+    expect(() => createRouter(contract, { notes, ping } as unknown as Handlers)).toThrow(
+      expect.objectContaining({
+        code: "invalid-handler",
+        expected: "fragment",
+        message: 'Handler for "notes.open" is not a fragment',
+        path: "notes.open",
+      })
+    )
+  })
+
+  test("throws at assembly when a branch slot holds something other than an object", () => {
+    expect(() => createRouter(contract, { notes: 1, ping } as unknown as Handlers)).toThrow(
+      expect.objectContaining({
+        code: "invalid-handler",
+        expected: "branch",
+        message: 'Expected a branch of handlers at "notes"',
+        path: "notes",
+      })
+    )
+  })
+
   test("throws at assembly when a fragment sits in the wrong slot", () => {
     expect(() =>
       createRouter(contract, { notes: { open: save, save }, ping } as unknown as Handlers)

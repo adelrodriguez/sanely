@@ -92,7 +92,7 @@ export function joinPath(prefix: string, key: string): string {
  * @yields {{ key: string; node: Channel | ContractTree; path: string }} Every node of the tree,
  *   depth-first, with its key and dotted path.
  */
-export function* walk(
+function* walk(
   tree: ContractTree,
   prefix = ""
 ): Generator<{ key: string; node: Channel | ContractTree; path: string }> {
@@ -111,8 +111,13 @@ export function* walk(
  * The tree as a flat `Record<path, Channel>`. The record has no prototype, so an untrusted path
  * like `"constructor"` or `"__proto__"` misses instead of resolving to an `Object.prototype`
  * member.
+ *
+ * It applies `defineContract`'s key rules first, because a contract need not come from
+ * `defineContract`, and a dotted key would silently replace the nested leaf it collides with.
  */
 export function flatten(tree: ContractTree, prefix = ""): Record<string, Channel> {
+  defineContract(tree)
+
   const result: Record<string, Channel> = Object.create(null)
 
   for (const { node, path } of walk(tree, prefix)) {

@@ -30,7 +30,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    }
    ```
 
-   You can call `attach` before or after `loadURL`. If the page has loaded, `sendPort` posts the port right away. Otherwise it waits for `did-finish-load`.
+   You can call `attach` before or after `loadURL`. If the page has stopped loading, `sendPort` posts the port right away. Otherwise it waits for `did-stop-loading`.
 
 2. In the preload, relay the port into the page. A port can't cross `contextBridge`, but `relayPort` transfers it with `window.postMessage`:
 
@@ -40,6 +40,8 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
 
    relayPort(ipcRenderer, "rpc:port")
    ```
+
+   Call `relayPort` before the preload awaits anything. Electron drops an IPC message that arrives before its listener exists, so a port that main sends during the wait is lost.
 
 3. In the renderer, pass `connect` the port that `receivePort` will deliver. `api` works as soon as the module loads. Calls made before the port arrives wait for it. Give `receivePort` a `signal` so the wait ends if the port never comes. Its rejection closes the connection.
 
@@ -62,7 +64,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    export const api = createClient(contract, transport)
    ```
 
-You don't need a ready handshake. A port holds messages until its listener starts it, and `connect` holds calls until the port arrives.
+You don't need a handshake of your own. `relayPort` holds the port until `receivePort` asks for it, so the renderer can call `receivePort` at any time, even from a module that loads late. A port holds messages until its listener starts it, and `connect` holds calls until the port arrives.
 
 ## Decide which errors cross
 

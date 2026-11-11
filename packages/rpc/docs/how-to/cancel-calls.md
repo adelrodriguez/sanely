@@ -24,10 +24,11 @@ Cancel a call when its result is no longer needed, such as when a user leaves th
 
    The call rejects with `signal.reason`. To set a deadline instead, use `AbortSignal.timeout(5000)`.
 
-This works only if the transport accepts `{ signal }`. Two transports already do:
+This works only if the transport accepts `{ signal }`. Three transports already do:
 
 - `router.dispatch`, when the context type is `void`. `dispatch` rejects as soon as the signal aborts, even if the resolver ignores it. If the signal has already aborted, the resolver doesn't start.
 - The transport from `connect`. The client side drops the late reply and tells the peer, and the peer aborts its resolver's signal. A call that hits `timeoutMs` tells the peer the same way.
+- `fetchTransport` from `@sanely/rpc/wire/fetch`. The signal cancels the request, and `fetchHandler` passes the request's own signal to the resolver, so a client that disconnects aborts it.
 
 For your own transport, declare `options?: { signal?: AbortSignal }` as its third parameter and pass the signal on. See [How to pass per-call options](./pass-per-call-options.md).
 

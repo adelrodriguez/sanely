@@ -70,7 +70,7 @@ const dependencies: Record<string, Record<string, string[]>> = {
     request: [],
   },
   rpc: {
-    adapters: ["core", "wire"],
+    adapters: ["core", "server", "wire"],
     client: ["core"],
     core: [],
     server: ["core"],

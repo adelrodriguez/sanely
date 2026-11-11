@@ -134,6 +134,38 @@ function createServingPeer(options: { onHidden?: (error: unknown) => void } = {}
   return { client, running, sent, server, signals }
 }
 
+// Two call-only sessions on the same end, as two features that each connect to one port.
+function createSharedCallers() {
+  const [serverWire, callerWire] = createWirePair()
+  const signals = new Map<string, AbortSignal>()
+  const echoContract = defineContract({
+    echo: channel({ input: z.string(), output: z.string() }),
+  })
+  const router = createRouter(echoContract, {
+    echo: async ({ input, signal }) => {
+      signals.set(input, signal)
+
+      // "hang" settles only when its caller cancels it.
+      if (input === "hang") {
+        await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("stopped"))
+          })
+        })
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, input === "slow" ? 20 : 0)
+      })
+      return input
+    },
+  })
+
+  connect(serverWire, { router })
+
+  return { first: connect(callerWire), second: connect(callerWire), signals }
+}
+
 describe("connect", () => {
   test("round-trips in both directions over one pipe", async () => {
     const { api, push } = createConnectedPeers()
@@ -141,22 +173,6 @@ describe("connect", () => {
     await expect(api.math.add({ a: 2, b: 3 })).resolves.toBe(5)
     await expect(push.ping()).resolves.toBe("pong")
     await expect(push.notify({ message: "hi" })).resolves.toBeUndefined()
-  })
-
-  test("rehydrates validation failures with issues across the wire", async () => {
-    const { api } = createConnectedPeers()
-
-    const error = await api.math
-      .add({ a: 2, b: "three" as unknown as number })
-      .catch((error: unknown) => error)
-
-    // Thrown by the remote router, yet instanceof and code checks work on this side.
-    expect(error).toBeInstanceOf(ChannelError)
-
-    const channelError = error as Extract<ChannelError, { code: "validation" }>
-
-    expect(channelError.code).toBe("validation")
-    expect(channelError.issues.length).toBeGreaterThan(0)
   })
 
   test("hides resolver crashes as code internal by default", async () => {
@@ -193,19 +209,26 @@ describe("connect", () => {
     expect((error as Error).message).toBe("resolver exploded")
   })
 
-  test("a call-only end rejects incoming requests with code no-router", async () => {
+  test("a call-only session leaves requests to the serving session on its end", async () => {
     const [serverWire, clientWire] = createWirePair()
-    connect(serverWire) // no router
+    const router = createRouter(pullContract, { "math.add": ({ input: { a, b } }) => a + b })
+
+    // Two features on one end: one serves, and the other only calls.
+    connect(serverWire, { router })
+    connect(serverWire)
     const { transport } = connect(clientWire)
 
-    const error = await Promise.resolve(transport("math.add", { a: 1, b: 2 })).catch(
-      (error: unknown) => error
-    )
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).resolves.toBe(3)
+  })
 
-    // Raised on the peer, rehydrated here with its code intact.
-    expect(error).toBeInstanceOf(ChannelError)
-    expect((error as ChannelError).code).toBe("no-router")
-    expect((error as ChannelError).message).toBe("This end does not serve requests")
+  test("a call to a wire with no serving end times out", async () => {
+    const [serverWire, clientWire] = createWirePair()
+    connect(serverWire) // no router
+    const { transport } = connect(clientWire, { timeoutMs: 20 })
+
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      code: "timeout",
+    })
   })
 
   test("still replies when onHidden throws", async () => {
@@ -375,6 +398,65 @@ describe("connect", () => {
     await expect(closed).resolves.toMatchObject({ cause: reason, code: "closed" })
   })
 
+  test("an already-aborted session signal closes the connection at once", async () => {
+    const reason = new Error("window already closed")
+    const { closed, transport } = connect(createWirePair()[0], {
+      signal: AbortSignal.abort(reason),
+    })
+
+    await expect(closed).resolves.toMatchObject({ cause: reason, code: "closed" })
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      cause: reason,
+      code: "closed",
+    })
+  })
+
+  test("a closed end stops serving, even over a wire it cannot unsubscribe from", async () => {
+    const [pairedWire, clientWire] = createWirePair()
+    // `onMessage` returns nothing, so the listener stays attached after `close`.
+    const serverWire: Wire = {
+      onMessage: (listener) => {
+        pairedWire.onMessage(listener)
+      },
+      send: pairedWire.send,
+    }
+    let calls = 0
+    const server = connect(serverWire, {
+      router: createRouter(pullContract, {
+        "math.add": () => {
+          calls += 1
+          return 1
+        },
+      }),
+    })
+    const { transport } = connect(clientWire, { timeoutMs: 20 })
+
+    server.close()
+
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      code: "timeout",
+    })
+    expect(calls).toBe(0)
+  })
+
+  test("ignores messages that are not objects", async () => {
+    const [serverWire, peerWire] = createWirePair()
+    const seen: unknown[] = []
+
+    connect(serverWire, { router: createRouter(pullContract, { "math.add": () => 1 }) })
+    peerWire.onMessage((data) => {
+      seen.push(data)
+    })
+    for (const data of ["hello", null, 42, ["req"]]) {
+      peerWire.send(data)
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+
+    expect(seen).toEqual([])
+  })
+
   test("closed resolves on close() too", async () => {
     const [wire] = createWirePair()
     const { close, closed } = connect(wire)
@@ -384,7 +466,7 @@ describe("connect", () => {
     await expect(closed).resolves.toBeInstanceOf(ChannelError)
   })
 
-  test("ignores requests without a numeric id or string path", async () => {
+  test("ignores requests without a numeric id, a string path, or a session id", async () => {
     const [serverWire, peerWire] = createWirePair()
     const seen: unknown[] = []
     let calls = 0
@@ -399,8 +481,23 @@ describe("connect", () => {
     peerWire.onMessage((data) => {
       seen.push(data)
     })
-    peerWire.send({ id: "1", kind: "req", path: "math.add", payload: { a: 1, b: 2 } })
-    peerWire.send({ id: 2, kind: "req", path: ["math", "add"], payload: { a: 1, b: 2 } })
+    peerWire.send({
+      id: "1",
+      kind: "req",
+      path: "math.add",
+      payload: { a: 1, b: 2 },
+      rpc: 1,
+      sid: "p",
+    })
+    peerWire.send({
+      id: 2,
+      kind: "req",
+      path: ["math", "add"],
+      payload: { a: 1, b: 2 },
+      rpc: 1,
+      sid: "p",
+    })
+    peerWire.send({ id: 3, kind: "req", path: "math.add", payload: { a: 1, b: 2 }, rpc: 1 })
     await new Promise((resolve) => {
       setTimeout(resolve, 0)
     })
@@ -445,6 +542,20 @@ describe("connect", () => {
       vi.useRealTimers()
     }
   })
+
+  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY])(
+    "rejects timeoutMs %s when it connects",
+    (timeoutMs) => {
+      expect(() => connect(createWirePair()[0], { timeoutMs })).toThrow(
+        expect.objectContaining({
+          code: "invalid-timeout",
+          message: `timeoutMs must be a positive number of milliseconds or Infinity, not ${timeoutMs}`,
+          name: "SetupError",
+          timeoutMs,
+        })
+      )
+    }
+  )
 
   test("timeoutMs: Infinity leaves calls pending until close", async () => {
     vi.useFakeTimers()
@@ -500,6 +611,75 @@ describe("connect", () => {
       expect((rejection as ChannelError).code).toBe("closed")
       expect(((rejection as ChannelError).cause as Error).message).toBe("window closed")
     }
+  })
+
+  describe("sessions sharing one wire", () => {
+    test("each session settles only with the replies to its own calls", async () => {
+      const { first, second } = createSharedCallers()
+
+      await expect(
+        Promise.all([first.transport("echo", "slow"), second.transport("echo", "fast")])
+      ).resolves.toEqual(["slow", "fast"])
+    })
+
+    test("a cancel aborts only the calling session's request", async () => {
+      const { first, second, signals } = createSharedCallers()
+      const controller = new AbortController()
+
+      const cancelled = Promise.resolve(
+        first.transport("echo", "hang", { signal: controller.signal })
+      ).catch((error: unknown) => error)
+      const kept = Promise.resolve(second.transport("echo", "fast"))
+
+      await vi.waitFor(
+        () => {
+          expect(signals.size).toBe(2)
+        },
+        { interval: 1 }
+      )
+      controller.abort("gave up")
+
+      await expect(cancelled).resolves.toBe("gave up")
+      await expect(kept).resolves.toBe("fast")
+      await vi.waitFor(() => {
+        expect(signals.get("hang")?.aborted).toBe(true)
+      })
+      expect(signals.get("fast")?.aborted).toBe(false)
+    })
+
+    test("ignores messages without the protocol marker", async () => {
+      const [serverWire, peerWire] = createWirePair()
+      const seen: unknown[] = []
+      let calls = 0
+      const router = createRouter(pullContract, {
+        "math.add": ({ input: { a, b } }) => {
+          calls += 1
+          return a + b
+        },
+      })
+
+      connect(serverWire, { router })
+      peerWire.onMessage((data) => {
+        seen.push(data)
+      })
+      // Otherwise well formed: one has no marker, as another protocol could send, and one names a
+      // protocol version this end does not speak.
+      peerWire.send({ id: 0, kind: "req", path: "math.add", payload: { a: 1, b: 2 }, sid: "p" })
+      peerWire.send({
+        id: 1,
+        kind: "req",
+        path: "math.add",
+        payload: { a: 1, b: 2 },
+        rpc: 2,
+        sid: "p",
+      })
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+
+      expect(calls).toBe(0)
+      expect(seen).toEqual([])
+    })
   })
 
   test("survives a synchronously-throwing send without leaking pending entries", async () => {
@@ -593,6 +773,11 @@ describe("toWire / fromWire", () => {
 
   test("rejects forged or mistyped error details as malformed-envelope", () => {
     for (const forged of [
+      { error: { detail: "validation", message: "x", name: "ChannelError" }, ok: false },
+      {
+        error: { detail: { code: "validation", issues: ["bad"] }, message: "x", name: "E" },
+        ok: false,
+      },
       { error: { detail: { code: "made-up" }, message: "x", name: "ChannelError" }, ok: false },
       {
         error: { detail: { code: "validation", issues: "nope" }, message: "x", name: "E" },
@@ -724,7 +909,8 @@ describe("toWire / fromWire", () => {
     const errors = [
       new ChannelError({ code: "validation", issues: [{ message: "bad" }] }),
       new ChannelError({ code: "unknown-channel", path: "nope" }),
-      new ChannelError({ code: "no-router" }),
+      // A hidden failure relayed through another server stays as it is.
+      new ChannelError({ code: "internal" }),
     ]
 
     const wires = await Promise.all(
@@ -741,7 +927,7 @@ describe("toWire / fromWire", () => {
     expect(wires.map((wire) => !wire.ok && wire.error.detail?.code)).toEqual([
       "validation",
       "unknown-channel",
-      "no-router",
+      "internal",
     ])
   })
 
@@ -939,6 +1125,77 @@ describe("connect over a pending wire", () => {
     expect(sent[0]).toContain('"first"')
     client.close()
     await settled
+  })
+
+  test("closing after the wire arrives detaches the listener from it", async () => {
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending)
+    let attached = 0
+
+    deliver({
+      onMessage: () => {
+        attached += 1
+        return () => {
+          attached -= 1
+        }
+      },
+      send: () => null,
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    expect(attached).toBe(1)
+
+    client.close()
+
+    expect(attached).toBe(0)
+  })
+
+  test("cancels a flushed call on the peer instead of withdrawing it", async () => {
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending, { timeoutMs: Infinity })
+    const controller = new AbortController()
+    const sent: unknown[] = []
+
+    const call = Promise.resolve(
+      client.transport("math.add", { a: 1, b: 2 }, { signal: controller.signal })
+    ).catch((error: unknown) => error)
+    deliver({ onMessage: () => () => null, send: (data) => sent.push(data) })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    controller.abort("gave up")
+
+    await expect(call).resolves.toBe("gave up")
+    expect(sent).toMatchObject([
+      { id: 0, kind: "req" },
+      { id: 0, kind: "cancel" },
+    ])
+    client.close()
+  })
+
+  test("a queued call whose send fails rejects alone, as it would on a wire that is here", async () => {
+    const [serverWire, clientWire] = createWirePair()
+    const echo = defineContract({ echo: channel({ input: z.unknown(), output: z.unknown() }) })
+    connect(serverWire, { router: createRouter(echo, { echo: ({ input }) => input }) })
+    // Fails the way `webSocket` does for a payload JSON cannot encode, such as a BigInt.
+    const strictWire: Wire = {
+      onMessage: clientWire.onMessage,
+      send: (data) => {
+        JSON.stringify(data)
+        clientWire.send(data)
+      },
+    }
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending)
+
+    const bad = Promise.resolve(client.transport("echo", 1n)).catch((error: unknown) => error)
+    const good = Promise.resolve(client.transport("echo", "ok"))
+    deliver(strictWire)
+
+    await expect(bad).resolves.toBeInstanceOf(TypeError)
+    await expect(good).resolves.toBe("ok")
+    await expect(Promise.resolve(client.transport("echo", "later"))).resolves.toBe("later")
   })
 
   test("releases the payload of a queued call that timed out", async () => {

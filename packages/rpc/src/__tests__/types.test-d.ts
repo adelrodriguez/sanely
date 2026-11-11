@@ -1,9 +1,12 @@
-// Compile-time checks only: `pnpm run check` and `pnpm run typecheck` enforce this file, and Vitest never runs it.
+// Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
+import type { StandardSchemaV1 } from "@standard-schema/spec"
 import { expectTypeOf } from "vitest"
 import * as z from "zod"
 import type { Wire } from "#wire.ts"
 import {
   channel,
+  ChannelError,
+  type ChannelErrorDetail,
   createRouter,
   defineContract,
   type DispatchOptions,
@@ -13,6 +16,7 @@ import {
   type Transport,
 } from "#index.ts"
 import { connect } from "#wire.ts"
+import { fetchHandler } from "#wire/fetch.ts"
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 type Sender = { sender: string }
@@ -155,6 +159,41 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
   void connect(wire, { context: { sender: "main", userId: 1 }, router })
 }
 
+// ChannelErrorDetail is exactly the documented union, one variant per code.
+{
+  type Issues = readonly StandardSchemaV1.Issue[]
+
+  expectTypeOf<ChannelErrorDetail>().toEqualTypeOf<
+    | { code: "closed" }
+    | { code: "internal" }
+    | { code: "malformed-envelope" }
+    | { code: "output-validation"; issues: Issues }
+    | { code: "timeout"; path: string; timeoutMs: number }
+    | { code: "unknown-channel"; path: string }
+    | { code: "validation"; issues: Issues }
+  >()
+}
+
+// A ChannelError's code narrows its fields.
+{
+  const error = new ChannelError({ code: "timeout", path: "a", timeoutMs: 1 })
+
+  if (error.code === "timeout") {
+    expectTypeOf(error.timeoutMs).toEqualTypeOf<number>()
+  }
+
+  if (error.code === "validation") {
+    expectTypeOf(error.issues).toEqualTypeOf<readonly StandardSchemaV1.Issue[]>()
+  }
+}
+
+// fetchHandler takes no options for a context-free router, and a context function otherwise.
+{
+  void fetchHandler(pingRouter)
+  void fetchHandler(meRouter, { context: () => ({ userId: 1 }) })
+  void fetchHandler(meRouter, { context: () => Promise.resolve({ userId: 1 }) })
+}
+
 // ── Negative type tests ──────────────────────────────────────────────────────
 // These verify that invalid usage produces compile-time errors.
 // The function bodies never execute — only the type checker matters.
@@ -273,6 +312,24 @@ function _negativeTypeTests() {
 
   // @ts-expect-error -- connect needs a union context when the options omit it
   connect(wire, { router: sessionRouter })
+
+  // @ts-expect-error -- fetchHandler needs a context function for a router with a context
+  void fetchHandler(meRouter)
+
+  // @ts-expect-error -- the options alone do not supply the context
+  void fetchHandler(meRouter, { onHidden: () => null })
+
+  // @ts-expect-error -- the context function must return the router's context
+  void fetchHandler(meRouter, { context: () => ({ userId: "1" }) })
+
+  // @ts-expect-error -- a context-free router takes no context function
+  void fetchHandler(pingRouter, { context: () => ({ userId: 1 }) })
+
+  // @ts-expect-error -- a timeout detail needs its fields
+  void new ChannelError({ code: "timeout" })
+
+  // @ts-expect-error -- only the documented codes exist
+  void new ChannelError({ code: "made-up" })
 
   const numberInput = defineContract({ read: channel({ input: z.number(), output: z.string() }) })
   const numberOutput = defineContract({ read: channel({ input: z.string(), output: z.number() }) })

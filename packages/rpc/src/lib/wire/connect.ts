@@ -2,15 +2,22 @@ import type { Transport } from "#lib/core/transport.ts"
 import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { isRecord } from "#lib/core/guards.ts"
+import { randomId } from "#lib/core/id.ts"
+import { SetupError } from "#lib/core/setup-error.ts"
 import type { Wire } from "./types"
-import { deferWire, subscribe } from "./deferred"
+import { deferWire, directWire, subscribe } from "./deferred"
 import { type ExposeOptions, fromWire, toWire } from "./envelope"
 
-// `result` stays unknown until `fromWire` validates it: the peer is the source.
+// Every message carries the protocol marker and the calling session's id, `sid`. A reply and a
+// cancel echo the caller's `sid`, so sessions that share a wire never take each other's replies,
+// and a message without the marker is foreign traffic. `result` stays unknown until `fromWire`
+// validates it: the peer is the source.
 type WireMessage =
-  | { kind: "cancel"; id: number }
-  | { kind: "req"; id: number; path: string; payload: unknown }
-  | { kind: "res"; id: number; result: unknown }
+  | { kind: "cancel"; id: number; sid: string }
+  | { kind: "req"; id: number; path: string; payload: unknown; sid: string }
+  | { kind: "res"; id: number; result: unknown; sid: string }
+
+const PROTOCOL = 1
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -41,8 +48,8 @@ type ConnectOptions<Context> = ExposeOptions & {
 } & Pick<DispatchOptions<Context>, "context">
 
 /**
- * Wires one end of a duplex pipe into typedport: serves incoming requests through `router` (omit it
- * for a call-only end) and returns a `Transport` for calling the peer, with request/response
+ * Wires one end of a duplex pipe into the library: serves incoming requests through `router` (omit
+ * it for a call-only end) and returns a `Transport` for calling the peer, with request/response
  * correlation handled internally. Fully symmetric — call it on both ends with the roles swapped.
  *
  * A pipe is one peer, so `context` is per-connection: whatever identity the edge established (the
@@ -79,13 +86,6 @@ export function connect<Context = void>(
   closed: Promise<ChannelError>
   transport: Transport<CallOptions>
 } {
-  // A wire that is already here has nothing buffered, so nothing to withdraw.
-  const { wire: source, withdraw } =
-    "send" in wire
-      ? { wire, withdraw: (): boolean => false }
-      : deferWire(wire, (reason) => {
-          close(reason)
-        })
   const {
     context,
     expose,
@@ -94,6 +94,19 @@ export function connect<Context = void>(
     signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options ?? {}
+
+  // `NaN` would silently disable the timeout, and zero or less would time out every call at once.
+  if (!(timeoutMs > 0)) {
+    throw new SetupError({ code: "invalid-timeout", timeoutMs })
+  }
+
+  // A wire that is already here has nothing buffered, so nothing to withdraw.
+  const { wire: source, withdraw } =
+    "send" in wire
+      ? { wire: directWire(wire), withdraw: (): boolean => false }
+      : deferWire(wire, (reason) => {
+          close(reason)
+        })
   // `Router<Context>`'s rest tuple is a conditional TypeScript cannot resolve for a generic Context
   const dispatch = router?.dispatch as
     | ((
@@ -102,9 +115,10 @@ export function connect<Context = void>(
         options: { context?: Context; signal?: AbortSignal }
       ) => Promise<unknown>)
     | undefined
+  const sid = randomId()
   const pending = new Map<number, PendingEntry>()
-  // Requests this end is serving, by the peer's id, so a cancel can reach the resolver.
-  const serving = new Map<number, AbortController>()
+  // Requests this end is serving, by the caller's session and id, so a cancel reaches its resolver.
+  const serving = new Map<string, AbortController>()
   let nextId = 0
   let closed: ChannelError | undefined
   let resolveClosed: ((error: ChannelError) => void) | undefined
@@ -116,18 +130,22 @@ export function connect<Context = void>(
     // Anything that doesn't parse is not ours on a shared wire; ignore it.
     const message = closed ? undefined : parseMessage(data)
 
+    // A call-only end leaves requests alone: another session on this end may serve them, and an
+    // answer from here would reach the caller first and replace the real result.
     if (message?.kind === "req") {
-      void respond(message)
+      if (dispatch) {
+        void respond(dispatch, message)
+      }
       return
     }
 
-    if (message?.kind === "res") {
+    if (message?.kind === "res" && message.sid === sid) {
       pending.get(message.id)?.settle(message.result)
       return
     }
 
     if (message?.kind === "cancel") {
-      serving.get(message.id)?.abort()
+      serving.get(servingKey(message))?.abort()
     }
   })
 
@@ -180,7 +198,7 @@ export function connect<Context = void>(
         const id = nextId
         nextId += 1
         // Kept by identity, so `cancelRemote` can withdraw it from a pending wire's buffer.
-        const request = { id, kind: "req", path, payload }
+        const request = { id, kind: "req", path, payload, rpc: PROTOCOL, sid }
 
         const cleanup = (): void => {
           pending.delete(id)
@@ -216,14 +234,13 @@ export function connect<Context = void>(
           },
         })
 
-        try {
-          source.send(request)
-        } catch (error) {
-          // A synchronously-throwing send (DataCloneError on a non-cloneable
-          // payload) rejects the caller; don't leak the pending entry.
+        // A send that fails (a DataCloneError on a payload the wire cannot carry) rejects this
+        // call alone, now or once a pending wire arrives, and leaks no pending entry.
+        source.send(request, (error) => {
           cleanup()
-          throw error
-        }
+          // oxlint-disable-next-line prefer-promise-reject-errors -- forwards whatever the wire threw, unchanged
+          reject(error)
+        })
       }),
   }
 
@@ -235,22 +252,21 @@ export function connect<Context = void>(
       return
     }
 
-    try {
-      source.send({ id: request.id, kind: "cancel" })
-    } catch {
-      // Same as a lost reply: nothing to recover, and nobody awaits this.
-    }
+    // Same as a lost reply: nothing to recover, and nobody awaits this.
+    source.send({ id: request.id, kind: "cancel", rpc: PROTOCOL, sid }, ignoreFailure)
   }
 
-  async function respond(message: { id: number; path: string; payload: unknown }): Promise<void> {
+  async function respond(
+    serve: NonNullable<typeof dispatch>,
+    message: Extract<WireMessage, { kind: "req" }>
+  ): Promise<void> {
     const controller = new AbortController()
-    serving.set(message.id, controller)
+    const key = servingKey(message)
+    serving.set(key, controller)
 
     const result = await toWire(
-      dispatch
-        ? // The thunk form lets toWire capture even a synchronously-throwing dispatch.
-          () => dispatch(message.path, message.payload, { context, signal: controller.signal })
-        : Promise.reject(new ChannelError({ code: "no-router" })),
+      // The thunk form lets toWire capture even a synchronously-throwing dispatch.
+      () => serve(message.path, message.payload, { context, signal: controller.signal }),
       {
         expose,
         // A resolver that failed because the caller cancelled is not a failure worth logging.
@@ -262,19 +278,19 @@ export function connect<Context = void>(
       }
     )
 
-    if (serving.get(message.id) === controller) {
-      serving.delete(message.id)
+    if (serving.get(key) === controller) {
+      serving.delete(key)
     }
 
     // A cancelled caller already stopped listening for this id.
     if (!closed && !controller.signal.aborted) {
-      try {
-        source.send({ id: message.id, kind: "res", result })
-      } catch {
-        // The pipe died between request and reply; `respond` runs unawaited, so
-        // swallowing here is what keeps this from becoming an unhandled
-        // rejection. The peer's own timeout covers the lost reply.
-      }
+      // The pipe died between request and reply, or the reply cannot be sent; `respond` runs
+      // unawaited, so ignoring it keeps this from becoming an unhandled rejection. The peer's
+      // own timeout covers the lost reply.
+      source.send(
+        { id: message.id, kind: "res", result, rpc: PROTOCOL, sid: message.sid },
+        ignoreFailure
+      )
     }
   }
 }
@@ -284,23 +300,32 @@ function parseMessage(data: unknown): WireMessage | undefined {
     return undefined
   }
 
-  const message = data
+  const { id, kind, rpc, sid } = data
 
-  if (typeof message.id !== "number") {
+  if (rpc !== PROTOCOL || typeof id !== "number" || typeof sid !== "string") {
     return undefined
   }
 
-  if (message.kind === "req" && typeof message.path === "string") {
-    return { id: message.id, kind: "req", path: message.path, payload: message.payload }
+  if (kind === "req" && typeof data.path === "string") {
+    return { id, kind, path: data.path, payload: data.payload, sid }
   }
 
-  if (message.kind === "res") {
-    return { id: message.id, kind: "res", result: message.result }
+  if (kind === "res") {
+    return { id, kind, result: data.result, sid }
   }
 
-  if (message.kind === "cancel") {
-    return { id: message.id, kind: "cancel" }
+  if (kind === "cancel") {
+    return { id, kind, sid }
   }
 
   return undefined
+}
+
+// For sends nobody awaits: a lost cancel or reply has no caller to tell.
+function ignoreFailure(): void {
+  // Intentionally empty.
+}
+
+function servingKey(message: { id: number; sid: string }): string {
+  return `${message.sid}:${message.id}`
 }

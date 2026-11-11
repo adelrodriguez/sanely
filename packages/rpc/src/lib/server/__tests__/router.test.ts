@@ -163,6 +163,27 @@ describe("createRouter", () => {
     expect((error as ChannelError).code).toBe("output-validation")
   })
 
+  test("passes on an output schema's own failure unchanged", async () => {
+    const broken = new Error("schema exploded")
+    const throwing: StandardSchemaV1<number> = {
+      "~standard": {
+        validate: () => {
+          throw broken
+        },
+        vendor: "test",
+        version: 1,
+      },
+    }
+    const router = createRouter(
+      defineContract({ n: channel({ input: z.number(), output: throwing }) }),
+      {
+        n: ({ input }) => input,
+      }
+    )
+
+    await expect(router.dispatch("n", 1)).rejects.toBe(broken)
+  })
+
   test("passes the edge's context to every resolver", async () => {
     const seen: string[] = []
     const router = createRouter<typeof contract, { userId: string }>(contract, {

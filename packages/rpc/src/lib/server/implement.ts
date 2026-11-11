@@ -1,5 +1,11 @@
 import type { Join } from "#lib/core/types.ts"
-import { type Channel, type ContractTree, isChannel, joinPath } from "#lib/core/contract.ts"
+import {
+  type Channel,
+  type ContractTree,
+  defineContract,
+  isChannel,
+  joinPath,
+} from "#lib/core/contract.ts"
 import { isRecord } from "#lib/core/guards.ts"
 import { SetupError } from "#lib/core/setup-error.ts"
 import type { Resolver, ResolverArgs } from "./types"
@@ -67,8 +73,9 @@ export type Implementer<Tree, Context = void, Prefix extends string = ""> = {
  * has the required shape.
  */
 export function implement<Tree extends ContractTree>(contract: Tree): Implementer<Tree> {
-  // `build` mirrors the contract at runtime; only the contract's type knows the shape
-  return build(contract, "") as Implementer<Tree>
+  // `build` mirrors the contract at runtime; only the contract's type knows the shape. The key
+  // rules apply here too, since the contract need not come from `defineContract`.
+  return build(defineContract(contract), "") as Implementer<Tree>
 }
 
 function build(tree: ContractTree, prefix: string): Record<string, unknown> {

@@ -46,12 +46,17 @@ describe("createClient", () => {
   })
 
   test("validates input at the call site before sending", async () => {
-    const { client, saved } = createTestClient()
+    // A transport that records calls: the router would reject the input too, so only an empty
+    // record proves the client stopped it.
+    const sent: string[] = []
+    const client = createClient(contract, (path) => {
+      sent.push(path)
+    })
 
     await expect(
       client.localFiles.save({ contents: 1 as unknown as string, path: "/tmp/a.txt" })
-    ).rejects.toThrow()
-    expect(saved).toEqual([])
+    ).rejects.toMatchObject({ code: "validation", issues: [{ path: ["contents"] }] })
+    expect(sent).toEqual([])
   })
 
   test("sends one-way leaves with a validated payload", async () => {
@@ -127,6 +132,21 @@ describe("createClient", () => {
     const branch = await Promise.resolve(client.localFiles)
 
     expect(typeof branch.open).toBe("function")
+    expect(calls).toEqual([])
+  })
+
+  test("unknown $ keys are inert, so probes such as $$typeof make no call", async () => {
+    const calls: string[] = []
+    const client = createClient(contract, (path) => {
+      calls.push(path)
+      return null
+    })
+    const node = client.localFiles as unknown as Record<string, unknown>
+
+    // Pretty-format and React's dev checks read `$$typeof` on any object they inspect.
+    expect(node.$$typeof).toBeUndefined()
+    expect(node.$typo).toBeUndefined()
+    await Promise.resolve()
     expect(calls).toEqual([])
   })
 
