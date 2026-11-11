@@ -52,10 +52,6 @@ export type HookRunner = {
   dispatchFinally(): void
 }
 
-function detach(promise: Promise<void>): void {
-  void promise.catch(() => null)
-}
-
 export function createHookRunner<TIdentity extends Subject>(
   hooks: ReadonlyArray<Hook<TIdentity>>,
   hookContext: EvaluationContext<TIdentity>,
@@ -88,15 +84,13 @@ export function createHookRunner<TIdentity extends Subject>(
   return {
     before: () => runPhase("before", (hook) => hook.before?.(hookContext)),
     dispatchAfterThenFinally(decision, meta) {
-      detach(
-        runPhase("after", (hook) => hook.after?.(hookContext, decision, meta)).then(runFinally)
-      )
+      void runPhase("after", (hook) => hook.after?.(hookContext, decision, meta)).then(runFinally)
     },
     dispatchError(error) {
-      detach(runError(error))
+      void runError(error)
     },
     dispatchFinally() {
-      detach(runFinally())
+      void runFinally()
     },
     error: runError,
   }

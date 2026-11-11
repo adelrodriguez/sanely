@@ -220,7 +220,11 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
     // store can delete: a decision fetched before the change must never be written after it.
     const { writes } = state
     writes.generation += 1
+    // Only a write to the store indexes a key, so without a store there is nothing to delete.
     const store = config.store
+    if (!store) {
+      return
+    }
     const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
     for (const flagKey of flagKeys) {
       const cacheKeys = state.keysByFlag.get(flagKey)
@@ -228,9 +232,6 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
         continue
       }
       state.keysByFlag.delete(flagKey)
-      if (!store) {
-        continue
-      }
       for (const [cacheKey, identity] of cacheKeys) {
         deleteCacheEntry(config, { flagKey, identity }, store, cacheKey)
       }

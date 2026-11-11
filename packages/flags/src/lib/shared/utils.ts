@@ -1,7 +1,3 @@
-export function isDevelopmentEnvironment(): boolean {
-  return process.env.NODE_ENV !== "production"
-}
-
 export function normalizeError(error: unknown): Error {
   try {
     if (error instanceof Error) {
