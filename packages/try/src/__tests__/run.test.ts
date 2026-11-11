@@ -1067,22 +1067,36 @@ describe("timeout and cancellation behavior", () => {
   })
 
   it("returns TimeoutError when async catch resolves after the deadline passed", async () => {
+    // Fake only the timers, so the deadline's timer never fires, and drive the monotonic clock by
+    // hand. With the real clock, a slow runner can pass the deadline before `try` runs, and the
+    // timeout then has no failure to carry.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let now = 0
+    vi.spyOn(performance, "now").mockImplementation(() => now)
     const failure = new Error("boom")
+    let catchCalls = 0
 
-    const result = await try$.timeout(5).run({
-      catch: async () => {
-        await Promise.resolve()
-        // The deadline passes before its timer can fire.
-        blockEventLoop(10)
-        return "mapped" as const
-      },
-      try: () => {
-        throw failure
-      },
-    })
+    try {
+      const result = await try$.timeout(5).run({
+        catch: async () => {
+          catchCalls += 1
+          await Promise.resolve()
+          // The deadline passes inside catch, before its timer can fire.
+          now = 10
+          return "mapped" as const
+        },
+        try: () => {
+          throw failure
+        },
+      })
 
-    expect(result).toBeInstanceOf(TimeoutError)
-    expect((result as TimeoutError).cause).toBe(failure)
+      expect(catchCalls).toBe(1)
+      expect(result).toBeInstanceOf(TimeoutError)
+      expect((result as TimeoutError).cause).toBe(failure)
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
   })
 
   it("returns CancellationError without running try when the signal was aborted with a TimeoutError reason", async () => {
