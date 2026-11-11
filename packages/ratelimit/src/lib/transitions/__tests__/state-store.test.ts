@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fixedWindow } from "#lib/algorithms/index.ts"
+import { fixedWindow, slidingWindow, tokenBucket } from "#lib/algorithms/index.ts"
 import { testStore } from "#lib/store/__tests__/conformance.ts"
 import { stateStore } from "#lib/transitions/state-store.ts"
 
@@ -25,16 +25,36 @@ function jsonStore(rows = new Map<string, string>(), clock = Date.now) {
 describe("stateStore", () => {
   testStore(() => jsonStore())
 
+  // At time 0 the saved window 0 is the current window, and no token has refilled, so each saved
+  // value would apply if the store read it as it is.
   it.each([
-    [
-      "a count that is not a number",
-      '{"type":"fixedWindow","window":0,"count":"5","expiresAt":2e12}',
-    ],
-    ["a missing field", '{"type":"fixedWindow","window":0,"expiresAt":2e12}'],
-  ])("counts %s as no state", async (_case, row) => {
-    // At time 0 the saved window 0 is the current window, so a saved count would apply.
+    {
+      algorithm: fixedWindow({ limit: 5, window: 60_000 }),
+      case: "a count that is not a number",
+      row: '{"type":"fixedWindow","window":0,"count":"5","expiresAt":2e12}',
+    },
+    {
+      algorithm: fixedWindow({ limit: 5, window: 60_000 }),
+      case: "a missing count",
+      row: '{"type":"fixedWindow","window":0,"expiresAt":2e12}',
+    },
+    {
+      algorithm: slidingWindow({ limit: 5, window: 60_000 }),
+      case: "a sliding count that is not a number",
+      row: '{"type":"slidingWindow","window":0,"current":"5","previous":0,"expiresAt":2e12}',
+    },
+    {
+      algorithm: fixedWindow({ limit: 5, window: 60_000 }),
+      case: "an algorithm it does not know",
+      row: '{"type":"leakyBucket","window":0,"count":5,"expiresAt":2e12}',
+    },
+    {
+      algorithm: tokenBucket({ capacity: 5, interval: 60_000, refillRate: 1 }),
+      case: "tokens that are not a number",
+      row: '{"type":"tokenBucket","tokens":"x","refilledAt":0,"expiresAt":2e12}',
+    },
+  ])("counts $case as no state", async ({ algorithm, row }) => {
     const store = jsonStore(new Map([["k", row]]), () => 0)
-    const algorithm = fixedWindow({ limit: 5, window: 60_000 })
 
     expect(await store.consume({ algorithm, cost: 1, key: "k" })).toMatchObject({
       remaining: 4,
