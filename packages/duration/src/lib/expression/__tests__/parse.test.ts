@@ -320,6 +320,8 @@ describe("parse", () => {
     ["1.1e1s", 11_000],
     ["1.5e-3s", 1.5],
     ["0.5ms", 0.5],
+    ["1.100000000000000000h", 3_960_000],
+    ["1000000000000000000e-18h", 3_600_000],
   ])("should read the decimal %j as exactly %j ms", (value, expected) => {
     expect(parse(value)).toBe(expected)
   })
