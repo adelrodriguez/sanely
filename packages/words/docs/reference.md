@@ -55,18 +55,18 @@ A pattern from outside the code, such as a config file, is `unknown` until you c
 ## `count`
 
 ```ts
-function count<const N extends string = never>(options?: CountOptions<N>): number
+function count<const N extends string = never>(options?: CountOptions<N>): bigint
 ```
 
-Returns the number of distinct names that `generate` can return with the same `segments`, `pattern`, `lists`, and `omit`. The count ignores `maxLength`. A count above `Number.MAX_SAFE_INTEGER` is approximate.
+Returns the number of distinct names that `generate` can return with the same `segments`, `pattern`, `lists`, and `omit`. The count ignores `maxLength`. It is a `bigint`, so it stays exact for any number of words. Convert it with `Number(count())` when you need a `number` and the count is below `Number.MAX_SAFE_INTEGER`.
 
 ```ts
 import { count } from "@sanely/words"
 
-count() // 1_084_149
-count({ segments: 3 }) // 2_489_125_744
-count({ pattern: ["color", "animal"] }) // 34_830
-count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] }) // 0
+count() // 1_084_149n
+count({ segments: 3 }) // 2_489_125_744n
+count({ pattern: ["color", "animal"] }) // 34_830n
+count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] }) // 0n
 ```
 
 `count` throws `InvalidOptionError` for the same options as `generate`.

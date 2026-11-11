@@ -42,8 +42,8 @@ describe("generate", () => {
 })
 
 describe("count", () => {
-  it("takes the options that choose words and returns a number", () => {
-    expectTypeOf(count({ pattern: ["color", "animal"] })).toEqualTypeOf<number>()
+  it("takes the options that choose words and returns an exact bigint", () => {
+    expectTypeOf(count({ pattern: ["color", "animal"] })).toEqualTypeOf<bigint>()
     // @ts-expect-error -- maxLength does not change the count.
     count({ maxLength: 10 })
   })

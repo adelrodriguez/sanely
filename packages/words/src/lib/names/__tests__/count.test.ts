@@ -17,19 +17,19 @@ function defaultCount(segments: number) {
   return [...prefixes].reduce(
     (total, prefix) =>
       total + fallingFactorial(nouns.size - (nouns.has(prefix) ? 1 : 0), segments - 1),
-    0
+    0n
   )
 }
 
 function fallingFactorial(size: number, length: number) {
-  return Array.from({ length }, (_, index) => size - index).reduce(
+  return Array.from({ length }, (_, index) => BigInt(size - index)).reduce(
     (total, factor) => total * factor,
-    1
+    1n
   )
 }
 
 describe("count", () => {
-  it.each([2, 3, 4])("counts %i-word default names", (segments) => {
+  it.each([2, 3, 4, 5, 6])("counts %i-word default names exactly", (segments) => {
     expect(count({ segments })).toBe(defaultCount(segments))
   })
 
@@ -38,14 +38,16 @@ describe("count", () => {
   })
 
   it("multiplies the sizes of disjoint lists", () => {
-    expect(count({ pattern: ["color", "animal"] })).toBe(lists.color.length * lists.animal.length)
+    expect(count({ pattern: ["color", "animal"] })).toBe(
+      BigInt(lists.color.length * lists.animal.length)
+    )
     expect(lists.color.filter((word) => lists.animal.includes(word))).toEqual([])
   })
 
   it("never repeats a word when a list appears twice", () => {
-    const size = lists.adjective.length
+    const size = BigInt(lists.adjective.length)
 
-    expect(count({ pattern: ["adjective", "adjective"] })).toBe(size * (size - 1))
+    expect(count({ pattern: ["adjective", "adjective"] })).toBe(size * (size - 1n))
   })
 
   it("counts custom lists and leaves out omitted words", () => {
@@ -55,15 +57,15 @@ describe("count", () => {
         omit: ["pear"],
         pattern: ["fruit", "texture"],
       })
-    ).toBe(2)
+    ).toBe(2n)
   })
 
   it("returns 0 for more words than the lists hold", () => {
-    expect(count({ segments: 5000 })).toBe(0)
+    expect(count({ segments: 5000 })).toBe(0n)
   })
 
   it("returns 0 when the lists hold too few distinct words", () => {
-    expect(count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] })).toBe(0)
+    expect(count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] })).toBe(0n)
   })
 
   it("matches enumeration for overlapping custom lists", () => {
@@ -81,7 +83,7 @@ describe("count", () => {
           const custom = Object.fromEntries(names.map((name, index) => [name, words[index] ?? []]))
           const pools = pattern.map((name) => custom[name] ?? [])
 
-          expect(count({ lists: custom, pattern })).toBe(allNames(pools).length)
+          expect(count({ lists: custom, pattern })).toBe(BigInt(allNames(pools).length))
         }
       )
     )

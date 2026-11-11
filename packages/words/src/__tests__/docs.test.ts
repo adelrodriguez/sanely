@@ -17,14 +17,14 @@ function parseOptions(text: string): unknown {
 
 describe("documentation", () => {
   it.each(documents)("shows the counts that count returns in %s", (path) => {
-    const examples = [...read(path).matchAll(/count\((.*)\) \/\/ ([\d_]+)/gu)]
+    const examples = [...read(path).matchAll(/count\((.*)\) \/\/ ([\d_]+)n/gu)]
 
     expect(examples.length).toBeGreaterThan(0)
 
     for (const [, options = "", expected = ""] of examples) {
       // The examples come from this package's own docs, so they hold valid options.
       expect(count(parseOptions(options) as Parameters<typeof count>[0]), options).toBe(
-        Number(expected.replaceAll("_", ""))
+        BigInt(expected.replaceAll("_", ""))
       )
     }
   })

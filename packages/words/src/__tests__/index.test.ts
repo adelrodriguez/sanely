@@ -17,6 +17,6 @@ describe("@sanely/words", () => {
     const options = { lists: { fruit: ["apple"] }, pattern: ["fruit", "color"] } as const
 
     expect(words.generate(options)).toMatch(/^apple-[a-z]+$/u)
-    expect(words.count(options)).toBe(words.lists.color.length)
+    expect(words.count(options)).toBe(BigInt(words.lists.color.length))
   })
 })
