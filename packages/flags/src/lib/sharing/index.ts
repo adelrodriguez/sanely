@@ -319,16 +319,21 @@ function writeThrough<TIdentity extends Subject>(
   })
 }
 
+type WriteTicket = { generation: number; store: DecisionStore }
+
 /**
  * Starts the provider call that concurrent evaluations with one evaluation key share, and registers
  * it as pending until it settles. The call runs on a shared signal, not on the signal of the
- * evaluation that started it, so it stops only when every evaluation that joined it has left.
+ * evaluation that started it, so it stops only when every evaluation that joined it has left. With
+ * a write ticket, the call stores its accepted decision itself, so the decision is stored even when
+ * the evaluation that started the call has already left.
  */
 function startSharedCall<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: EvaluationContext<TIdentity>,
   key: string,
-  provider: (signal: AbortSignal) => MaybePromise<unknown>
+  provider: (signal: AbortSignal) => MaybePromise<unknown>,
+  write: WriteTicket | undefined
 ): PendingResolution {
   const { state } = config
   // Attach before the registration, so a change notification can drop this call.
@@ -348,6 +353,19 @@ function startSharedCall<TIdentity extends Subject>(
     }
   }
   void promise.then(settle, settle)
+  if (write) {
+    const { generation, store } = write
+    const storeDecision = (decision: unknown): null => {
+      try {
+        const { decision: accepted } = accept(decision, context.flag)
+        writeThrough(config, context, store, generation, key, accepted)
+      } catch {
+        // Each evaluation reports its own invalid decision. The call only skips storing it.
+      }
+      return null
+    }
+    void promise.then(storeDecision, () => null)
+  }
   return call
 }
 
@@ -383,7 +401,7 @@ export async function resolveDecision<TIdentity extends Subject>(
     return { ...accept(decision, flag), source: "provider" }
   }
 
-  let write: { generation: number; store: DecisionStore } | undefined
+  let write: WriteTicket | undefined
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
@@ -412,14 +430,9 @@ export async function resolveDecision<TIdentity extends Subject>(
   const call =
     existing && !existing.shared.signal.aborted
       ? existing
-      : startSharedCall(config, context, key, provider)
+      : startSharedCall(config, context, key, provider, write)
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
-  const accepted = accept(await raceWithSignal(() => call.promise, signal), flag)
-  // The leader writes the decision it fetched. Followers reuse it.
-  if (write && call !== existing) {
-    writeThrough(config, context, write.store, write.generation, key, accepted.decision)
-  }
-  return { ...accepted, source: "provider" }
+  return { ...accept(await raceWithSignal(() => call.promise, signal), flag), source: "provider" }
 }

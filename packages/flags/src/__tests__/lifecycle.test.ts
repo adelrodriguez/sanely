@@ -1060,6 +1060,44 @@ describe("request coalescing", () => {
     expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
+  test("stores a shared decision when the evaluation that started the call leaves", async () => {
+    const stored = new Map<string, Decision>()
+    const pending = createDeferred<Decision>()
+    const started = createDeferred<null>()
+    const decideOne = vi.fn(() => {
+      started.resolve(null)
+      return pending.promise
+    })
+    const flags = createFlags({
+      cache: {
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+    const controller = new AbortController()
+
+    const leader = flags.details(betaAccess, { signal: controller.signal })
+    await started.promise
+    const follower = flags.details(betaAccess)
+    await flushBackground()
+    controller.abort(new Error("leader stopped"))
+    const leaderDetails = await leader
+    expect(leaderDetails.source).toBe("default")
+    pending.resolve(TRUE)
+
+    expect(await follower).toMatchObject({ source: "provider", value: true })
+    await flushBackground()
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: true })
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
   test("keeps the shared provider call for a follower with a later deadline", async () => {
     vi.useFakeTimers()
     try {
