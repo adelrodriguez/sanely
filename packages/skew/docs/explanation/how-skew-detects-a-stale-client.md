@@ -32,11 +32,13 @@ A reload does not always reach the new deployment. A CDN can serve old HTML for 
 
 `reload()` records each request in session storage under the key `deployment-check:reload`. The record holds the running ID, the target ID, an attempt count, and a time. The guard counts a repeated request when the running ID and the target ID are the same as in the record and less than 10 minutes have passed. The guard allows the first request and one repeated request. It blocks the next repeated request and sets `reloadStatus` to `"blocked"`.
 
+The guard records one request for each page load and target. If `reload()` runs again for a target that the page already recorded, such as after a double click or after the target changes and changes back, the page reloads without a new record. All monitors on a page share these records, so two monitors that request the same reload count it once. A monitor with its own `environment` is its own page.
+
 The block ends in three ways:
 
 - If a later check finds a different target, `reloadStatus` returns to `"ready"`.
 - If a page load starts on a different running deployment, the reload worked, and the guard deletes the record.
-- If `reload()` runs 10 minutes or more after the last request, the guard starts a new sequence and reloads the page. A blocked request also updates the time in the record, so each request during the block starts the 10 minutes again.
+- If `reload()` runs 10 minutes or more after the last reload, the guard starts a new sequence and reloads the page. A blocked request does not change the record, so a click during the block does not start the 10 minutes again.
 
 A check that finds the same target does not end the block, even after 10 minutes. Keep the reload action visible in the blocked state, so the user can retry.
 

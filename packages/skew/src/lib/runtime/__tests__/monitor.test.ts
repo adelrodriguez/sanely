@@ -60,7 +60,13 @@ class ControlledSource implements TestSource {
   }
 }
 
-async function loadStalePageAndReload(environment: FakeEnvironment) {
+/**
+ * Loads a new page that runs deployment A, finds target B, and requests a reload. Each page has its
+ * own environment, and every page shares `storage`, as session storage survives a reload.
+ */
+async function loadStalePageAndReload(storage: MemoryStorage, now = 0) {
+  const environment = new FakeEnvironment(storage)
+  environment.setNow(now)
   const monitor = monitorOf(
     {
       resolveTarget: () => Promise.resolve({ id: "B" }),
@@ -71,7 +77,7 @@ async function loadStalePageAndReload(environment: FakeEnvironment) {
   await monitor.check()
   monitor.reload()
 
-  return monitor
+  return { environment, monitor }
 }
 
 describe("deployment monitor", () => {
@@ -566,46 +572,43 @@ describe("deployment monitor", () => {
       expect.assertions(4)
 
       const storage = new MemoryStorage()
-      const environment = new FakeEnvironment(storage)
 
-      const first = await loadStalePageAndReload(environment)
+      const first = await loadStalePageAndReload(storage)
 
-      expect(first.getState().reloadStatus).toBe("ready")
+      expect(first.monitor.getState().reloadStatus).toBe("ready")
 
-      const second = await loadStalePageAndReload(environment)
+      const second = await loadStalePageAndReload(storage)
 
-      expect(second.getState().reloadStatus).toBe("ready")
+      expect(second.monitor.getState().reloadStatus).toBe("ready")
 
-      const third = await loadStalePageAndReload(environment)
+      const third = await loadStalePageAndReload(storage)
 
-      expect(third.getState().reloadStatus).toBe("blocked")
-      expect(environment.reloadCalls).toBe(2)
+      expect(third.monitor.getState().reloadStatus).toBe("blocked")
+      expect(third.environment.reloadCalls).toBe(0)
     })
 
     it("clears the marker after reload advances to the target deployment", async () => {
       expect.assertions(3)
 
       const storage = new MemoryStorage()
-      const environment = new FakeEnvironment(storage)
-      await loadStalePageAndReload(environment)
+      await loadStalePageAndReload(storage)
 
       monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "B" },
         },
-        { environment }
+        { environment: new FakeEnvironment(storage) }
       )
 
-      const first = await loadStalePageAndReload(environment)
+      const first = await loadStalePageAndReload(storage)
 
-      expect(first.getState().reloadStatus).toBe("ready")
+      expect(first.monitor.getState().reloadStatus).toBe("ready")
 
-      const second = await loadStalePageAndReload(environment)
+      const second = await loadStalePageAndReload(storage)
 
-      expect(second.getState().reloadStatus).toBe("ready")
-
-      expect(environment.reloadCalls).toBe(3)
+      expect(second.monitor.getState().reloadStatus).toBe("ready")
+      expect(second.environment.reloadCalls).toBe(1)
     })
 
     it("starts unprotected when session storage cannot be read", async () => {
@@ -734,22 +737,27 @@ describe("deployment monitor", () => {
       expect(monitor.getState().reloadStatus).toBe("unprotected")
     })
 
-    it("starts a new reload sequence after the cooldown", async () => {
-      expect.assertions(2)
+    it("counts several reload requests in one page as one reload", async () => {
+      expect.assertions(4)
 
       const storage = new MemoryStorage()
-      const environment = new FakeEnvironment(storage)
-      await loadStalePageAndReload(environment)
-      await loadStalePageAndReload(environment)
+      const first = await loadStalePageAndReload(storage)
+      first.monitor.reload()
+      first.monitor.reload()
 
-      environment.setNow(10 * 60_000)
-      const monitor = await loadStalePageAndReload(environment)
+      expect(first.monitor.getState().reloadStatus).toBe("ready")
+      expect(first.environment.reloadCalls).toBe(3)
 
-      expect(environment.reloadCalls).toBe(3)
-      expect(monitor.getState().reloadStatus).toBe("ready")
+      const second = await loadStalePageAndReload(storage)
+
+      expect(second.monitor.getState().reloadStatus).toBe("ready")
+
+      const third = await loadStalePageAndReload(storage)
+
+      expect(third.monitor.getState().reloadStatus).toBe("blocked")
     })
 
-    it("clears a blocked reload when the target deployment changes", async () => {
+    it("counts a target once per page after the target changes and changes back", async () => {
       expect.assertions(2)
 
       const storage = new MemoryStorage()
@@ -764,7 +772,94 @@ describe("deployment monitor", () => {
       )
       await monitor.check()
       monitor.reload()
+      target = "C"
+      await monitor.check()
       monitor.reload()
+      target = "B"
+      await monitor.check()
+      monitor.reload()
+
+      expect(environment.reloadCalls).toBe(3)
+      expect(JSON.parse(storage.getItem("deployment-check:reload") ?? "null")).toMatchObject({
+        attempts: 0,
+        to: "C",
+      })
+    })
+
+    it("counts reload requests from several monitors on one page as one reload", async () => {
+      expect.assertions(3)
+
+      const storage = new MemoryStorage()
+      const environment = new FakeEnvironment(storage)
+      const source = {
+        resolveTarget: () => Promise.resolve({ id: "B" }),
+        running: { id: "A" },
+      }
+      const first = monitorOf(source, { environment })
+      const second = monitorOf(source, { environment })
+      await Promise.all([first.check(), second.check()])
+      first.reload()
+      second.reload()
+
+      expect(environment.reloadCalls).toBe(2)
+
+      const nextPage = await loadStalePageAndReload(storage)
+
+      expect(nextPage.monitor.getState().reloadStatus).toBe("ready")
+
+      const lastPage = await loadStalePageAndReload(storage)
+
+      expect(lastPage.monitor.getState().reloadStatus).toBe("blocked")
+    })
+
+    it("starts the cooldown at the last reload, not at a blocked request", async () => {
+      expect.assertions(4)
+
+      const storage = new MemoryStorage()
+      await loadStalePageAndReload(storage)
+      await loadStalePageAndReload(storage)
+      const blocked = await loadStalePageAndReload(storage)
+
+      blocked.environment.setNow(9 * 60_000)
+      blocked.monitor.reload()
+
+      expect(blocked.monitor.getState().reloadStatus).toBe("blocked")
+      expect(blocked.environment.reloadCalls).toBe(0)
+
+      const next = await loadStalePageAndReload(storage, 10 * 60_000)
+
+      expect(next.monitor.getState().reloadStatus).toBe("ready")
+      expect(next.environment.reloadCalls).toBe(1)
+    })
+
+    it("starts a new reload sequence after the cooldown", async () => {
+      expect.assertions(2)
+
+      const storage = new MemoryStorage()
+      await loadStalePageAndReload(storage)
+      await loadStalePageAndReload(storage)
+
+      const next = await loadStalePageAndReload(storage, 10 * 60_000)
+
+      expect(next.environment.reloadCalls).toBe(1)
+      expect(next.monitor.getState().reloadStatus).toBe("ready")
+    })
+
+    it("clears a blocked reload when the target deployment changes", async () => {
+      expect.assertions(2)
+
+      const storage = new MemoryStorage()
+      await loadStalePageAndReload(storage)
+      await loadStalePageAndReload(storage)
+      let target = "B"
+      const monitor = monitorOf(
+        {
+          resolveTarget: () => Promise.resolve({ id: target }),
+          running: { id: "A" },
+        },
+        { environment: new FakeEnvironment(storage) }
+      )
+      await monitor.check()
       monitor.reload()
       expect(monitor.getState().reloadStatus).toBe("blocked")
 
@@ -797,6 +892,35 @@ function stubDescriptorFetch(id: string) {
 }
 
 describe("monitor defaults", () => {
+  it("shares recorded reloads between monitors on one browser page", async () => {
+    expect.assertions(2)
+
+    const storage = new MemoryStorage()
+    const reload = vi.fn()
+    vi.stubGlobal("sessionStorage", storage)
+    vi.stubGlobal("location", { reload })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+    vi.resetModules()
+    const { createDeploymentMonitor: createFreshMonitor } = await import("#lib/runtime/monitor.ts")
+    const options = {
+      running: { id: "A" },
+      target: () => Promise.resolve({ id: "B" }),
+    }
+
+    const first = createFreshMonitor(options)
+    const second = createFreshMonitor(options)
+    await Promise.all([first.check(), second.check()])
+    first.reload()
+    second.reload()
+
+    expect(reload).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(storage.getItem("deployment-check:reload") ?? "null")).toMatchObject({
+      attempts: 0,
+    })
+  })
+
   it("reads the running deployment and the endpoint from the embed", async () => {
     expect.assertions(3)
 

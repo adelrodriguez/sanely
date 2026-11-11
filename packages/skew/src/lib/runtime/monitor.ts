@@ -56,6 +56,13 @@ const DEFAULT_CHECK_TIMEOUT = 30 * MS_PER_SECOND
 const RELOAD_MARKER_KEY = "deployment-check:reload"
 const RELOAD_COOLDOWN = 10 * MS_PER_MINUTE
 
+// The reloads that each page already recorded, keyed by the page's environment, so every monitor on
+// a page shares them. A new page load starts with none.
+const recordedReloads = new WeakMap<RuntimeEnvironment, Set<string>>()
+
+// A browser page has one environment, so the monitors on it share their recorded reloads.
+let browserEnvironment: RuntimeEnvironment | undefined
+
 export interface DeploymentMonitorOptions<T extends string = never> {
   /**
    * The descriptor URL, or a function that resolves the target deployment. Defaults to the endpoint
@@ -278,11 +285,16 @@ class DeploymentMonitorImplementation implements DeploymentMonitor {
 
 class ReloadGuard {
   readonly #environment: RuntimeEnvironment
+  // The reloads this page already recorded. Another request for one reloads again without
+  // counting a second reload.
+  readonly #recorded: Set<string>
   readonly #running: Deployment
   #status: ReloadStatus
 
   constructor(running: Deployment, environment: RuntimeEnvironment) {
     this.#environment = environment
+    this.#recorded = recordedReloads.get(environment) ?? new Set()
+    recordedReloads.set(environment, this.#recorded)
     this.#running = running
     this.#status =
       environment.storage === null
@@ -304,7 +316,12 @@ class ReloadGuard {
 
   request(target: Deployment | null): ReloadStatus {
     const storage = this.#environment.storage
-    if (storage === null || this.#status === "unprotected" || target === null) {
+    if (
+      storage === null
+      || this.#status === "unprotected"
+      || target === null
+      || this.#recorded.has(this.#reloadKey(target))
+    ) {
       this.#environment.reload()
       return this.#status
     }
@@ -347,7 +364,6 @@ class ReloadGuard {
     target: Deployment,
     storage: NonNullable<RuntimeEnvironment["storage"]>
   ): ReloadStatus {
-    let attempts: number
     try {
       const previous = ReloadGuard.#readReloadMarker(storage)
       const repeated =
@@ -355,7 +371,12 @@ class ReloadGuard {
         && previous.from === this.#running.id
         && previous.to === target.id
         && this.#environment.now() - previous.at < RELOAD_COOLDOWN
-      attempts = repeated ? previous.attempts + 1 : 0
+      const attempts = repeated ? previous.attempts + 1 : 0
+      // A blocked request leaves the record unchanged, so the cooldown runs from the last reload.
+      if (attempts >= 2) {
+        return "blocked"
+      }
+
       storage.setItem(
         RELOAD_MARKER_KEY,
         JSON.stringify({
@@ -370,12 +391,13 @@ class ReloadGuard {
       return "unprotected"
     }
 
-    if (attempts >= 2) {
-      return "blocked"
-    }
-
+    this.#recorded.add(this.#reloadKey(target))
     this.#environment.reload()
     return "ready"
+  }
+
+  #reloadKey(target: Deployment): string {
+    return JSON.stringify([this.#running.id, target.id])
   }
 }
 
@@ -400,7 +422,7 @@ export function createDeploymentMonitor<const T extends string = never>(
 
   return new DeploymentMonitorImplementation({
     checkTimeout: milliseconds(options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT),
-    environment: options.environment ?? createBrowserEnvironment(),
+    environment: options.environment ?? (browserEnvironment ??= createBrowserEnvironment()),
     isCurrent: options.isCurrent ?? ((left, right) => left.id === right.id),
     running,
     schedule: {
