@@ -113,7 +113,14 @@ export function nodePort(port: NodePortLike): Wire {
 // cross contextBridge, but window.postMessage can transfer it — so main ships the port to the
 // page's IPC channel (sendPort), the preload relays it into the window (relayPort), and the
 // renderer awaits it (receivePort). Keep the channel string in shared code so all three agree.
+//
+// A window message is not buffered: one posted before the page listens is lost. So the relay holds
+// each port until the page asks for one, and `receivePort` asks when it starts listening. Either
+// may start first.
 // ---------------------------------------------------------------------------------------------
+
+// The page's request for one port on `type`, or its withdrawal of an earlier request.
+type PortRequest = { type: string; want: boolean }
 
 type PortMessageEvent = { data: unknown; ports: readonly DomPortLike[]; source: unknown }
 
@@ -176,6 +183,8 @@ export function receivePort(
     }
     const onAbort = (): void => {
       detach()
+      // Withdraw the request, so the relay keeps the next port for the next receiver.
+      win.postMessage({ type, want: false } satisfies PortRequest, originOf(win))
       // oxlint-disable-next-line prefer-promise-reject-errors -- an abort rejects with the caller's own reason, as fetch does
       reject(signal?.reason)
     }
@@ -195,6 +204,8 @@ export function receivePort(
 
     win.addEventListener("message", handle)
     signal?.addEventListener("abort", onAbort, { once: true })
+    // Listening first, so the port the request releases cannot arrive unheard.
+    win.postMessage({ type, want: true } satisfies PortRequest, originOf(win))
   })
 }
 
@@ -207,9 +218,11 @@ export type PortIpcRendererLike = {
 }
 
 /**
- * Preload end of the hand-off: relays every port arriving on the IPC channel `type` into the page,
- * where {@link receivePort} is waiting. `ipcRenderer` is a parameter (not a global) so the preload
- * stays the only module that imports Electron. Aborting `signal` stops the relay.
+ * Preload end of the hand-off: relays the ports arriving on the IPC channel `type` into the page,
+ * one for each {@link receivePort} that asks. A port that arrives before the page asks waits here,
+ * so the page may start listening late. `ipcRenderer` is a parameter (not a global) so the preload
+ * stays the only module that imports Electron. Aborting `signal` stops the relay and drops the
+ * ports it holds.
  *
  * The port is posted to the window's own origin, so a page that has navigated elsewhere never
  * receives it. Pages with an opaque origin (`file://`, whose origin is `"null"`) can't be addressed
@@ -228,18 +241,59 @@ export function relayPort(
     return
   }
 
+  // Ports nobody asked for yet, oldest first, and requests no port has answered yet.
+  const held: Array<readonly unknown[]> = []
+  let waiting = 0
+
+  const post = (ports: readonly unknown[]): void => {
+    win.postMessage({ type }, options.targetOrigin ?? originOf(win), ports)
+  }
   const relay = (event: { ports: readonly unknown[] }): void => {
-    win.postMessage({ type }, options.targetOrigin ?? originOf(win), event.ports)
+    if (waiting > 0) {
+      waiting -= 1
+      post(event.ports)
+    } else {
+      held.push(event.ports)
+    }
+  }
+  const onRequest = (event: PortMessageEvent): void => {
+    const request = event.source === win ? parseRequest(event.data, type) : undefined
+
+    if (!request) {
+      return
+    }
+
+    if (!request.want) {
+      waiting = Math.max(0, waiting - 1)
+      return
+    }
+
+    const ports = held.shift()
+
+    if (ports) {
+      post(ports)
+    } else {
+      waiting += 1
+    }
   }
 
   ipcRenderer.on(type, relay)
+  win.addEventListener("message", onRequest)
   signal?.addEventListener(
     "abort",
     () => {
       ipcRenderer.removeListener(type, relay)
+      win.removeEventListener("message", onRequest)
+      held.splice(0)
     },
     { once: true }
   )
+}
+
+function parseRequest(data: unknown, type: string): PortRequest | undefined {
+  return isRecord(data) && data.type === type && typeof data.want === "boolean"
+    ? { type, want: data.want }
+    : undefined
 }
 
 function originOf(win: MessageWindowLike): string {
