@@ -29,16 +29,17 @@ The first render reads each flag from the snapshot without suspending, on the se
 
 ## Know when the client evaluates again
 
-- When the `identity` prop has another `distinctId` than the snapshot, the provider ignores the snapshot.
+- When the `identity` prop has another `distinctId` than the snapshot, `FlagsProvider` ignores the snapshot.
 - When the provider reports a change for a flag, the snapshot entry of that flag is dropped.
 - `useFlagCache().invalidate(flags)` and `clear()` drop snapshot entries too.
-- A flag that the snapshot does not have evaluates through the client reader.
+- A flag that the snapshot does not have evaluates through the client reader. `useFlags` evaluates its whole list when the snapshot lacks one of its flags.
+- A new `flags` reader on the same `FlagsProvider` drops the snapshot.
 - An entry that fell back because the server resolved no identity evaluates through the client reader too. Such a snapshot has no `distinctId`, the same as an anonymous one.
-- The provider ignores a snapshot whose shape does not parse, and each entry that does not.
+- `FlagsProvider` ignores a snapshot whose shape does not parse, and each entry that does not.
 
-`FlagsProvider` reads `snapshot` only when it mounts. A later snapshot prop has no effect.
+`FlagsProvider` reads `snapshot` only when it mounts. A later snapshot prop has no effect. A snapshot entry does not expire. It stays until a change notification, `invalidate`, or `clear` drops it.
 
-A snapshot holds no payloads. Read a payload through `details` on the reader.
+A snapshot holds no payloads. Read a payload through `details` on the server reader.
 
 ## Read later flags through the server
 
@@ -95,7 +96,7 @@ After the first render, the client reads flags through its own reader. To keep o
    }
    ```
 
-   The endpoint reads the user from the session, so the provider ignores the client identity. A flag that fell back to its default on the server is left out, so it falls back on the client too.
+   The endpoint reads the user from the session, so the provider ignores the client identity. A flag that fell back to its default on the server is left out, so it falls back on the client too, with an `InvalidDecisionError` whose `problem` is `"missing"`. The entries carry no payloads, so the client's `details` has no payload for these flags. This provider has no `subscribe`, so the client receives no change notifications.
 
 3. Use the provider in the client reader:
 
