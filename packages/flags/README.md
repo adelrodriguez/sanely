@@ -23,7 +23,7 @@ The package works in browsers and servers. React support is an optional entry po
 - **Server rendering.** Render with a server snapshot and hydrate with no mismatch.
 - **React support.** Use flags with React 19 and Suspense.
 - **Test helpers.** Set flag values in tests with a fake provider.
-- **One small runtime dependency.** `@sanely/duration` reads time expressions such as `"500ms"`. Install React only when your application needs it.
+- **No external dependencies.** The only runtime dependency is `@sanely/duration`, which reads time expressions such as `"500ms"`. Install React only when your application needs it.
 
 ## Install
 

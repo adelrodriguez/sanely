@@ -50,7 +50,7 @@ const result = await try$
 - **Named task orchestration.** Run concurrent and ordered workflows as objects of named tasks.
 - **Instrumentation hooks.** Observe execution with `wrap(...)` for logs, traces, and metrics.
 - **Resource cleanup.** Register teardown that works across async boundaries with `disposer()` and task disposers.
-- **One small runtime dependency.** [`@sanely/duration`](../duration) reads time expressions such as `"500ms"`.
+- **No external dependencies.** The only runtime dependency is [`@sanely/duration`](../duration), which reads time expressions such as `"500ms"`.
 
 ## Install
 

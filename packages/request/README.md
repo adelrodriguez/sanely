@@ -6,7 +6,7 @@
   </p>
 </div>
 
-`@sanely/request` reads what the network and the hosting platform report about a request: the client's IP address and, on platforms that send it, the client's location. It works with a Fetch `Request` and with Node.js-style requests, and it has no runtime dependencies.
+`@sanely/request` reads what the network and the hosting platform report about a request: the client's IP address and, on platforms that send it, the client's location. It works with a Fetch `Request` and with Node.js-style requests, and it has no external dependencies.
 
 ## Quick start
 
