@@ -426,6 +426,66 @@ describe("first-class cache", () => {
     expect(storeReports(reports)[0]?.error).toBeInstanceOf(InvalidDecisionError)
   })
 
+  test("does not store a decision whose payload the parser rejects", async () => {
+    const counted = flag.variant("counted", ["light", "dark"], "light", {
+      payload: (payload) => {
+        if (typeof payload !== "number") throw new TypeError("expected a number")
+        return payload
+      },
+    })
+    const set = vi.fn(() => Promise.resolve())
+    const payloads: unknown[] = ["oops", 2]
+    const decideOne = vi.fn((): Decision => ({
+      payload: payloads.shift(),
+      type: "variant",
+      variant: "dark",
+    }))
+    const flags = createFlags({
+      cache: { store: { get: () => Promise.resolve(null), set } },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+
+    const rejected = await flags.details(counted)
+    expect(rejected.error).toBeInstanceOf(InvalidDecisionError)
+    await flushBackground()
+    expect(set).not.toHaveBeenCalled()
+
+    const accepted = await flags.details(counted)
+    expect(accepted).toMatchObject({ payload: 2, source: "provider", value: "dark" })
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("treats a stored decision whose payload the parser rejects as a miss", async () => {
+    const counted = flag.variant("counted", ["light", "dark"], "light", {
+      payload: (payload) => {
+        if (typeof payload !== "number") throw new TypeError("expected a number")
+        return payload
+      },
+    })
+    const reports: ErrorReport[] = []
+    const remove = vi.fn(() => Promise.resolve(true))
+    const decideOne = vi.fn((): Decision => ({ payload: 2, type: "variant", variant: "dark" }))
+    const flags = createFlags({
+      cache: {
+        store: {
+          delete: remove,
+          get: () => Promise.resolve({ payload: "oops", type: "variant", variant: "dark" }),
+          set: () => Promise.resolve(),
+        },
+      },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+
+    expect(await flags.details(counted)).toMatchObject({ payload: 2, source: "provider" })
+    await flushBackground()
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(storeReports(reports).map(({ operation }) => operation)).toEqual(["validate"])
+  })
+
   test("reports get and set failures without failing evaluation", async () => {
     const reports: ErrorReport[] = []
     const flags = createFlags({

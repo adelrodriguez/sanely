@@ -1,7 +1,12 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Flag } from "#lib/definition/index.ts"
 import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
-import { type Decision, type DecisionSource, validateDecision } from "#lib/definition/decision.ts"
+import {
+  type Decision,
+  type DecisionSource,
+  parsePayload,
+  validateDecision,
+} from "#lib/definition/decision.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
 import { createSharedSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { normalizeError, type MaybePromise } from "#lib/shared/utils.ts"
@@ -99,9 +104,23 @@ function storeContext<TIdentity extends Subject>(
   return { flagKey: context.flag.key, identity: context.identity }
 }
 
+/**
+ * A decision that fits its flag, with its parsed payload. Only an accepted decision is stored or
+ * returned.
+ */
 export type DecisionResolution = {
   decision: Decision
+  payload: unknown
   source: DecisionSource
+}
+
+/**
+ * Checks a provider or stored decision against its flag and parses its payload. Throws
+ * `InvalidDecisionError`, so a decision whose payload the parser rejects is never stored.
+ */
+function accept(decision: unknown, flag: Flag): { decision: Decision; payload: unknown } {
+  validateDecision(decision, flag)
+  return { decision, payload: parsePayload(flag, decision) }
 }
 
 function reportStoreError<TIdentity extends Subject>(
@@ -240,7 +259,7 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
 }
 
 type StoreConsultation = {
-  decision?: Decision
+  accepted?: { decision: Decision; payload: unknown }
   generation: number
 }
 
@@ -271,13 +290,12 @@ async function consultStore<TIdentity extends Subject>(
   }
 
   try {
-    validateDecision(cached, flag)
+    return { accepted: accept(cached, flag), generation }
   } catch (error) {
     reportStoreError(config, storeContext(context), "validate", key, error)
     deleteCacheEntry(config, storeContext(context), store, key)
     return { generation }
   }
-  return { decision: cached, generation }
 }
 
 function writeThrough<TIdentity extends Subject>(
@@ -362,8 +380,7 @@ export async function resolveDecision<TIdentity extends Subject>(
 
   if (key === undefined || (!store && !coalesce)) {
     const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, flag)
-    return { decision, source: "provider" }
+    return { ...accept(decision, flag), source: "provider" }
   }
 
   let write: { generation: number; store: DecisionStore } | undefined
@@ -374,19 +391,18 @@ export async function resolveDecision<TIdentity extends Subject>(
       () => consultStore(config, context, flag, store, key),
       signal
     )
-    if (consultation.decision) {
-      return { decision: consultation.decision, source: "cache" }
+    if (consultation.accepted) {
+      return { ...consultation.accepted, source: "cache" }
     }
     write = { generation: consultation.generation, store }
   }
 
   if (!coalesce) {
-    const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, flag)
+    const accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
     if (write) {
-      writeThrough(config, context, write.store, write.generation, key, decision)
+      writeThrough(config, context, write.store, write.generation, key, accepted.decision)
     }
-    return { decision, source: "provider" }
+    return { ...accepted, source: "provider" }
   }
 
   // The in-flight check, the leadership registration, and the join must stay in one synchronous
@@ -400,11 +416,10 @@ export async function resolveDecision<TIdentity extends Subject>(
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
-  const decision = await raceWithSignal(() => call.promise, signal)
-  validateDecision(decision, flag)
+  const accepted = accept(await raceWithSignal(() => call.promise, signal), flag)
   // The leader writes the decision it fetched. Followers reuse it.
   if (write && call !== existing) {
-    writeThrough(config, context, write.store, write.generation, key, decision)
+    writeThrough(config, context, write.store, write.generation, key, accepted.decision)
   }
-  return { decision, source: "provider" }
+  return { ...accepted, source: "provider" }
 }

@@ -2,11 +2,7 @@ import type { Flag, FlagValue, VariantFlag } from "#lib/definition/index.ts"
 import type { EvaluationContext, IdentitySource, Subject } from "#lib/identity/index.ts"
 import type { DecideOptions, ProviderCalls } from "#lib/provider/index.ts"
 import type { MaybePromise } from "#lib/shared/utils.ts"
-import {
-  type DecisionSource,
-  extractDecisionValue,
-  parsePayload,
-} from "#lib/definition/decision.ts"
+import { type DecisionSource, extractDecisionValue } from "#lib/definition/decision.ts"
 import {
   EvaluationAbortedError,
   type EvaluationError,
@@ -130,7 +126,7 @@ export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(
       (providerSignal) => decide(flag, identity, { signal: providerSignal }),
       signal
     )
-    const payload = parsePayload(flag, resolution.decision)
+    const { payload } = resolution
     const value = extractDecisionValue(resolution.decision)
     details =
       payload === undefined
