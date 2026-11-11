@@ -19,6 +19,13 @@ const BRACKETED = /^\[([^\]]+)\](?::\d{1,5})?$/
 const WITH_PORT = /^([^:]+):\d{1,5}$/
 const ZONE = /%[\w.-]+$/
 
+// The 16 one bits that come before the IPv4 address in an IPv4-mapped address, and the mask for
+// the IPv4 address itself. They are shifts instead of hex literals because oxfmt lowercases hex
+// digits that the lint preset requires in uppercase. Write them as hex once this is fixed:
+// https://github.com/adelrodriguez/adamantite/issues/721
+const MAPPED_PREFIX = (1n << 16n) - 1n
+const IPV4_MASK = (1n << 32n) - 1n
+
 function join(parts: readonly number[], bitsPerPart: bigint) {
   return parts.reduce((value, part) => (value << bitsPerPart) | BigInt(part), 0n)
 }
@@ -75,16 +82,22 @@ function parseIpv6Groups(text: string) {
 }
 
 /**
- * Parses an address written alone, such as `192.0.2.1` or `2001:db8::1`.
+ * Parses an address written alone, such as `192.0.2.1` or `2001:db8::1`. An IPv4-mapped IPv6
+ * address, such as `::ffff:192.0.2.1`, parses as IPv4.
  */
 export function parse(text: string): Address | undefined {
   const octets = parseOctets(text)
   if (octets) return { value: join(octets, 8n), version: 4 }
 
   const groups = parseIpv6Groups(text)
-  if (groups) return { value: join(groups, 16n), version: 6 }
+  if (!groups) return undefined
 
-  return undefined
+  const value = join(groups, 16n)
+  // A dual-stack socket reports an IPv4 client as an IPv4-mapped address in `::ffff:0:0/96`, such
+  // as `::ffff:192.0.2.1`. It is read as IPv4, so both spellings of one client are one address.
+  if (value >> 32n === MAPPED_PREFIX) return { value: value & IPV4_MASK, version: 4 }
+
+  return { value, version: 6 }
 }
 
 /**

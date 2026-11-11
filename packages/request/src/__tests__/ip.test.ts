@@ -42,6 +42,11 @@ const NOT_GLOBAL = [
   ["IPv6 documentation", "2001:db8::"],
   ["unique local", "fc02::"],
   ["IPv6 link local", "fe80::"],
+  ["IPv4 multicast", "224.0.0.1"],
+  ["IPv6 multicast", "ff02::1"],
+  ["IPv6 documentation 3fff::/20", "3fff::1"],
+  ["SRv6 SID", "5f00::1"],
+  ["dummy IPv6 prefix", "100:0:0:1::1"],
 ] as const
 
 const MALFORMED = [
@@ -66,6 +71,10 @@ const GLOBAL = [
   ["AMT", "2001:3::", "2001:3::"],
   ["AS112-v6", "2001:4:112::", "2001:4:112::"],
   ["ORCHIDv2", "2001:20::", "2001:20::"],
+  ["IPv4 PCP anycast", "192.0.0.9", "192.0.0.9"],
+  ["IPv4 TURN anycast", "192.0.0.10", "192.0.0.10"],
+  ["DNS-SD SRP anycast", "2001:1::3", "2001:1::3"],
+  ["DRIP entity tags", "2001:30::1", "2001:30::1"],
   ["an IPv4 address with a port", "1.1.1.1:443", "1.1.1.1"],
   ["a bracketed IPv6 address with a port", "[2606:4700::1]:443", "2606:4700::1"],
   ["an IPv6 address with a zone", "::abcd:c00a:2ff%1", "::abcd:c00a:2ff"],
@@ -143,6 +152,30 @@ describe("ip", () => {
     expect(find(headers({ "x-real-ip": "2606:4700:0:1:1:1:1:1" }))).toBe("2606:4700:0:1:1:1:1:1")
     expect(find(headers({ "x-real-ip": "64:FF9B::C000:221" }))).toBe("64:ff9b::c000:221")
     expect(find(headers({ "x-real-ip": "64:ff9b::192.0.2.33" }))).toBe("64:ff9b::c000:221")
+  })
+
+  it("reads a dual-stack connection's IPv4-mapped address as IPv4, before any header", () => {
+    const forged = { "x-forwarded-for": "9.9.9.9" }
+
+    for (const remoteAddress of ["::ffff:8.8.8.8", "::ffff:808:808", "[::FFFF:8.8.8.8]:443"]) {
+      expect(find({ headers: forged, socket: { remoteAddress } })).toBe("8.8.8.8")
+    }
+  })
+
+  it("skips a mapped private address and matches mapped addresses against IPv4 proxies", () => {
+    expect(find({ headers: {}, socket: { remoteAddress: "::ffff:10.0.0.1" } })).toBeUndefined()
+    expect(
+      find(
+        { headers: {}, socket: { remoteAddress: "::ffff:8.8.8.8" } },
+        { proxies: ["8.8.8.0/24"] }
+      )
+    ).toBeUndefined()
+    expect(
+      find(
+        { headers: {}, socket: { remoteAddress: "8.8.8.8" } },
+        { proxies: ["::ffff:8.8.8.0/120"] }
+      )
+    ).toBeUndefined()
   })
 
   it("prefers the connection's address to any header", () => {

@@ -21,7 +21,7 @@ An address or CIDR range, listed in `proxies`, of a proxy that the app's owner r
 _Avoid_: Allowed proxy, safe IP
 
 **Global address**:
-An address that can belong to a client on the public internet: one outside every private, loopback, link-local, documentation, benchmarking, and reserved block.
+An address that can belong to a client on the public internet: one outside every private, loopback, link-local, multicast, documentation, benchmarking, and reserved block, or inside one of the registries' globally reachable exceptions.
 _Avoid_: Public IP (in code), routable address
 
 **Location**:

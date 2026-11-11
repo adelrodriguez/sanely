@@ -32,13 +32,13 @@ With a platform:
 
 `ip` skips these addresses:
 
-- Private, loopback, link-local, documentation, benchmarking, and reserved addresses from the IANA special-purpose registries.
+- Private, loopback, link-local, multicast, documentation, benchmarking, and reserved addresses from the IANA special-purpose registries. The registries' globally reachable exceptions, such as the anycast address `192.0.0.9`, are kept.
 - Addresses inside `proxies`.
 - Text that is not an IPv4 or IPv6 address. IPv4 octets with a leading zero are rejected, because some parsers read them as octal.
 
 In a header that lists several addresses, such as `X-Forwarded-For` or `Forwarded`, `ip` reads from the right. Each proxy appends the address it received the request from, so the rightmost addresses come from proxies you control, and a client can write anything on the left.
 
-`ip` drops a port, brackets, or an IPv6 zone, and writes IPv6 addresses in their canonical form from RFC 5952. One client always gets one spelling, so the result works as a rate-limit identity.
+`ip` reads an IPv4-mapped address, such as the `::ffff:192.0.2.1` that a dual-stack Node.js socket reports, as the IPv4 address it holds. It drops a port, brackets, or an IPv6 zone, and writes IPv6 addresses in their canonical form from RFC 5952. One client always gets one spelling, so the result works as a rate-limit identity.
 
 | `platform`     | Headers, in order                                        |
 | -------------- | -------------------------------------------------------- |

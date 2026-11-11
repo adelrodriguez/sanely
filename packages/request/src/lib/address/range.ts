@@ -25,8 +25,11 @@ export function parseRange(text: string): Range | undefined {
   if (prefix === undefined) return { bits: size, network }
   if (!PREFIX.test(prefix)) return undefined
 
-  const bits = Number(prefix)
-  return bits <= size ? { bits, network } : undefined
+  // An IPv4-mapped network, such as `::ffff:10.0.0.0/104`, parses as IPv4, so its prefix loses the
+  // 96 bits of the mapping.
+  const mappingBits = network.version === 4 && host.includes(":") ? 96 : 0
+  const bits = Number(prefix) - mappingBits
+  return bits >= 0 && bits <= size ? { bits, network } : undefined
 }
 
 export function contains(range: Range, address: Address) {
