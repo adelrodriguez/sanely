@@ -45,7 +45,7 @@ const dependencies: Record<string, Record<string, string[]>> = {
     changes: [],
     definition: ["errors"],
     errors: [],
-    evaluation: ["changes", "definition", "errors", "identity", "provider", "shared", "sharing"],
+    evaluation: ["definition", "errors", "identity", "provider", "shared", "sharing"],
     flags: [
       "changes",
       "definition",
@@ -204,12 +204,7 @@ export default defineConfig({
         "adamantite/no-react-state-hooks": [
           "error",
           {
-            allow: [
-              "**/use[A-Z]*.{ts,tsx}",
-              "**/use-*.{ts,tsx}",
-              "**/hooks/**",
-              "packages/flags/src/integrations/**",
-            ],
+            allow: ["packages/flags/src/integrations/**"],
           },
         ],
       },
