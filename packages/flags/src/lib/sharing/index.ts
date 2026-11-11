@@ -1,7 +1,12 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Flag } from "#lib/definition/index.ts"
 import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
-import { type Decision, type DecisionSource, validateDecision } from "#lib/definition/decision.ts"
+import {
+  type Decision,
+  type DecisionSource,
+  parsePayload,
+  validateDecision,
+} from "#lib/definition/decision.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
 import { createSharedSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { normalizeError, type MaybePromise } from "#lib/shared/utils.ts"
@@ -69,12 +74,15 @@ export type Sharing<TIdentity extends Subject> = {
   onError:
     | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
     | undefined
+  // The provider's name, which the default evaluation key holds.
+  provider: string
   state: ResolutionState<TIdentity>
   store: DecisionStore | undefined
 }
 
 export function createSharing<TIdentity extends Subject>(
   options: CacheOptions<TIdentity> | undefined,
+  provider: string,
   changes: ChangeBroadcaster | undefined,
   onError: Sharing<TIdentity>["onError"]
 ): Sharing<TIdentity> {
@@ -83,6 +91,7 @@ export function createSharing<TIdentity extends Subject>(
     coalesce: options?.coalesce !== false,
     key: options?.key,
     onError,
+    provider,
     state: createResolutionState(),
     store: options?.store,
   }
@@ -99,9 +108,23 @@ function storeContext<TIdentity extends Subject>(
   return { flagKey: context.flag.key, identity: context.identity }
 }
 
+/**
+ * A decision that fits its flag, with its parsed payload. Only an accepted decision is stored or
+ * returned.
+ */
 export type DecisionResolution = {
   decision: Decision
+  payload: unknown
   source: DecisionSource
+}
+
+/**
+ * Checks a provider or stored decision against its flag and parses its payload. Throws
+ * `InvalidDecisionError`, so a decision whose payload the parser rejects is never stored.
+ */
+function accept(decision: unknown, flag: Flag): { decision: Decision; payload: unknown } {
+  validateDecision(decision, flag)
+  return { decision, payload: parsePayload(flag, decision) }
 }
 
 function reportStoreError<TIdentity extends Subject>(
@@ -240,7 +263,7 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
 }
 
 type StoreConsultation = {
-  decision?: Decision
+  accepted?: { decision: Decision; payload: unknown }
   generation: number
 }
 
@@ -271,13 +294,12 @@ async function consultStore<TIdentity extends Subject>(
   }
 
   try {
-    validateDecision(cached, flag)
+    return { accepted: accept(cached, flag), generation }
   } catch (error) {
     reportStoreError(config, storeContext(context), "validate", key, error)
     deleteCacheEntry(config, storeContext(context), store, key)
     return { generation }
   }
-  return { decision: cached, generation }
 }
 
 function writeThrough<TIdentity extends Subject>(
@@ -301,16 +323,21 @@ function writeThrough<TIdentity extends Subject>(
   })
 }
 
+type WriteTicket = { generation: number; store: DecisionStore }
+
 /**
  * Starts the provider call that concurrent evaluations with one evaluation key share, and registers
  * it as pending until it settles. The call runs on a shared signal, not on the signal of the
- * evaluation that started it, so it stops only when every evaluation that joined it has left.
+ * evaluation that started it, so it stops only when every evaluation that joined it has left. With
+ * a write ticket, the call stores its accepted decision itself, so the decision is stored even when
+ * the evaluation that started the call has already left.
  */
 function startSharedCall<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: EvaluationContext<TIdentity>,
   key: string,
-  provider: (signal: AbortSignal) => MaybePromise<unknown>
+  provider: (signal: AbortSignal) => MaybePromise<unknown>,
+  write: WriteTicket | undefined
 ): PendingResolution {
   const { state } = config
   // Attach before the registration, so a change notification can drop this call.
@@ -321,7 +348,15 @@ function startSharedCall<TIdentity extends Subject>(
       throw normalizeError(error)
     }
   )
-  const call: PendingResolution = { flagKey: context.flag.key, promise, shared }
+  const accepted = promise.then((decision) => accept(decision, context.flag))
+  void accepted.catch(() => null)
+  const call: PendingResolution = {
+    accepted,
+    flag: context.flag,
+    flagKey: context.flag.key,
+    promise,
+    shared,
+  }
   state.pending.set(key, call)
   const settle = () => {
     shared.release()
@@ -330,6 +365,17 @@ function startSharedCall<TIdentity extends Subject>(
     }
   }
   void promise.then(settle, settle)
+  if (write) {
+    const { generation, store } = write
+    // Each evaluation reports its own invalid decision. The call only skips storing it.
+    void accepted.then(
+      ({ decision }) => {
+        writeThrough(config, context, store, generation, key, decision)
+        return null
+      },
+      () => null
+    )
+  }
   return call
 }
 
@@ -354,7 +400,7 @@ export async function resolveDecision<TIdentity extends Subject>(
 
   let key: string | undefined
   try {
-    key = getEvaluationKey(context, config.key)
+    key = getEvaluationKey(context, config.provider, config.key)
   } catch (error) {
     reportStoreError(config, storeContext(context), "key", context.flag.key, error)
     key = undefined
@@ -362,11 +408,10 @@ export async function resolveDecision<TIdentity extends Subject>(
 
   if (key === undefined || (!store && !coalesce)) {
     const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, flag)
-    return { decision, source: "provider" }
+    return { ...accept(decision, flag), source: "provider" }
   }
 
-  let write: { generation: number; store: DecisionStore } | undefined
+  let write: WriteTicket | undefined
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
@@ -374,19 +419,18 @@ export async function resolveDecision<TIdentity extends Subject>(
       () => consultStore(config, context, flag, store, key),
       signal
     )
-    if (consultation.decision) {
-      return { decision: consultation.decision, source: "cache" }
+    if (consultation.accepted) {
+      return { ...consultation.accepted, source: "cache" }
     }
     write = { generation: consultation.generation, store }
   }
 
   if (!coalesce) {
-    const decision = await raceWithSignal(() => provider(signal), signal)
-    validateDecision(decision, flag)
+    const accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
     if (write) {
-      writeThrough(config, context, write.store, write.generation, key, decision)
+      writeThrough(config, context, write.store, write.generation, key, accepted.decision)
     }
-    return { decision, source: "provider" }
+    return { ...accepted, source: "provider" }
   }
 
   // The in-flight check, the leadership registration, and the join must stay in one synchronous
@@ -396,15 +440,15 @@ export async function resolveDecision<TIdentity extends Subject>(
   const call =
     existing && !existing.shared.signal.aborted
       ? existing
-      : startSharedCall(config, context, key, provider)
+      : startSharedCall(config, context, key, provider, write)
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
-  const decision = await raceWithSignal(() => call.promise, signal)
-  validateDecision(decision, flag)
-  // The leader writes the decision it fetched. Followers reuse it.
-  if (write && call !== existing) {
-    writeThrough(config, context, write.store, write.generation, key, decision)
-  }
-  return { decision, source: "provider" }
+  // An evaluation of the definition that started the call reuses its parse. Another definition with
+  // the same evaluation key can have another payload parser, so it parses for itself.
+  const resolution =
+    flag === call.flag
+      ? await raceWithSignal(() => call.accepted, signal)
+      : accept(await raceWithSignal(() => call.promise, signal), flag)
+  return { ...resolution, source: "provider" }
 }

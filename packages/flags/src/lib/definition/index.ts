@@ -36,11 +36,42 @@ export type VariantFlag<TVariant extends string = string, TPayload = unknown> = 
  */
 export type Flag = BooleanFlag | VariantFlag
 
-export type FlagValue<TFlag extends Flag> =
-  TFlag extends VariantFlag<infer TVariant, infer _TPayload> ? TVariant : boolean
+// Each type below names every kind and ends in `never`, so a new kind is not silently read as
+// another one.
 
-export type FlagPayload<TFlag extends Flag> =
-  TFlag extends VariantFlag<string, infer TPayload> ? TPayload : never
+export type FlagValue<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? boolean
+  : TFlag extends VariantFlag<infer TVariant, infer _TPayload>
+    ? TVariant
+    : never
+
+export type FlagPayload<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? never
+  : TFlag extends VariantFlag<string, infer TPayload>
+    ? TPayload
+    : never
+
+const flagKinds = { boolean: true, variant: true } satisfies Record<Flag["kind"], true>
+
+export function isFlagKind(value: unknown): value is Flag["kind"] {
+  return typeof value === "string" && Object.hasOwn(flagKinds, value)
+}
+
+/**
+ * Runs the handler for the flag's kind. Every caller passes a handler for each kind, so a new kind
+ * fails to compile at each caller until it handles that kind.
+ */
+export function byKind<TResult>(
+  flag: Flag,
+  handlers: { [K in Flag["kind"]]: (flag: Extract<Flag, { kind: K }>) => TResult }
+): TResult {
+  switch (flag.kind) {
+    case "boolean":
+      return handlers.boolean(flag)
+    case "variant":
+      return handlers.variant(flag)
+  }
+}
 
 /**
  * The values of a list of flags, in the same order.

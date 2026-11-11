@@ -1,12 +1,8 @@
-import type { Flag, FlagValue, VariantFlag } from "#lib/definition/index.ts"
+import type { BooleanFlag, Flag, FlagValue, VariantFlag } from "#lib/definition/index.ts"
 import type { EvaluationContext, IdentitySource, Subject } from "#lib/identity/index.ts"
 import type { DecideOptions, ProviderCalls } from "#lib/provider/index.ts"
 import type { MaybePromise } from "#lib/shared/utils.ts"
-import {
-  type DecisionSource,
-  extractDecisionValue,
-  parsePayload,
-} from "#lib/definition/decision.ts"
+import { type DecisionSource, extractDecisionValue } from "#lib/definition/decision.ts"
 import {
   EvaluationAbortedError,
   type EvaluationError,
@@ -18,15 +14,16 @@ import { createEvaluationSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { resolveDecision, type Sharing } from "#lib/sharing/index.ts"
 import { createHookRunner, type Hook, type HookFailedReport } from "./hooks"
 
-type PayloadDetails<TFlag extends Flag> =
-  TFlag extends VariantFlag<string, infer TPayload>
+type PayloadDetails<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? unknown
+  : TFlag extends VariantFlag<string, infer TPayload>
     ? {
         /**
          * The parsed payload. Present only when a successful variant decision has one.
          */
         readonly payload?: TPayload
       }
-    : unknown
+    : never
 
 /**
  * The result of one evaluation: the value, where it came from, and why it fell back to the default
@@ -130,7 +127,7 @@ export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(
       (providerSignal) => decide(flag, identity, { signal: providerSignal }),
       signal
     )
-    const payload = parsePayload(flag, resolution.decision)
+    const { payload } = resolution
     const value = extractDecisionValue(resolution.decision)
     details =
       payload === undefined

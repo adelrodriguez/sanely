@@ -304,13 +304,41 @@ describe("first-class cache", () => {
     const providerDetails = await flags.details(theme)
     expect(providerDetails.source).toBe("provider")
     await flushBackground()
-    expect(set).toHaveBeenCalledWith('["theme","variant",["light","dark"],"string","user123"]', {
-      type: "variant",
-      variant: "dark",
-    })
+    expect(set).toHaveBeenCalledWith(
+      '["test","theme","variant",["light","dark"],"string","user123"]',
+      {
+        type: "variant",
+        variant: "dark",
+      }
+    )
     const cacheDetails = await flags.details(theme)
     expect(cacheDetails.source).toBe("cache")
     expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  test("keeps the decisions of readers with different providers apart in one store", async () => {
+    const stored = new Map<string, Decision>()
+    const store: DecisionStore = {
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: (key, value) => {
+        stored.set(key, value)
+        return Promise.resolve()
+      },
+    }
+    const production = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "production" }),
+    })
+    const staging = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => FALSE, name: "staging" }),
+    })
+
+    expect(await production.get(betaAccess)).toBe(true)
+    await flushBackground()
+    expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
   test("supports a custom identity-sensitive key", async () => {
@@ -425,6 +453,111 @@ describe("first-class cache", () => {
     expect(reports[0]).toMatchObject({ _tag: "StoreFailed", operation: "validate" })
     expect(storeReports(reports)[0]?.error).toBeInstanceOf(InvalidDecisionError)
   })
+
+  test("does not store a decision whose payload the parser rejects", async () => {
+    const counted = flag.variant("counted", ["light", "dark"], "light", {
+      payload: (payload) => {
+        if (typeof payload !== "number") throw new TypeError("expected a number")
+        return payload
+      },
+    })
+    const set = vi.fn(() => Promise.resolve())
+    const payloads: unknown[] = ["oops", 2]
+    const decideOne = vi.fn((): Decision => ({
+      payload: payloads.shift(),
+      type: "variant",
+      variant: "dark",
+    }))
+    const flags = createFlags({
+      cache: { store: { get: () => Promise.resolve(null), set } },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+
+    const rejected = await flags.details(counted)
+    expect(rejected.error).toBeInstanceOf(InvalidDecisionError)
+    await flushBackground()
+    expect(set).not.toHaveBeenCalled()
+
+    const accepted = await flags.details(counted)
+    expect(accepted).toMatchObject({ payload: 2, source: "provider", value: "dark" })
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("runs the payload parser once for a stored provider decision", async () => {
+    const parse = vi.fn((payload: unknown) => payload)
+    const parsed = flag.variant("parsed", ["light", "dark"], "light", { payload: parse })
+    const flags = createFlags({
+      cache: { store: { get: () => Promise.resolve(null), set: () => Promise.resolve() } },
+      identify,
+      provider: defineProvider({
+        decideOne: () => ({ payload: 1, type: "variant", variant: "dark" }),
+        name: "test",
+      }),
+    })
+
+    expect(await flags.details(parsed)).toMatchObject({ payload: 1, source: "provider" })
+    await flushBackground()
+    expect(parse).toHaveBeenCalledTimes(1)
+  })
+
+  test("treats a stored decision whose payload the parser rejects as a miss", async () => {
+    const counted = flag.variant("counted", ["light", "dark"], "light", {
+      payload: (payload) => {
+        if (typeof payload !== "number") throw new TypeError("expected a number")
+        return payload
+      },
+    })
+    const reports: ErrorReport[] = []
+    const remove = vi.fn(() => Promise.resolve(true))
+    const decideOne = vi.fn((): Decision => ({ payload: 2, type: "variant", variant: "dark" }))
+    const flags = createFlags({
+      cache: {
+        store: {
+          delete: remove,
+          get: () => Promise.resolve({ payload: "oops", type: "variant", variant: "dark" }),
+          set: () => Promise.resolve(),
+        },
+      },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+
+    expect(await flags.details(counted)).toMatchObject({ payload: 2, source: "provider" })
+    await flushBackground()
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(storeReports(reports).map(({ operation }) => operation)).toEqual(["validate"])
+  })
+
+  test.each([{}, { distinctId: "" }, { distinctId: Number.NaN }, { distinctId: true }])(
+    "never shares a decision for an identity without a usable distinctId: %o",
+    async (identity) => {
+      const stored = new Map<string, Decision>()
+      const decideOne = vi.fn((): Decision => TRUE)
+      const flags = createFlags({
+        cache: {
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        provider: defineProvider({ decideOne, name: "test" }),
+      })
+
+      // An untyped session object reaches the reader without a type check.
+      const details = await flags.for(identity as Identity).details(betaAccess)
+      expect(details).toMatchObject({ source: "default", value: false })
+      expect(details.error?._tag).toBe("IdentityNotFoundError")
+      await flushBackground()
+      expect(stored.size).toBe(0)
+      expect(decideOne).not.toHaveBeenCalled()
+    }
+  )
 
   test("reports get and set failures without failing evaluation", async () => {
     const reports: ErrorReport[] = []
@@ -562,6 +695,52 @@ describe("first-class cache", () => {
     await flushBackground()
     expect(storeReports(reports).map(({ operation }) => operation)).toContain("delete")
   })
+
+  test.each([
+    { expected: ["first", "second"], keys: "first" },
+    { expected: ["first", "second"], keys: null },
+    { expected: ["first"], keys: ["first", 7] },
+  ])(
+    "reads a malformed change notification $keys as a change to $expected",
+    async ({ expected, keys }) => {
+      let notify!: ChangeListener
+      const removed: string[] = []
+      const flags = createFlags({
+        cache: {
+          store: {
+            delete: (key: string) => {
+              removed.push(key)
+              return Promise.resolve(true)
+            },
+            get: () => Promise.resolve(null),
+            set: () => Promise.resolve(),
+          },
+        },
+        identify,
+        provider: defineProvider({
+          decideOne: () => TRUE,
+          name: "test",
+          subscribe: (listener) => {
+            notify = listener
+            return () => null
+          },
+        }),
+      })
+      const changes: unknown[] = []
+      flags.subscribe((changed) => void changes.push(changed))
+
+      await flags.get(flag.boolean("first", false))
+      await flags.get(flag.boolean("second", false))
+      // A JavaScript provider can send any value.
+      notify(keys as never)
+      await flushBackground()
+      const removedFlags = removed.map((key) =>
+        expected.find((flagKey) => key.includes(`"${flagKey}"`))
+      )
+      expect(removedFlags).toEqual(expected)
+      expect(changes).toEqual([Array.isArray(keys) ? ["first"] : undefined])
+    }
+  )
 
   test("invalidates only notified flags and supports keyless invalidation", async () => {
     let notify!: ChangeListener
@@ -997,6 +1176,44 @@ describe("request coalescing", () => {
     expect(leaderDetails.error?.cause).toBe(reason)
     expect(await follower).toEqual({ flagKey: "beta-access", source: "provider", value: true })
     expect(signal.aborted).toBe(false)
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  test("stores a shared decision when the evaluation that started the call leaves", async () => {
+    const stored = new Map<string, Decision>()
+    const pending = createDeferred<Decision>()
+    const started = createDeferred<null>()
+    const decideOne = vi.fn(() => {
+      started.resolve(null)
+      return pending.promise
+    })
+    const flags = createFlags({
+      cache: {
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify,
+      provider: defineProvider({ decideOne, name: "test" }),
+    })
+    const controller = new AbortController()
+
+    const leader = flags.details(betaAccess, { signal: controller.signal })
+    await started.promise
+    const follower = flags.details(betaAccess)
+    await flushBackground()
+    controller.abort(new Error("leader stopped"))
+    const leaderDetails = await leader
+    expect(leaderDetails.source).toBe("default")
+    pending.resolve(TRUE)
+
+    expect(await follower).toMatchObject({ source: "provider", value: true })
+    await flushBackground()
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: true })
     expect(decideOne).toHaveBeenCalledTimes(1)
   })
 

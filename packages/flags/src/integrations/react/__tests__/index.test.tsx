@@ -2,11 +2,12 @@
 
 import { setTimeout as sleep } from "node:timers/promises"
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
-import { Component, type ReactNode, Suspense } from "react"
+import { Component, type ReactNode, StrictMode, Suspense, useLayoutEffect } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  anonymous,
   type CallerFlags,
   createFlags,
   decision,
@@ -27,6 +28,7 @@ import {
   useFlagCache,
   useFlags,
 } from "#integrations/react/index.tsx"
+import { fakeProvider } from "#testing/index.ts"
 
 const hydrated: Array<{ container: HTMLElement; unmount: () => void }> = []
 
@@ -126,6 +128,14 @@ function captureCache() {
     return captured
   }
   return { capture, controls }
+}
+
+function First() {
+  return <span>{`first:${useFlag(beta)}`}</span>
+}
+
+function Second() {
+  return <span>{`second:${useFlag(beta)}`}</span>
 }
 
 function CacheConsumer() {
@@ -455,6 +465,87 @@ describe("React integration", () => {
     })
     expect(await screen.findByText("true:dark")).toBeTruthy()
     expect(decide).toHaveBeenCalledTimes(5)
+  })
+
+  it("re-renders a reader whose flag a layout effect invalidates before it subscribes", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const snapshot: FlagSnapshot = {
+      distinctId: "core",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    function InvalidateOnLayout() {
+      const cache = useFlagCache()
+      useLayoutEffect(() => {
+        state.value = false
+        cache.invalidate([beta])
+      }, [cache])
+      return null
+    }
+    await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+        <InvalidateOnLayout />
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  it("re-renders readers on invalidate after React resubscribes them", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const { capture, controls } = captureCache()
+    // Strict mode subscribes, unsubscribes, and subscribes again, as a remount of the same reader
+    // does in production.
+    await renderAsync(
+      <StrictMode>
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <Value item={beta} />
+          </Suspense>
+        </FlagsProvider>
+      </StrictMode>
+    )
+    expect(await screen.findByText("true")).toBeTruthy()
+    const calls = decideOne.mock.calls.length
+
+    state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(calls + 1)
+  })
+
+  it("re-renders a reader that replaces another reader of the same flags", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<First />))
+    expect(await screen.findByText("first:true")).toBeTruthy()
+    // React runs the first reader's cleanup before the second reader subscribes.
+    await act(() => {
+      rerender(tree(<Second />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("second:true")).toBeTruthy()
+    const calls = decideOne.mock.calls.length
+
+    state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("second:false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(calls + 1)
   })
 
   it("re-evaluates only for change notifications naming a read key", async () => {
@@ -918,6 +1009,103 @@ describe("server rendering", () => {
     )
     expect(await screen.findByText("false:dark")).toBeTruthy()
     expect(client.seen).toContain("client-user")
+  })
+
+  it.each([
+    '{"distinctId":"core"}',
+    '{"distinctId":true,"flags":{"beta":{"kind":"boolean","source":"cache","value":true}}}',
+    "null",
+  ])("ignores a snapshot that does not parse and evaluates: %s", async (json) => {
+    const client = makeFlags("bulk")
+    client.state.value = false
+    // A snapshot crosses the network as JSON, so the provider cannot trust its shape.
+    const malformed = JSON.parse(json) as FlagSnapshot
+    await renderAsync(<App flags={client.flags} snapshot={malformed} />)
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("ignores snapshot entries with an unknown source", async () => {
+    const client = makeFlags("bulk")
+    client.state.value = false
+    const snapshot = JSON.parse(
+      '{"distinctId":"core","flags":{"beta":{"kind":"boolean","source":"guess","value":true},"theme":{"kind":"variant","source":"provider","value":"dark"}}}'
+    ) as FlagSnapshot
+    await renderAsync(<App flags={client.flags} snapshot={snapshot} />)
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+    expect(client.decide).toHaveBeenCalled()
+  })
+
+  it("evaluates the flags that a snapshot could not evaluate for want of an identity", async () => {
+    const failed = createFlags({
+      identify: () => {
+        throw new Error("no session")
+      },
+      provider: fakeProvider(),
+    })
+    // The server's identity failed, so the snapshot holds defaults and no distinctId.
+    const snapshot = await failed.snapshot([beta, theme])
+    expect(snapshot.distinctId).toBeNull()
+    const client = createFlags({ provider: fakeProvider([[beta, true]]) })
+    await renderAsync(
+      <FlagsProvider flags={client} identity={anonymous} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <BetaAndTheme />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true:light")).toBeTruthy()
+  })
+
+  it("keeps a dropped snapshot value dropped when the provider remounts", async () => {
+    const identity = { distinctId: "user" }
+    const { snapshot } = await serverRender(identity)
+    const client = makeFlags("bulk")
+    client.state.value = false
+    const tree = (key: string) => (
+      <App key={key} flags={client.flags} identity={identity} snapshot={snapshot} />
+    )
+    const { rerender } = await renderAsync(tree("first"))
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+
+    act(() => {
+      client.emit(["beta"])
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    // A new key remounts the provider with the same snapshot object.
+    await act(() => {
+      rerender(tree("second"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("keeps a reader's dropped snapshot values when another reader uses the snapshot", async () => {
+    const identity = { distinctId: "user" }
+    const { snapshot } = await serverRender(identity)
+    const first = makeFlags("bulk")
+    const second = makeFlags("bulk")
+    first.state.value = false
+    const tree = (flags: TestFlags, key: string) => (
+      <App key={key} flags={flags} identity={identity} snapshot={snapshot} />
+    )
+    const { rerender } = await renderAsync(tree(first.flags, "a"))
+    act(() => {
+      first.emit(["beta"])
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    // Another reader reads the same snapshot object, then the first reader mounts again.
+    await act(() => {
+      rerender(tree(second.flags, "b"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    await act(() => {
+      rerender(tree(first.flags, "c"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
   })
 
   it("drops a snapshot value after a change notification and evaluates", async () => {

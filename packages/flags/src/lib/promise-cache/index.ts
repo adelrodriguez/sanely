@@ -2,9 +2,16 @@ import type { ValidateTimeExpression } from "@sanely/duration"
 
 export * from "./key"
 
+/**
+ * The defaults of `FlagCacheOptions`. docs/reference.md states them, and a test compares the two.
+ */
+export const DEFAULT_MAX_ENTRIES = 100
+export const DEFAULT_TTL = 5 * 60 * 1000
+
 export type FlagCacheOptions<T extends string = never> = {
   /**
-   * Maximum number of identities retained by the cache. Defaults to 100.
+   * The most settled entries for each list of flags, one for each identity. Pending entries do not
+   * count. Defaults to 100.
    */
   maxEntries?: number
   /**

@@ -55,7 +55,7 @@ function createConfig(
     && createChangeBroadcaster(subscribe, (error) => {
       onError({ _tag: "SubscribeFailed", error })
     })
-  return createSharing(options, changes, onError)
+  return createSharing(options, "test", changes, onError)
 }
 
 type StoreFunctions = {
@@ -90,13 +90,15 @@ describe("createSharing", () => {
     const store = createStore()
     const key = customKey
 
-    expect(createSharing(detached.options, detached.changes, detached.onError)).toMatchObject({
+    expect(
+      createSharing(detached.options, "test", detached.changes, detached.onError)
+    ).toMatchObject({
       coalesce: true,
       key: undefined,
       store: undefined,
     })
     expect(
-      createSharing({ coalesce: false, key, store }, detached.changes, detached.onError)
+      createSharing({ coalesce: false, key, store }, "test", detached.changes, detached.onError)
     ).toMatchObject({
       coalesce: false,
       key,

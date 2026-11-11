@@ -11,10 +11,24 @@ import {
 } from "react"
 import type { ChangeListener } from "#lib/changes/index.ts"
 import type { DecisionSource } from "#lib/definition/decision.ts"
-import type { Flag, FlagValue, FlagValues, VariantFlag } from "#lib/definition/index.ts"
 import type { FlagReader, FlagSnapshot, FlagSnapshotEntry } from "#lib/flags/index.ts"
+import {
+  type BooleanFlag,
+  byKind,
+  type Flag,
+  type FlagValue,
+  type FlagValues,
+  isFlagKind,
+  type VariantFlag,
+} from "#lib/definition/index.ts"
+import { IdentityNotFoundError } from "#lib/errors/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
-import { evictOnRejection, type FlagCacheOptions } from "#lib/promise-cache/index.ts"
+import {
+  DEFAULT_MAX_ENTRIES,
+  DEFAULT_TTL,
+  evictOnRejection,
+  type FlagCacheOptions,
+} from "#lib/promise-cache/index.ts"
 import { serializeKey } from "#lib/promise-cache/key.ts"
 import { milliseconds } from "#lib/shared/utils.ts"
 
@@ -67,6 +81,8 @@ export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never
   : { identity: IdentityOf<TFlags> })
 
 type VersionStore = {
+  // The identity key whose entry the store's readers read.
+  readonly key: string
   bump: () => void
   getSnapshot: () => number
   subscribe: (listener: () => void) => () => void
@@ -105,8 +121,12 @@ type CacheEntry = {
  * The cache entries of one list of flags, one for each identity.
  */
 type Bucket = {
+  // Every version store that has a listener. `invalidate` and `clear` bump these, so they reach a
+  // reader that holds a store that is no longer the identity's current one.
+  active: Set<VersionStore>
   entries: Map<string, CacheEntry>
   flags: readonly Flag[]
+  // The store that a render reuses for each identity, while it has a listener.
   stores: Map<string, VersionStore>
 }
 
@@ -131,9 +151,6 @@ type FlagsContextValue = {
   identityKey: string
 }
 
-const DEFAULT_MAX_ENTRIES = 100
-const DEFAULT_TTL_MS = 5 * 60 * 1000
-
 /**
  * The cache options before parsing. A time option is a number or any string, which `lengthOfTime`
  * parses.
@@ -155,7 +172,7 @@ function lengthOfTime(option: string, value: unknown): number {
 }
 
 function readCacheOptions(options: CacheInput) {
-  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL_MS } = options
+  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
     throw new RangeError("maxEntries must be a positive finite integer")
   }
@@ -191,7 +208,7 @@ function getBucket(cache: FlagCache, flags: readonly Flag[]): Bucket {
   const key = flags.map((flag) => flagId(flag)).join(",")
   let bucket = cache.buckets.get(key)
   if (!bucket) {
-    bucket = { entries: new Map(), flags, stores: new Map() }
+    bucket = { active: new Set(), entries: new Map(), flags, stores: new Map() }
     cache.buckets.set(key, bucket)
   }
   return bucket
@@ -255,11 +272,19 @@ function prune(cache: FlagCache, bucket: Bucket): void {
   }
 }
 
+// A reader from `createFlags` with `identify` reads directly, and one without it reads only through
+// `for`. The check must name a method that only the direct reader has, so the type checker rejects
+// a rename here that would send every read through `for` with no identity.
+const directReadMethod = "get" satisfies Exclude<keyof FlagReader, keyof AnyFlags>
+
+function isDirectReader(flags: AnyFlags): flags is AnyFlags & FlagReader {
+  return directReadMethod in flags
+}
+
 function readerOf(context: FlagsContextValue): FlagReader {
   const { flags, identity } = context
-  if (identity === undefined && "get" in flags) {
-    // `get` marks a reader that resolves its own identity.
-    return flags as AnyFlags & FlagReader
+  if (identity === undefined && isDirectReader(flags)) {
+    return flags
   }
   // A reader without `identify` and without an identity falls back to the defaults with
   // `IdentityNotFoundError`, because `for` rejects a missing identity.
@@ -330,9 +355,14 @@ function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionSto
       for (const listener of listeners) listener()
     },
     getSnapshot: () => version,
+    key,
     subscribe: (listener) => {
       listeners.add(listener)
       if (listeners.size === 1) {
+        bucket.active.add(store)
+        // A store that React subscribes again becomes the identity's current store again, unless
+        // a render already made a newer one.
+        if (!bucket.stores.has(key)) bucket.stores.set(key, store)
         detach = context.flags.subscribe((changed) => {
           if (changed === undefined || changed.some((changedKey) => keys.has(changedKey))) {
             store.bump()
@@ -341,10 +371,13 @@ function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionSto
       }
       return () => {
         listeners.delete(listener)
+        // A store without listeners leaves both maps, so an identity that no reader reads keeps
+        // nothing. React can subscribe the same store again, as in strict mode or when one reader
+        // replaces another, and `active` then reaches it again.
         if (listeners.size === 0) {
           detach?.()
           detach = undefined
-          // Do not evict a newer store that reused this key after the last unsubscribe.
+          bucket.active.delete(store)
           if (bucket.stores.get(key) === store) bucket.stores.delete(key)
         }
       }
@@ -358,14 +391,18 @@ function snapshotEntry(cache: FlagCache, flag: Flag): FlagSnapshotEntry | undefi
   const { snapshot } = cache
   const entry = snapshot?.entries.get(flag.key)
   if (!snapshot || !entry || entry.kind !== flag.kind) return undefined
+  // The server resolved no identity for this entry, so its default stands for no one. A snapshot
+  // made that way also has no distinctId, which an anonymous provider would otherwise accept.
+  if (entry.source === "default" && entry.error === IdentityNotFoundError._tag) return undefined
   if (changedSince({ ...snapshot.watch, keys: [flag.key] })) {
     snapshot.entries.delete(flag.key)
     return undefined
   }
-  const valid =
-    flag.kind === "boolean"
-      ? typeof entry.value === "boolean"
-      : typeof entry.value === "string" && flag.variants.includes(entry.value)
+  const { value } = entry
+  const valid = byKind(flag, {
+    boolean: () => typeof value === "boolean",
+    variant: ({ variants }) => typeof value === "string" && variants.includes(value),
+  })
   return valid ? entry : undefined
 }
 
@@ -413,22 +450,75 @@ function snapshotApplies(context: FlagsContextValue): boolean {
   return identity === undefined || distinctIdOf(identity) === snapshot.distinctId
 }
 
+const SNAPSHOT_SOURCES: ReadonlySet<unknown> = new Set<FlagResult["source"]>([
+  "cache",
+  "default",
+  "provider",
+])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isSnapshotEntry(entry: unknown): entry is FlagSnapshotEntry {
+  return (
+    isRecord(entry)
+    && isFlagKind(entry.kind)
+    && SNAPSHOT_SOURCES.has(entry.source)
+    && (typeof entry.value === "boolean" || typeof entry.value === "string")
+  )
+}
+
+/**
+ * Reads a snapshot that crossed the network as JSON. A snapshot whose shape does not parse is
+ * ignored, and so is each entry that does not, so a bad snapshot costs an evaluation, not a render.
+ * `snapshotEntry` checks each entry against its flag when a hook reads it.
+ */
+function parseSnapshot(
+  snapshot: unknown
+): Pick<SnapshotState, "distinctId" | "entries"> | undefined {
+  if (!isRecord(snapshot) || !isRecord(snapshot.flags)) return undefined
+  const { distinctId } = snapshot
+  if (distinctId !== null && typeof distinctId !== "string" && typeof distinctId !== "number") {
+    return undefined
+  }
+  const entries = Object.entries(snapshot.flags).filter(
+    (pair): pair is [string, FlagSnapshotEntry] => isSnapshotEntry(pair[1])
+  )
+  return { distinctId, entries: new Map(entries) }
+}
+
+/**
+ * The state of each snapshot object for each reader's change clock, so a provider that remounts
+ * with the same snapshot keeps the entries that a change or `invalidate` already dropped. Another
+ * reader that reads the same snapshot object gets a state of its own and leaves this one alone.
+ */
+const snapshotStates = new WeakMap<object, WeakMap<ChangeClock, SnapshotState>>()
+
+function snapshotState(snapshot: unknown, clock: ChangeClock): SnapshotState | undefined {
+  if (!isRecord(snapshot)) return undefined
+  const states = snapshotStates.get(snapshot) ?? new WeakMap<ChangeClock, SnapshotState>()
+  snapshotStates.set(snapshot, states)
+  const existing = states.get(clock)
+  if (existing) return existing
+  const parsed = parseSnapshot(snapshot)
+  if (!parsed) return undefined
+  const state = { ...parsed, watch: { clock, since: clock.count } }
+  states.set(clock, state)
+  return state
+}
+
 function createFlagCache(
   flags: AnyFlags,
   cacheOptions: CacheInput | undefined,
   snapshot?: FlagSnapshot
 ): FlagCache {
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
-  const clock = getChangeClock(flags)
   return {
     buckets: new Map(),
     maxEntries,
     pendingTtl,
-    snapshot: snapshot && {
-      distinctId: snapshot.distinctId,
-      entries: new Map(Object.entries(snapshot.flags)),
-      watch: { clock, since: clock.count },
-    },
+    snapshot: snapshotState(snapshot, getChangeClock(flags)),
     ttl,
   }
 }
@@ -506,16 +596,22 @@ export function useFlagCache(): FlagCacheControls {
   const context = useFlagsContext()
   return useMemo(() => {
     const { cache, identityKey: key } = context
+    // A store that a render made but that React has not subscribed yet is only in `stores`, and
+    // a layout effect can drop its entry before the subscription. Bumping it too makes React's
+    // subscription check see the change.
+    const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     const drop = (bucket: Bucket) => {
       bucket.entries.delete(key)
-      bucket.stores.get(key)?.bump()
+      for (const store of storesOf(bucket)) {
+        if (store.key === key) store.bump()
+      }
     }
     return {
       clear() {
         cache.snapshot?.entries.clear()
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
-          for (const store of bucket.stores.values()) store.bump()
+          for (const store of storesOf(bucket)) store.bump()
         }
       },
       invalidate(flags) {
@@ -550,15 +646,16 @@ type FeatureFlagBase<TFlag extends Flag> = {
   loading?: ReactNode
 }
 
-export type FeatureFlagProps<TFlag extends Flag> =
-  TFlag extends VariantFlag<infer TVariant, infer _TPayload>
+export type FeatureFlagProps<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? FeatureFlagBase<TFlag> & { match?: never }
+  : TFlag extends VariantFlag<infer TVariant, infer _TPayload>
     ? FeatureFlagBase<TFlag> & {
         /**
          * The variant that renders the children.
          */
         match: TVariant
       }
-    : FeatureFlagBase<TFlag> & { match?: never }
+    : never
 
 function FlagSlot({
   children,

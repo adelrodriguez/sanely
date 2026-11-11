@@ -1,7 +1,9 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, expectTypeOf, test } from "vitest"
 import {
   EvaluationAbortedError,
   EvaluationTimeoutError,
+  type EvaluationError,
+  evaluationErrors,
   FlagDefinitionError,
   IdentityNotFoundError,
   InvalidDecisionError,
@@ -61,5 +63,16 @@ describe("tagged errors", () => {
     expect(isEvaluationError(new EvaluationAbortedError(1))).toBe(true)
     expect(isEvaluationError(new FlagDefinitionError("x"))).toBe(false)
     expect(isEvaluationError(new Error("x"))).toBe(false)
+  })
+})
+
+describe("evaluationErrors", () => {
+  test("is the one list that both the union and the guard come from", () => {
+    expectTypeOf<InstanceType<(typeof evaluationErrors)[number]>>().toEqualTypeOf<EvaluationError>()
+    const tags = evaluationErrors.map((ErrorClass) => ErrorClass._tag)
+    expect(new Set(tags).size).toBe(tags.length)
+    for (const ErrorClass of evaluationErrors) {
+      expect(isEvaluationError(Object.create(ErrorClass.prototype))).toBe(true)
+    }
   })
 })

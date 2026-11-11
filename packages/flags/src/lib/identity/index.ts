@@ -46,6 +46,33 @@ export type EvaluationContext<TIdentity extends Subject = Subject> = {
  */
 export type IdentitySource<TIdentity extends Subject> = () => Promise<TIdentity>
 
+function hasDistinctId(identity: object): boolean {
+  const distinctId: unknown = Reflect.get(identity, "distinctId")
+  return (
+    (typeof distinctId === "string" && distinctId.length > 0)
+    || (typeof distinctId === "number" && Number.isFinite(distinctId))
+  )
+}
+
+/**
+ * Checks a resolved identity at the reader's boundary. The store and request coalescing key
+ * decisions by `distinctId`, so an identity without a usable one would share decisions with every
+ * other such identity. It throws `IdentityNotFoundError` instead.
+ */
+function checkIdentity<TIdentity extends Subject>(
+  identity: TIdentity | null | undefined
+): TIdentity {
+  if (identity === null || identity === undefined) {
+    throw new IdentityNotFoundError()
+  }
+  if (identity !== anonymous && (typeof identity !== "object" || !hasDistinctId(identity))) {
+    throw new IdentityNotFoundError({
+      cause: new TypeError("distinctId must be a non-empty string or a finite number"),
+    })
+  }
+  return identity
+}
+
 export function identifyWith<TIdentity extends Subject>(
   identify: () => MaybePromise<TIdentity | null | undefined>
 ): IdentitySource<TIdentity> {
@@ -56,20 +83,14 @@ export function identifyWith<TIdentity extends Subject>(
     } catch (error) {
       throw new IdentityNotFoundError({ cause: error })
     }
-    if (identity === null || identity === undefined) {
-      throw new IdentityNotFoundError()
-    }
-    return identity
+    return checkIdentity(identity)
   }
 }
 
 export function identifyAs<TIdentity extends Subject>(
   identity: TIdentity | null | undefined
 ): IdentitySource<TIdentity> {
-  return () =>
-    identity === null || identity === undefined
-      ? Promise.reject(new IdentityNotFoundError())
-      : Promise.resolve(identity)
+  return () => Promise.resolve().then(() => checkIdentity(identity))
 }
 
 /**

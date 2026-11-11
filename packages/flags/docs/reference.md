@@ -124,7 +124,7 @@ An invalid `provider`, `timeout`, or `identify` throws `FlagDefinitionError`.
 | `coalesce` | `boolean`                                           | `true`    | Lets concurrent evaluations with one evaluation key share one provider call. |
 | `key`      | `(context: EvaluationContext<TIdentity>) => string` | See below | Replaces the evaluation key, which the store and coalescing use.             |
 
-The default evaluation key holds the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
+The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
 
 ### `DecisionStore`
 
@@ -136,7 +136,7 @@ type DecisionStore = {
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags.
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote since it was created. A decision that another process or an earlier reader stored stays until the store expires it, so give a shared store an expiry.
 
 ## Readers
 
@@ -235,13 +235,13 @@ Hooks and the cache `key` function receive this context.
 
 Evaluations return these errors in `details().error` and never throw them. Each class has a literal `_tag` equal to its name.
 
-| Error                    | Fields               | When                                                                                                                                                                      |
-| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, or `for` received no identity. `cause` holds what `identify` threw.                                                                 |
-| `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result. |
-| `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                           |
-| `EvaluationTimeoutError` | `timeout`            | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                        |
-| `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                           |
+| Error                    | Fields               | When                                                                                                                                                                                                                 |
+| ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, `for` received no identity, or the identity has no non-empty string or finite number `distinctId`. `cause` holds what `identify` threw, or a `TypeError` for the `distinctId`. |
+| `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result.                                            |
+| `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                                                                      |
+| `EvaluationTimeoutError` | `timeout`            | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                                                                   |
+| `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                                                                      |
 
 `EvaluationError` is the union of these classes.
 
