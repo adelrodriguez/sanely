@@ -44,6 +44,7 @@
     "build:debug": "tsdown --no-minify --sourcemap",
     "build:verify": "node ../../scripts/verify-build.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
+    "scan": "node scripts/scan.ts",
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
     "test:coverage": "vitest run --coverage",

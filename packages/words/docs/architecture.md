@@ -33,6 +33,10 @@ A pattern or `omit` builds new pools, and its groups, on each call.
 Each built-in list is a module in `src/lib/lists/` that exports a `readonly string[]`.
 `lists/index.ts` collects them into the frozen `lists` record, and `Category` derives from its keys.
 To add a list, add its module and its entry in `lists`. Tests check that every list holds distinct lowercase words.
+
+Before you add words, run `pnpm --filter @sanely/words scan <scowl final folder> <profanity file>`.
+`scripts/scan.ts` fails on a word in `scripts/deny.txt` or on the profanity list. It warns about uncommon words, long words, and words that contain a profanity, which a person must review.
+When you remove a word for its meaning, add it to `scripts/deny.txt` so that the scan keeps it out.
 The [LICENSE](../LICENSE) records the sources of the lists.
 
 See the [testing guide](testing.md) and the root [contributor guide](../../../CONTRIBUTING.md).
