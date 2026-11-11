@@ -15,7 +15,12 @@ import type { Flag, FlagValue, FlagValues, VariantFlag } from "#lib/definition/i
 import type { FlagReader, FlagSnapshot, FlagSnapshotEntry } from "#lib/flags/index.ts"
 import { IdentityNotFoundError } from "#lib/errors/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
-import { evictOnRejection, type FlagCacheOptions } from "#lib/promise-cache/index.ts"
+import {
+  DEFAULT_MAX_ENTRIES,
+  DEFAULT_TTL,
+  evictOnRejection,
+  type FlagCacheOptions,
+} from "#lib/promise-cache/index.ts"
 import { serializeKey } from "#lib/promise-cache/key.ts"
 import { milliseconds } from "#lib/shared/utils.ts"
 
@@ -132,9 +137,6 @@ type FlagsContextValue = {
   identityKey: string
 }
 
-const DEFAULT_MAX_ENTRIES = 100
-const DEFAULT_TTL_MS = 5 * 60 * 1000
-
 /**
  * The cache options before parsing. A time option is a number or any string, which `lengthOfTime`
  * parses.
@@ -156,7 +158,7 @@ function lengthOfTime(option: string, value: unknown): number {
 }
 
 function readCacheOptions(options: CacheInput) {
-  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL_MS } = options
+  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
     throw new RangeError("maxEntries must be a positive finite integer")
   }
