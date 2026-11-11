@@ -79,6 +79,50 @@ describe("disposer shim", () => {
   })
 
   describe("InternalDisposableStack", () => {
+    it("throws undefined when a cleanup throws undefined, after the other cleanups run", () => {
+      const calls: string[] = []
+      const stack = new InternalDisposableStack()
+
+      stack.defer(() => {
+        calls.push("first")
+      })
+
+      stack.defer(() => {
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined cleanup failures.
+        throw undefined
+      })
+
+      expect(
+        catchError(() => {
+          stack.dispose()
+        })
+      ).toBeUndefined()
+      expect(calls).toEqual(["first"])
+    })
+
+    it("keeps an earlier undefined failure as the suppressed error of a later one", () => {
+      const later = new Error("later")
+      const stack = new InternalDisposableStack()
+
+      stack.defer(() => {
+        throw later
+      })
+
+      stack.defer(() => {
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined cleanup failures.
+        throw undefined
+      })
+
+      const error = catchError(() => {
+        stack.dispose()
+      }) as SuppressedErrorLike
+
+      expect(error.name).toBe("SuppressedError")
+      expect(error.error).toBe(later)
+      expect(error.suppressed).toBeUndefined()
+      expect("suppressed" in error).toBe(true)
+    })
+
     it("runs deferred cleanups in LIFO order through the sync symbol alias", () => {
       const calls: string[] = []
       const stack = new InternalDisposableStack()
@@ -189,6 +233,46 @@ describe("disposer shim", () => {
   })
 
   describe("disposer", () => {
+    it("rejects with undefined when a cleanup throws undefined, after the other cleanups run", async () => {
+      const calls: string[] = []
+      const stack = disposer()
+
+      stack.defer(() => {
+        calls.push("first")
+      })
+
+      stack.defer(() => {
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined cleanup failures.
+        throw undefined
+      })
+
+      await expect(stack.dispose()).rejects.toBeUndefined()
+      expect(calls).toEqual(["first"])
+    })
+
+    it("keeps an earlier undefined rejection as the suppressed error of a later one", async () => {
+      const later = new Error("later")
+      const stack = disposer()
+
+      stack.defer(() => {
+        throw later
+      })
+
+      stack.defer(async () => {
+        await Promise.resolve()
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined cleanup failures.
+        throw undefined
+      })
+
+      const error: unknown = await stack.dispose().then(
+        () => expect.unreachable("should have rejected"),
+        (error_: unknown) => error_
+      )
+
+      expect(error).toMatchObject({ error: later, name: "SuppressedError", suppressed: undefined })
+      expect(error).toHaveProperty("suppressed")
+    })
+
     it("prefers the async dispose method over the sync one on the same resource", async () => {
       const calls: string[] = []
       const stack = disposer()
