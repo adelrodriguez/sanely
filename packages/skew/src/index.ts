@@ -6,6 +6,7 @@ export { fetchDescriptor } from "#lib/protocol/fetch-descriptor.ts"
 export type { Deployment, TargetResolver } from "#lib/protocol/types.ts"
 export type { RuntimeEnvironment } from "#lib/runtime/environment.ts"
 export { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
+export { InvalidOptionError } from "#lib/runtime/options.ts"
 export type {
   DeploymentMonitor,
   DeploymentMonitorOptions,

@@ -6,6 +6,7 @@ import { deploymentCheck } from "@sanely/skew/vite"
 
 // The root exports exactly these values. A new export is a public API decision.
 assert.deepEqual(Object.keys(core).toSorted(), [
+  "InvalidOptionError",
   "TargetResolutionError",
   "createDeploymentMonitor",
   "fetchDescriptor",
@@ -29,7 +30,12 @@ for (const [name, exportedValue] of Object.entries(runtimeExports)) {
 
 // `@sanely/duration` resolves from the built package, and reads a time expression.
 assert.throws(() => core.createDeploymentMonitor({ checkTimeout: "soon" }), {
-  name: "InvalidTimeExpressionError",
+  name: "InvalidOptionError",
+  option: "checkTimeout",
+})
+assert.throws(() => core.createDeploymentMonitor({ checkInterval: Number.POSITIVE_INFINITY }), {
+  name: "InvalidOptionError",
+  option: "checkInterval",
 })
 
 // A monitor resolves a stale target from its options.

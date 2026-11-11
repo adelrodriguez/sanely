@@ -1,9 +1,9 @@
-import { InvalidTimeExpressionError } from "@sanely/duration"
 import { describe, expect, it, onTestFinished, vi } from "vitest"
 import type { Deployment, TargetResolver } from "#lib/protocol/types.ts"
 import type { DeploymentMonitorOptions } from "#lib/runtime/monitor.ts"
 import { TargetResolutionError } from "#lib/protocol/errors.ts"
 import { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
+import { InvalidOptionError } from "#lib/runtime/options.ts"
 import { FakeEnvironment, MemoryStorage } from "./helpers.ts"
 
 const TEST_TIME = 10 ** 3
@@ -97,15 +97,81 @@ describe("deployment monitor", () => {
     expect(environment.intervalDelays).toStrictEqual([60_000])
   })
 
-  it("rejects a string that is not a time expression", () => {
+  it.each([
+    ["checkTimeout", 0],
+    ["checkTimeout", -1],
+    ["checkTimeout", 0.5],
+    ["checkTimeout", Number.NaN],
+    ["checkTimeout", Number.POSITIVE_INFINITY],
+    ["checkTimeout", 2 ** 31],
+    ["checkTimeout", "soon"],
+    ["checkTimeout", "0ms"],
+    ["checkTimeout", "30d"],
+    ["checkTimeout", "0.5ms"],
+    ["checkTimeout", "1.0005s"],
+    ["checkInterval", 0],
+    ["checkInterval", -1],
+    ["checkInterval", 0.5],
+    ["checkInterval", Number.NaN],
+    ["checkInterval", Number.POSITIVE_INFINITY],
+    ["checkInterval", 2 ** 31],
+    ["checkInterval", "0ms"],
+    ["checkInterval", "30d"],
+    ["checkInterval", "soon"],
+    ["checkInterval", "0.5ms"],
+    ["checkInterval", "1.0005s"],
+  ] as const)("rejects %s %o, which no timer can wait for", (option, value) => {
+    const source = { resolveTarget: neverSettles, running: { id: "running" } }
+
+    const create = () =>
+      monitorOf(source, { environment: new FakeEnvironment(), [option]: value as number })
+
+    expect(create).toThrow(InvalidOptionError)
+    expect(create).toThrow(expect.objectContaining({ option, value }))
+  })
+
+  it.each([
+    ["1.1h", 3_960_000],
+    ["4.1m", 246_000],
+  ] as const)(
+    "reads %s as %i ms though decimal arithmetic misses the whole number",
+    async (expression, expected) => {
+      const environment = new FakeEnvironment()
+      const source = { resolveTarget: neverSettles, running: { id: "running" } }
+      const monitor = monitorOf(source, {
+        checkInterval: expression,
+        checkOnSubscribe: false,
+        checkTimeout: expression,
+        environment,
+      })
+      const unsubscribe = monitor.subscribe(noop)
+      onTestFinished(unsubscribe)
+      const check = monitor.check()
+
+      expect(environment.intervalDelays).toStrictEqual([expected])
+      expect(environment.timeoutDelays).toStrictEqual([expected])
+      unsubscribe()
+      await check
+    }
+  )
+
+  it("uses the longest delay a timer can wait for without shortening it", async () => {
     const environment = new FakeEnvironment()
     const source = { resolveTarget: neverSettles, running: { id: "running" } }
-    expect(() => monitorOf(source, { checkTimeout: "soon" as "1s", environment })).toThrow(
-      InvalidTimeExpressionError
-    )
-    expect(() => monitorOf(source, { checkInterval: "soon" as "1m", environment })).toThrow(
-      InvalidTimeExpressionError
-    )
+    const monitor = monitorOf(source, {
+      checkInterval: 2 ** 31 - 1,
+      checkOnSubscribe: false,
+      checkTimeout: 2 ** 31 - 1,
+      environment,
+    })
+    const unsubscribe = monitor.subscribe(noop)
+    onTestFinished(unsubscribe)
+    const check = monitor.check()
+
+    expect(environment.intervalDelays).toStrictEqual([2 ** 31 - 1])
+    expect(environment.timeoutDelays).toStrictEqual([2 ** 31 - 1])
+    unsubscribe()
+    await check
   })
 
   it("starts with stable unknown state for the running deployment", () => {
