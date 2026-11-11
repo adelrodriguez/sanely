@@ -1,4 +1,6 @@
 import type { ValidateTimeExpression } from "@sanely/duration"
+import { FlagDefinitionError } from "#lib/errors/index.ts"
+import { milliseconds } from "#lib/shared/utils.ts"
 
 /**
  * The defaults of `FlagCacheOptions`. docs/reference.md states them, and a test compares the two.
@@ -33,5 +35,37 @@ export async function evictOnRejection<T>(
   } catch (error) {
     onRejected()
     throw error
+  }
+}
+
+/**
+ * The cache options before parsing. A time option is a number or any string, which `lengthOfTime`
+ * parses.
+ */
+export type CacheInput = {
+  maxEntries?: number
+  pendingTtl?: number | string
+  ttl?: number | string
+}
+
+function lengthOfTime(option: string, value: unknown): number {
+  const parsed = milliseconds(value)
+  if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
+    throw new FlagDefinitionError(
+      `${option} must be a time expression or a positive finite number of milliseconds`
+    )
+  }
+  return parsed
+}
+
+export function readCacheOptions(options: CacheInput) {
+  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL } = options
+  if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
+    throw new FlagDefinitionError("maxEntries must be a positive finite integer")
+  }
+  return {
+    maxEntries,
+    pendingTtl: pendingTtl === undefined ? undefined : lengthOfTime("pendingTtl", pendingTtl),
+    ttl: lengthOfTime("ttl", ttl),
   }
 }
