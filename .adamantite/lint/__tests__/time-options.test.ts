@@ -24,6 +24,12 @@ new RuleTester().run("time-options", rule, {
       code: "type LimiterSettings = Base & { readonly timeout?: number }",
       errors: bareNumber,
     },
+    // A nested group of options still takes input.
+    {
+      ...source(),
+      code: "interface RetryOptions { readonly retry: { readonly delay: number } }",
+      errors: bareNumber,
+    },
     {
       ...source(),
       code: "interface RetryOptions { interval: number; retryDelay: number; ttl: number }",
@@ -41,6 +47,15 @@ new RuleTester().run("time-options", rule, {
     // A resolved value is plain milliseconds.
     { ...source(), code: "export type FixedWindow = { readonly window: number }" },
     { ...source(), code: "export interface DeploymentSchedule { readonly checkInterval: number }" },
+    // A callback receives data, so its argument is not an option.
+    {
+      ...source(),
+      code: "interface RetryOptions { readonly onResult: (result: { readonly duration: number }) => void }",
+    },
+    {
+      ...source(),
+      code: "interface RetryOptions { onResult(result: { readonly duration: number }): void }",
+    },
     // Other numeric options do not hold a length of time.
     { ...source(), code: "export type WindowOptions = { readonly limit: number }" },
     // Tests write milliseconds on purpose.

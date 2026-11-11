@@ -49,9 +49,20 @@ function namesTime(key: ESTree.Node): string | undefined {
   return lower !== undefined && TIME_WORDS.some((word) => lower.endsWith(word)) ? name : undefined
 }
 
-// The name of the type alias or interface that declares the property.
+// A callback's parameters describe data the caller receives, not options it passes.
+const FUNCTION_TYPES = new Set([
+  "TSCallSignatureDeclaration",
+  "TSConstructorType",
+  "TSFunctionType",
+  "TSMethodSignature",
+])
+
+// The name of the type alias or interface that declares the property, outside any callback.
 function declaringType(node: ESTree.Node): string | undefined {
   for (let current: ESTree.Node | null = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) {
+      return undefined
+    }
     if (current.type === "TSTypeAliasDeclaration" || current.type === "TSInterfaceDeclaration") {
       return current.id.name
     }
