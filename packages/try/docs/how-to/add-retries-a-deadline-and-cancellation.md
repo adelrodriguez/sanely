@@ -97,7 +97,7 @@ const rate = await try$
 
 ## Retry synchronous work
 
-`runSync` stays available after `retry(3)`, the number form. It is not available after the object form of `retry`, `timeout`, or `signal`, because those policies can wait or interrupt. For a synchronous retry, use the number form.
+`runSync` stays available after `retry(3)`, and after a retry policy with no delay, such as `retry({ backoff: "linear", limit: 3 })`. It is not available after a policy with a `delayMs`, or anywhere in a chain with `timeout` or `signal`, because those policies can wait or interrupt.
 
 ## Know what the deadline covers
 

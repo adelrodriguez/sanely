@@ -77,12 +77,14 @@ A policy builder runs no work. It configures the next terminal call or orchestra
 | Builder               | `run` | `runSync` | `wrap` | `all`, `allSettled`, `flow` |
 | --------------------- | ----- | --------- | ------ | --------------------------- |
 | `retry(limit)`        | Yes   | Yes       | No     | No                          |
-| `retry(policy)`       | Yes   | No        | No     | No                          |
+| `retry(policy)`       | Yes   | No delay  | No     | No                          |
 | `timeout(ms)`         | Yes   | No        | No     | Yes, unless after `retry`   |
 | `signal(abortSignal)` | Yes   | No        | No     | Yes, unless after `retry`   |
 | `wrap(fn)`            | Yes   | Yes       | Yes    | Yes                         |
 
-The table shows which methods stay available after each builder. The limits are type-level. At run time, orchestration after `retry` throws a `Panic` with the code `ORCHESTRATION_UNSUPPORTED_POLICY`.
+The table shows which methods stay available after each builder. The limits are type-level. `runSync` stays available after `retry(policy)` only when the policy has no delay, which means that `delayMs` is omitted or a literal `0`. Once `timeout` or `signal` is in the chain, a later `retry` does not bring `runSync` back.
+
+At run time, orchestration after `retry` throws a `Panic` with the code `ORCHESTRATION_UNSUPPORTED_POLICY`, and `runSync` with a retry policy whose `delayMs` is not `0` throws a `Panic` with the code `RUN_SYNC_ASYNC_RETRY_POLICY` before the work starts.
 
 ### `retry(limit)`
 
@@ -257,26 +259,26 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 
 ### `PanicCode`
 
-| Code                               | Cause                                                     |
-| ---------------------------------- | --------------------------------------------------------- |
-| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.             |
-| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                |
-| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                       |
-| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                 |
-| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                |
-| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay or jitter. |
-| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.              |
-| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                |
-| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                   |
-| `TASK_INVALID_HANDLER`             | A task is not a function.                                 |
-| `TASK_SELF_REFERENCE`              | A task read its own result.                               |
-| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                |
-| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                    |
-| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                |
-| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                |
-| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                    |
-| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                 |
-| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.       |
+| Code                               | Cause                                               |
+| ---------------------------------- | --------------------------------------------------- |
+| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.       |
+| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.          |
+| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                 |
+| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.           |
+| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.          |
+| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay.     |
+| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.        |
+| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.          |
+| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.             |
+| `TASK_INVALID_HANDLER`             | A task is not a function.                           |
+| `TASK_SELF_REFERENCE`              | A task read its own result.                         |
+| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.          |
+| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.              |
+| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.          |
+| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.          |
+| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.              |
+| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.           |
+| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`. |
 
 ## Types
 

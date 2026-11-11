@@ -90,7 +90,7 @@ The `catch` contract keeps these apart. `catch` maps only the errors that starte
 
 `retry` removes the orchestration methods. A retry of a whole task graph would run every task again, including the tasks that succeeded. Apply `retry` to a `run` inside the task that needs it.
 
-`runSync` stays available after `retry(3)`, the number form, because that policy never waits. It is not available after the object form of `retry`, `timeout`, or `signal`, because those policies can wait or interrupt, and synchronous code cannot. This rule is conservative on purpose: the types also block an object policy that would be safe at run time, such as a constant backoff with no delay.
+`runSync` stays available after a retry policy that never waits. Every backoff multiplies `delayMs`, so a policy without a delay never waits, whatever its backoff or jitter. `runSync` is not available after a policy with a delay, or in a chain with `timeout` or `signal`, because those policies can wait or interrupt, and synchronous code cannot. The types are conservative: they block a policy whose `delayMs` has the type `number`, even when its value is `0`, because the value is unknown until run time.
 
 ## Cancellation is cooperative
 
