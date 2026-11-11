@@ -52,7 +52,7 @@ const backoffGrowth: Record<RetryPolicy["backoff"], (attempt: number) => number>
  */
 export type SyncRetryOptions = number | (RetryPolicy & { readonly delayMs?: 0 })
 
-export function checkIsSyncRetryPolicy(policy: RetryPolicy): boolean {
+export function checkIsSyncRetryPolicy(policy: RetryPolicy) {
   return (policy.delayMs ?? 0) === 0
 }
 
