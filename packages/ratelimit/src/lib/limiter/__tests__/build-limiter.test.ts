@@ -74,13 +74,27 @@ describe("buildLimiter", () => {
     expect(() => limiter({ algorithm: threePerMinute, name: "límite" })).toThrow(InvalidOptionError)
   })
 
-  it("rejects a timeout that is not a positive integer", () => {
-    expect(() =>
-      buildLimiter({ store: memoryStore(), timeout: 0 })({ algorithm: threePerMinute, name: "x" })
-    ).toThrow(InvalidOptionError)
+  it.each([0, Number.NaN, -1, "soon"])(
+    "rejects the shared timeout %s when it builds the factory",
+    (timeout) => {
+      expect(() => buildLimiter({ store: memoryStore(), timeout: timeout as number })).toThrow(
+        expect.objectContaining({ option: "timeout", value: timeout })
+      )
+    }
+  )
+
+  it("applies the shared timeout to a limiter without its own", async () => {
+    const limiter = buildLimiter({ store: silentStore, timeout: "10ms" })({
+      algorithm: threePerMinute,
+      name: "x",
+    })
+
+    const result = await rateLimit(limiter, "k")
+
+    expect(result).toMatchObject({ error: { cause: { timeout: 10 } }, reason: "storeError" })
   })
 
-  it("reads a timeout given as a time expression", async () => {
+  it("lets a limiter's timeout override the shared timeout", async () => {
     const limiter = buildLimiter({ store: silentStore, timeout: "1m" })
     const quick = limiter({ algorithm: threePerMinute, name: "quick", timeout: "10ms" })
 
@@ -89,12 +103,14 @@ describe("buildLimiter", () => {
     expect(result).toMatchObject({ error: { cause: { timeout: 10 } }, reason: "storeError" })
   })
 
-  it("rejects a timeout string that is not a time expression", () => {
+  it("rejects a limiter timeout that is not valid", () => {
+    const limiter = buildLimiter({ store: memoryStore() })
+
+    expect(() => limiter({ algorithm: threePerMinute, name: "x", timeout: 0 })).toThrow(
+      InvalidOptionError
+    )
     expect(() =>
-      buildLimiter({ store: memoryStore(), timeout: "soon" as "1s" })({
-        algorithm: threePerMinute,
-        name: "x",
-      })
+      limiter({ algorithm: threePerMinute, name: "x", timeout: "soon" as "1s" })
     ).toThrow(expect.objectContaining({ option: "timeout", value: "soon" }))
   })
 

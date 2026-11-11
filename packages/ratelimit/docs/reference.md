@@ -75,7 +75,7 @@ function buildLimiter<Supported extends Algorithm, const T extends string>(
 ): DefineLimiter<Supported>
 ```
 
-Binds a store and shared settings, and returns a limiter factory. Settings on a limiter override the settings of the factory.
+Binds a store and shared settings, and returns a limiter factory. Settings on a limiter override the settings of the factory. `buildLimiter` throws `InvalidOptionError` for an invalid `prefix` or `timeout` before it returns.
 
 | Option    | Type                    | Default     | Description                                                                                                                                                                        |
 | --------- | ----------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

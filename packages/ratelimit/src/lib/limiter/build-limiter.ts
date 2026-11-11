@@ -167,6 +167,7 @@ export function buildLimiter<Supported extends Algorithm, const T extends string
   ...defaults
 }: BuildLimiterOptions<Supported, T>): DefineLimiter<Supported> {
   const namespace = prefix === undefined ? "" : `${printable("prefix", prefix)}:`
+  const sharedTimeout = milliseconds("timeout", defaults.timeout ?? DEFAULT_TIMEOUT)
 
   function define<Input>(
     options: LimiterOptions<Supported, string>,
@@ -174,7 +175,8 @@ export function buildLimiter<Supported extends Algorithm, const T extends string
   ): Limiter<Input> {
     const name = printable("name", options.name)
     const { algorithm } = options
-    const timeout = milliseconds("timeout", options.timeout ?? defaults.timeout ?? DEFAULT_TIMEOUT)
+    const timeout =
+      options.timeout === undefined ? sharedTimeout : milliseconds("timeout", options.timeout)
     const mode = options.mode ?? defaults.mode ?? "enforce"
     // A dry-run limiter never stores a denial, so only an enforced limiter remembers them.
     const blocks =
