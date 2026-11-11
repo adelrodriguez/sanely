@@ -38,7 +38,7 @@ The block ends in three ways:
 
 - If a later check finds a different target, `reloadStatus` returns to `"ready"`.
 - If a page load starts on a different running deployment, the reload worked, and the guard deletes the record.
-- If `reload()` runs 10 minutes or more after the last request, the guard starts a new sequence and reloads the page. A blocked request also updates the time in the record, so each request during the block starts the 10 minutes again.
+- If `reload()` runs 10 minutes or more after the last reload, the guard starts a new sequence and reloads the page. A blocked request does not change the record, so a click during the block does not start the 10 minutes again.
 
 A check that finds the same target does not end the block, even after 10 minutes. Keep the reload action visible in the blocked state, so the user can retry.
 

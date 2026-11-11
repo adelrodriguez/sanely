@@ -355,7 +355,6 @@ class ReloadGuard {
     target: Deployment,
     storage: NonNullable<RuntimeEnvironment["storage"]>
   ): ReloadStatus {
-    let attempts: number
     try {
       const previous = ReloadGuard.#readReloadMarker(storage)
       const repeated =
@@ -363,7 +362,12 @@ class ReloadGuard {
         && previous.from === this.#running.id
         && previous.to === target.id
         && this.#environment.now() - previous.at < RELOAD_COOLDOWN
-      attempts = repeated ? previous.attempts + 1 : 0
+      const attempts = repeated ? previous.attempts + 1 : 0
+      // A blocked request leaves the record unchanged, so the cooldown runs from the last reload.
+      if (attempts >= 2) {
+        return "blocked"
+      }
+
       storage.setItem(
         RELOAD_MARKER_KEY,
         JSON.stringify({
@@ -376,10 +380,6 @@ class ReloadGuard {
     } catch {
       this.#environment.reload()
       return "unprotected"
-    }
-
-    if (attempts >= 2) {
-      return "blocked"
     }
 
     this.#requestedTarget = target.id

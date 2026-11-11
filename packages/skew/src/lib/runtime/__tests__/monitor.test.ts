@@ -755,6 +755,27 @@ describe("deployment monitor", () => {
       expect(third.getState().reloadStatus).toBe("blocked")
     })
 
+    it("starts the cooldown at the last reload, not at a blocked request", async () => {
+      expect.assertions(3)
+
+      const storage = new MemoryStorage()
+      const environment = new FakeEnvironment(storage)
+      await loadStalePageAndReload(environment)
+      await loadStalePageAndReload(environment)
+      const blocked = await loadStalePageAndReload(environment)
+
+      environment.setNow(9 * 60_000)
+      blocked.reload()
+
+      expect(blocked.getState().reloadStatus).toBe("blocked")
+
+      environment.setNow(10 * 60_000)
+      const monitor = await loadStalePageAndReload(environment)
+
+      expect(monitor.getState().reloadStatus).toBe("ready")
+      expect(environment.reloadCalls).toBe(3)
+    })
+
     it("starts a new reload sequence after the cooldown", async () => {
       expect.assertions(2)
 
