@@ -1030,6 +1030,30 @@ describe("server rendering", () => {
     expect(await screen.findByText("true:light")).toBeTruthy()
   })
 
+  it("keeps a dropped snapshot value dropped when the provider remounts", async () => {
+    const identity = { distinctId: "user" }
+    const { snapshot } = await serverRender(identity)
+    const client = makeFlags("bulk")
+    client.state.value = false
+    const tree = (key: string) => (
+      <App key={key} flags={client.flags} identity={identity} snapshot={snapshot} />
+    )
+    const { rerender } = await renderAsync(tree("first"))
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+
+    act(() => {
+      client.emit(["beta"])
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    // A new key remounts the provider with the same snapshot object.
+    await act(() => {
+      rerender(tree("second"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
   it("drops a snapshot value after a change notification and evaluates", async () => {
     const identity = { distinctId: "user" }
     const { html, snapshot } = await serverRender(identity)

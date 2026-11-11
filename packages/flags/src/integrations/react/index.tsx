@@ -455,19 +455,35 @@ function parseSnapshot(
   return { distinctId, entries: new Map(entries) }
 }
 
+/**
+ * The state of each snapshot object, so a provider that remounts with the same snapshot keeps the
+ * entries that a change or `invalidate` already dropped. A state belongs to one reader's change
+ * clock, and a snapshot read with another reader starts over.
+ */
+const snapshotStates = new WeakMap<object, SnapshotState>()
+
+function snapshotState(snapshot: unknown, clock: ChangeClock): SnapshotState | undefined {
+  if (!isRecord(snapshot)) return undefined
+  const existing = snapshotStates.get(snapshot)
+  if (existing?.watch.clock === clock) return existing
+  const parsed = parseSnapshot(snapshot)
+  if (!parsed) return undefined
+  const state = { ...parsed, watch: { clock, since: clock.count } }
+  snapshotStates.set(snapshot, state)
+  return state
+}
+
 function createFlagCache(
   flags: AnyFlags,
   cacheOptions: CacheInput | undefined,
   snapshot?: FlagSnapshot
 ): FlagCache {
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
-  const clock = getChangeClock(flags)
-  const parsed = parseSnapshot(snapshot)
   return {
     buckets: new Map(),
     maxEntries,
     pendingTtl,
-    snapshot: parsed && { ...parsed, watch: { clock, since: clock.count } },
+    snapshot: snapshotState(snapshot, getChangeClock(flags)),
     ttl,
   }
 }
