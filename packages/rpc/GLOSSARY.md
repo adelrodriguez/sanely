@@ -92,6 +92,10 @@ _Avoid_: masked error, internal error (for the original failure)
 A failure of one call, raised as a `ChannelError` and serializable across a boundary.
 _Avoid_: RPC error, transport error
 
+**Application failure**:
+A call failure that a resolver raises on purpose as a `ChannelError` with code `application`. Its `data` crosses every boundary as the resolver chose it.
+_Avoid_: exposed error, business error
+
 **Setup error**:
 A wiring mistake, raised as a `SetupError` where the contract, router, or hand-off is built. It never crosses a boundary.
 _Avoid_: configuration error, validation error

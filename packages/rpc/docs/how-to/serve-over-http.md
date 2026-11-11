@@ -18,7 +18,7 @@ export const POST = fetchHandler(router, {
 
 `fetchHandler` hides server-side failures by default. A resolver that throws, or returns a value that fails `output`, reaches the caller as a `ChannelError` with code `internal`. The real error goes to `onHidden`.
 
-The response status follows the outcome: 200 on success, 400 for `validation`, 404 for `unknown-channel`, and 500 for a hidden failure. A method other than `POST` gets 405.
+The response status follows the outcome: 200 on success, 400 for `validation`, 404 for `unknown-channel`, 422 for `application`, and 500 for a hidden failure. A method other than `POST` gets 405.
 
 ## Call it from the client
 
@@ -49,6 +49,30 @@ const api = createClient(
   fetchTransport("/rpc", { headers: () => ({ authorization: `Bearer ${getToken()}` }) })
 )
 ```
+
+## Send an application error to the caller
+
+To send an error with its fields, wrap it in a `ChannelError` with code `application`. It always crosses, so you don't need `expose`. Put any value the wire can carry in `data`:
+
+```typescript
+import { ChannelError } from "@sanely/rpc"
+
+throw new ChannelError({ code: "application", data: { id, reason: "not-found" } })
+```
+
+The client gets a `ChannelError` with the same code and `data`. rpc never inspects `data`, so validate it before you trust it:
+
+```typescript
+try {
+  await api.notes.open({ path })
+} catch (error) {
+  if (error instanceof ChannelError && error.code === "application") {
+    const failure = NoteFailure.parse(error.data)
+  }
+}
+```
+
+To keep the error's class, serialize it into `data` and rebuild it on the client. With a `@sanely/errors` registry that both sides import, `Faults.toSerializable(error)` goes into `data` and `Faults.fromSerializable(error.data)` rebuilds it. A registry serializes the stack and the cause chain, so remove what the caller should not see.
 
 ## Show a hidden error to the caller
 

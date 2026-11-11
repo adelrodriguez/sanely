@@ -7,6 +7,7 @@ import { isRecord } from "./guards"
  * rehydrates it on the other side.
  */
 export type ChannelErrorDetail =
+  | { code: "application"; data: unknown }
   | { code: "closed" }
   | { code: "internal" }
   | { code: "malformed-envelope" }
@@ -36,6 +37,9 @@ const isString = (value: unknown): value is string => typeof value === "string"
 
 const isNumber = (value: unknown): value is number => typeof value === "number"
 
+// The application owns `data`, so the code that rebuilds the error is what validates it.
+const isAnything = (_value: unknown): _value is unknown => true
+
 const joinIssues = ({ issues }: { issues: readonly StandardSchemaV1.Issue[] }): string =>
   issues.map((issue) => issue.message).join("; ")
 
@@ -45,6 +49,8 @@ const joinIssues = ({ issues }: { issues: readonly StandardSchemaV1.Issue[] }): 
  * field, so the build fails when this table and `ChannelErrorDetail` disagree.
  */
 const CODES: { [C in Code]: CodeSpec<Extract<ChannelErrorDetail, { code: C }>> } = {
+  // A resolver throws it on purpose for the caller to see, so throwing it is the opt-in.
+  application: { exposed: true, fields: { data: isAnything }, message: () => "Application error" },
   closed: { exposed: false, fields: {}, message: () => "Wire closed" },
   // Exposed so a relayed hidden failure passes through instead of reaching `onHidden` again.
   internal: { exposed: true, fields: {}, message: () => "Internal error" },
@@ -96,6 +102,8 @@ class ChannelBaseError extends Error {
  * The single error class for every failure the library raises — `code` discriminates, and each code
  * carries its own typed fields:
  *
+ * - `application` (`data`) — a resolver failed on purpose and chose what the caller sees: any value
+ *   the wire can carry, such as a serialized error, always crosses a wire
  * - `validation` (`issues`) — a schema rejected the caller's input; the caller's fault
  * - `output-validation` (`issues`) — the resolver's result failed the leaf's `output` schema; the
  *   server's fault, so edges should not blame (or inform) the caller
@@ -109,7 +117,8 @@ class ChannelBaseError extends Error {
  *   page, a proxy 502)
  *
  * `instanceof ChannelError` then `error.code === "..."` narrows the fields. Anything a resolver
- * throws is not wrapped: an error that is not a `ChannelError` came from application code.
+ * throws is not wrapped: an error that is not a `ChannelError` came from application code. To send
+ * an application error across a wire, wrap it in code `application`.
  */
 // oxlint-disable-next-line no-redeclare -- the type and the constructor below share the public name, like a class
 export type ChannelError = ChannelBaseError & ChannelErrorDetail

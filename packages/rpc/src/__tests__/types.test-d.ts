@@ -181,6 +181,7 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
   type Issues = readonly StandardSchemaV1.Issue[]
 
   expectTypeOf<ChannelErrorDetail>().toEqualTypeOf<
+    | { code: "application"; data: unknown }
     | { code: "closed" }
     | { code: "internal" }
     | { code: "malformed-envelope" }

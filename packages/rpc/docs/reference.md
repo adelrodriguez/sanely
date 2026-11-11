@@ -174,6 +174,7 @@ The class of every failure that the package raises during a call. `code` selects
 
 | `code`               | Raised when                                                    | Extra fields                      |
 | -------------------- | -------------------------------------------------------------- | --------------------------------- |
+| `application`        | A resolver throws it to send its own failure to the caller     | `data`                            |
 | `validation`         | The input fails its schema                                     | `issues`                          |
 | `output-validation`  | A round-trip resolver returns a value that fails `output`      | `issues`                          |
 | `unknown-channel`    | The path isn't in the contract                                 | `path`                            |
@@ -182,7 +183,7 @@ The class of every failure that the package raises during a call. `code` selects
 | `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`                           |
 | `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                                   |
 
-`issues` holds the Standard Schema issues.
+`issues` holds the Standard Schema issues. `data` holds any value the wire can carry, and the package never inspects it. Validate it where you rebuild the error.
 
 ### `SetupError`
 
@@ -223,7 +224,7 @@ Takes a promise, or a function that may throw synchronously. Resolves with a `Wi
 
 `toWire` hides failures by default. These cross with their message, code, and fields:
 
-- a `ChannelError` with code `validation`, `unknown-channel`, or `internal`
+- a `ChannelError` with code `application`, `validation`, `unknown-channel`, or `internal`
 - any error for which `options.expose` returns `true`
 
 Every other failure crosses as a `ChannelError` with code `internal`. `toWire` passes the original error to `options.onHidden`.
