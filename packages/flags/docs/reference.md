@@ -136,7 +136,7 @@ type DecisionStore = {
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags.
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote since it was created. A decision that another process or an earlier reader stored stays until the store expires it, so give a shared store an expiry.
 
 ## Readers
 
