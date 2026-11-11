@@ -179,6 +179,25 @@ describe("evaluate", () => {
     expect(details.error?.cause).toBe(reason)
   })
 
+  test("reports the timeout that aborted the signal when a later step throws a plain error", async () => {
+    const controller = new AbortController()
+    const timeout = new EvaluationTimeoutError(5)
+    // Validation reads `type` after the provider answers. This getter ends the deadline with a
+    // timeout and then throws an error that is not an evaluation error.
+    const decision = {
+      get type(): never {
+        controller.abort(timeout)
+        throw new Error("hostile getter")
+      },
+    }
+
+    const details = await evaluate(createEvaluator(), betaAccess, identify, decideWith(decision), {
+      signal: controller.signal,
+    })
+
+    expect(details.error).toBe(timeout)
+  })
+
   test("adds no timeout of its own when the deadline is a signal", async () => {
     const decide = vi.fn(async () => {
       await sleep(15)

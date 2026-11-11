@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test, vi } from "vitest"
-import { isDevelopmentEnvironment, normalizeError } from "#lib/shared/utils.ts"
+import { describe, expect, test } from "vitest"
+import { normalizeError } from "#lib/shared/utils.ts"
 
 describe("normalizeError", () => {
   test("returns an Error unchanged", () => {
@@ -32,18 +32,5 @@ describe("normalizeError", () => {
     revocable.revoke()
 
     expect(normalizeError(revocable.proxy).message).toBe("Uninspectable value thrown")
-  })
-})
-
-describe("isDevelopmentEnvironment", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs()
-  })
-
-  test("is false only in production", () => {
-    vi.stubEnv("NODE_ENV", "production")
-    expect(isDevelopmentEnvironment()).toBe(false)
-    vi.stubEnv("NODE_ENV", "test")
-    expect(isDevelopmentEnvironment()).toBe(true)
   })
 })

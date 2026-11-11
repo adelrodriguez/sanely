@@ -23,18 +23,18 @@ The core does not import React.
 
 Each domain imports only itself and the domains that the root `oxlint.config.ts` lists for it:
 
-| Domain           | Imports                                                                         |
-| ---------------- | ------------------------------------------------------------------------------- |
-| `errors/`        | Nothing.                                                                        |
-| `changes/`       | Nothing.                                                                        |
-| `promise-cache/` | Nothing.                                                                        |
-| `shared/`        | `errors`.                                                                       |
-| `definition/`    | `errors`.                                                                       |
-| `identity/`      | `definition`, `errors`, `shared`.                                               |
-| `provider/`      | `changes`, `definition`, `errors`, `identity`, `shared`.                        |
-| `sharing/`       | `changes`, `definition`, `identity`, `shared`.                                  |
-| `evaluation/`    | `changes`, `definition`, `errors`, `identity`, `provider`, `shared`, `sharing`. |
-| `flags/`         | Every domain above except `promise-cache`.                                      |
+| Domain           | Imports                                                              |
+| ---------------- | -------------------------------------------------------------------- |
+| `errors/`        | Nothing.                                                             |
+| `changes/`       | Nothing.                                                             |
+| `promise-cache/` | Nothing.                                                             |
+| `shared/`        | `errors`.                                                            |
+| `definition/`    | `errors`.                                                            |
+| `identity/`      | `definition`, `errors`, `shared`.                                    |
+| `provider/`      | `changes`, `definition`, `errors`, `identity`, `shared`.             |
+| `sharing/`       | `changes`, `definition`, `identity`, `shared`.                       |
+| `evaluation/`    | `definition`, `errors`, `identity`, `provider`, `shared`, `sharing`. |
+| `flags/`         | Every domain above except `promise-cache`.                           |
 
 No library domain imports an entry point. The root lint configuration enforces these rules.
 
