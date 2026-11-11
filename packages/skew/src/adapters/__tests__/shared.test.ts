@@ -1,5 +1,10 @@
 import { describe, expect, it, type MockInstance, onTestFinished, vi } from "vitest"
-import { checkIsExternalEndpoint, resolveDeploymentId } from "#adapters/shared.ts"
+import {
+  checkIsExternalEndpoint,
+  resolveDeploymentId,
+  resolveOutputPath,
+  resolvePublicEndpoint,
+} from "#adapters/shared.ts"
 
 const deploymentEnvironmentVariables = [
   "CF_PAGES",
@@ -68,6 +73,50 @@ describe("checkIsExternalEndpoint", () => {
     expect.assertions(1)
 
     expect(checkIsExternalEndpoint(endpoint)).toBe(false)
+  })
+})
+
+describe("resolvePublicEndpoint", () => {
+  it.each([
+    ["/app", "/_deployment-check/deployment.json", "/app/_deployment-check/deployment.json"],
+    ["/app/", "descriptor.json", "/app/descriptor.json"],
+    ["/", "/descriptor.json", "/descriptor.json"],
+    ["./", "/_deployment-check/deployment.json", "/_deployment-check/deployment.json"],
+    [
+      "https://cdn.example/app/",
+      "/_deployment-check/deployment.json",
+      "/_deployment-check/deployment.json",
+    ],
+    ["/app", "https://control.example/d.json", "https://control.example/d.json"],
+    ["/app", "//control.example/d.json", "//control.example/d.json"],
+    ["/app//", "/descriptor.json", "/app/descriptor.json"],
+    // A browser reads more than one leading slash as a protocol-relative URL.
+    ["/app", "///descriptor.json", "///descriptor.json"],
+    ["", "descriptor.json", "/descriptor.json"],
+    ["/app", "/descriptor.json?tenant=a", "/app/descriptor.json?tenant=a"],
+    ["/app", "/descriptor.json?tenant=a#top", "/app/descriptor.json?tenant=a#top"],
+  ])("resolves base %s and endpoint %s to %s", (base, endpoint, expected) => {
+    expect.assertions(1)
+
+    expect(resolvePublicEndpoint(base, endpoint)).toBe(expected)
+  })
+})
+
+describe("resolveOutputPath", () => {
+  it.each([
+    ["/_deployment-check/deployment.json", "_deployment-check/deployment.json"],
+    ["descriptor.json", "descriptor.json"],
+    ["///descriptor.json", undefined],
+    ["/descriptor.json?tenant=a", "descriptor.json"],
+    ["/descriptor.json#top", "descriptor.json"],
+    ["/descriptor.json?tenant=a#top", "descriptor.json"],
+    ["/descriptor.json#top?tenant=a", "descriptor.json"],
+    ["https://control.example/d.json", undefined],
+    ["//control.example/d.json", undefined],
+  ])("writes endpoint %s to %s", (endpoint, expected) => {
+    expect.assertions(1)
+
+    expect(resolveOutputPath(endpoint)).toBe(expected)
   })
 })
 

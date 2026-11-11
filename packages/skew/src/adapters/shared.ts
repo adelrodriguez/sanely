@@ -172,6 +172,19 @@ export function resolvePublicEndpoint(base: string, endpoint: string): string {
   return `${base.replace(/\/+$/u, "")}${rootedEndpoint}`
 }
 
+// A request path never holds the query string or the fragment of its URL.
+export function removeQueryAndFragment(endpoint: string): string {
+  return endpoint.replace(/[#?].*$/su, "")
+}
+
+export function resolveOutputPath(endpoint: string): string | undefined {
+  if (checkIsExternalEndpoint(endpoint)) {
+    return undefined
+  }
+
+  return removeQueryAndFragment(endpoint).replace(/^\/+/u, "")
+}
+
 export function embedScript(serializedEmbed: string): string {
   return `globalThis.${EMBED_GLOBAL}=${serializedEmbed}`
 }

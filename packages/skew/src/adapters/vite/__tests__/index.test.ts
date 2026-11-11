@@ -176,6 +176,20 @@ describe("vite adapter", () => {
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
+  it("writes the descriptor without the endpoint's query string and fragment", async () => {
+    expect.assertions(2)
+    const root = await createFixture()
+    await build({
+      logLevel: "silent",
+      plugins: [deploymentCheck({ deploymentId: "A", endpoint: "/descriptor.json?tenant=a#top" })],
+      root,
+    })
+    const html = await readFile(join(root, "dist/index.html"), "utf8")
+
+    expect(html).toContain('"endpoint":"/descriptor.json?tenant=a#top"')
+    expect(parseDescriptor(await readFile(join(root, "dist/descriptor.json"), "utf8")).id).toBe("A")
+  })
+
   it("keeps the default endpoint root-absolute for a relative Vite base", async () => {
     expect.assertions(2)
     const { descriptor, html } = await buildFixture({ deploymentId: "A" }, "./")
