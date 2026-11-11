@@ -230,8 +230,15 @@ function portPosts(messages: readonly WindowMessage[]): WindowMessage[] {
   )
 }
 
-// What `receivePort` posts when it starts listening.
-const REQUEST = { data: { type: "app:port", want: true }, ports: [] }
+// What `receivePort` posts when it starts listening, and the reply the relay sends for it.
+const REQUEST = { data: { id: "r1", type: "app:port", want: true }, ports: [] }
+const REPLY = { id: "r1", type: "app:port" }
+
+// The id of the request a `receivePort` just posted.
+function requestId(fake: ReturnType<typeof createFakeWindow>): unknown {
+  const { message } = fake.posted.at(-1) ?? {}
+  return typeof message === "object" && message !== null ? Reflect.get(message, "id") : undefined
+}
 
 describe("receivePort", () => {
   test("resolves only for same-window messages of the agreed type carrying a port", async () => {
@@ -239,17 +246,20 @@ describe("receivePort", () => {
     const { dom } = createPortPair()
 
     const received = receivePort("app:port", { target: fake.window })
+    const id = requestId(fake)
 
     // An injected script posting from elsewhere must not be able to substitute a port.
-    fake.emit({ data: { type: "app:port" }, ports: [dom], source: { not: "the window" } })
+    fake.emit({ data: { id, type: "app:port" }, ports: [dom], source: { not: "the window" } })
     // Same window, wrong type: not ours.
-    fake.emit({ data: { type: "other" }, ports: [dom], source: fake.window })
+    fake.emit({ data: { id, type: "other" }, ports: [dom], source: fake.window })
     // Same window, right type, no port: not consumed.
-    fake.emit({ data: { type: "app:port" }, ports: [], source: fake.window })
+    fake.emit({ data: { id, type: "app:port" }, ports: [], source: fake.window })
+    // Same window, right type, a port for another receiver's request.
+    fake.emit({ data: { id: "someone else", type: "app:port" }, ports: [dom], source: fake.window })
 
     expect(fake.listenerCount()).toBe(1)
 
-    fake.emit({ data: { type: "app:port" }, ports: [dom], source: fake.window })
+    fake.emit({ data: { id, type: "app:port" }, ports: [dom], source: fake.window })
 
     await expect(received).resolves.toBe(dom)
     // The guard controls removal; once resolved the listener is gone.
@@ -270,7 +280,11 @@ describe("the hand-off with the global window", () => {
       deliver([dom])
 
       expect(portPosts(pump(fake))).toEqual([
-        { message: { type: "app:port" }, targetOrigin: "https://app.local", transfer: [dom] },
+        {
+          message: { id: expect.any(String), type: "app:port" },
+          targetOrigin: "https://app.local",
+          transfer: [dom],
+        },
       ])
       await expect(received).resolves.toBe(dom)
     } finally {
@@ -366,6 +380,24 @@ describe("the relay and the receiver in either order", () => {
     await expect(received).resolves.toBe(dom)
   })
 
+  test("receivers waiting at the same time each get their own port", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const first = createPortPair().dom
+    const second = createPortPair().dom
+    const { deliver, ipc } = createFakeIpc()
+
+    relayPort(ipc, "app:port", { target: fake.window })
+    const one = receivePort("app:port", { target: fake.window })
+    const two = receivePort("app:port", { target: fake.window })
+    pump(fake)
+    deliver([first])
+    pump(fake)
+    deliver([second])
+    pump(fake)
+
+    await expect(Promise.all([one, two])).resolves.toEqual([first, second])
+  })
+
   test("each port goes to one receiver, in the order they asked", async () => {
     const fake = createFakeWindow("https://app.local")
     const first = createPortPair().dom
@@ -441,7 +473,7 @@ describe("relayPort", () => {
     deliver([dom])
 
     expect(fake.posted).toEqual([
-      { message: { type: "app:port" }, targetOrigin: "https://app.local", transfer: [dom] },
+      { message: REPLY, targetOrigin: "https://app.local", transfer: [dom] },
     ])
   })
 
@@ -453,14 +485,14 @@ describe("relayPort", () => {
     relayPort(ipc, "app:port", { target: fake.window })
     deliver([dom])
     fake.emit({ ...REQUEST, source: { not: "the window" } })
-    fake.emit({ data: { type: "other", want: true }, ports: [], source: fake.window })
+    fake.emit({ data: { id: "r2", type: "other", want: true }, ports: [], source: fake.window })
 
     expect(fake.posted).toEqual([])
 
     fake.emit({ ...REQUEST, source: fake.window })
 
     expect(fake.posted).toEqual([
-      { message: { type: "app:port" }, targetOrigin: "https://app.local", transfer: [dom] },
+      { message: REPLY, targetOrigin: "https://app.local", transfer: [dom] },
     ])
   })
 

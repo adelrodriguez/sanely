@@ -1,5 +1,6 @@
 import type { Wire } from "#lib/wire/types.ts"
 import { isRecord } from "#lib/core/guards.ts"
+import { randomId } from "#lib/core/id.ts"
 import { SetupError } from "#lib/core/setup-error.ts"
 
 /**
@@ -116,11 +117,12 @@ export function nodePort(port: NodePortLike): Wire {
 //
 // A window message is not buffered: one posted before the page listens is lost. So the relay holds
 // each port until the page asks for one, and `receivePort` asks when it starts listening. Either
-// may start first.
+// may start first. Each request carries its own id, and the relay answers with it, so receivers
+// waiting at the same time each get their own port.
 // ---------------------------------------------------------------------------------------------
 
-// The page's request for one port on `type`, or its withdrawal of an earlier request.
-type PortRequest = { type: string; want: boolean }
+// The page's request for one port on `type`, or its withdrawal of the request with that `id`.
+type PortRequest = { id: string; type: string; want: boolean }
 
 type PortMessageEvent = { data: unknown; ports: readonly DomPortLike[]; source: unknown }
 
@@ -172,6 +174,7 @@ export function receivePort(
 ): Promise<DomPortLike> {
   const { signal } = options
   const win = options.target ?? defaultWindow("receivePort")
+  const id = randomId()
 
   return new Promise((resolve, reject) => {
     // Throwing in the executor rejects with the raw reason, as fetch does.
@@ -184,7 +187,7 @@ export function receivePort(
     const onAbort = (): void => {
       detach()
       // Withdraw the request, so the relay keeps the next port for the next receiver.
-      win.postMessage({ type, want: false } satisfies PortRequest, originOf(win))
+      win.postMessage({ id, type, want: false } satisfies PortRequest, originOf(win))
       // oxlint-disable-next-line prefer-promise-reject-errors -- an abort rejects with the caller's own reason, as fetch does
       reject(signal?.reason)
     }
@@ -192,7 +195,13 @@ export function receivePort(
       const { data } = event
       const port = event.ports[0]
 
-      if (event.source !== win || !isRecord(data) || data.type !== type || !port) {
+      if (
+        event.source !== win
+        || !isRecord(data)
+        || data.type !== type
+        || data.id !== id
+        || !port
+      ) {
         return
       }
 
@@ -205,7 +214,7 @@ export function receivePort(
     win.addEventListener("message", handle)
     signal?.addEventListener("abort", onAbort, { once: true })
     // Listening first, so the port the request releases cannot arrive unheard.
-    win.postMessage({ type, want: true } satisfies PortRequest, originOf(win))
+    win.postMessage({ id, type, want: true } satisfies PortRequest, originOf(win))
   })
 }
 
@@ -241,19 +250,20 @@ export function relayPort(
     return
   }
 
-  // Ports nobody asked for yet, oldest first, and requests no port has answered yet.
+  // Ports nobody asked for yet, and the ids of requests no port has answered yet, oldest first.
   const held: Array<readonly unknown[]> = []
-  let waiting = 0
+  const waiting: string[] = []
 
-  const post = (ports: readonly unknown[]): void => {
-    win.postMessage({ type }, options.targetOrigin ?? originOf(win), ports)
+  const post = (id: string, ports: readonly unknown[]): void => {
+    win.postMessage({ id, type }, options.targetOrigin ?? originOf(win), ports)
   }
   const relay = (event: { ports: readonly unknown[] }): void => {
-    if (waiting > 0) {
-      waiting -= 1
-      post(event.ports)
-    } else {
+    const id = waiting.shift()
+
+    if (id === undefined) {
       held.push(event.ports)
+    } else {
+      post(id, event.ports)
     }
   }
   const onRequest = (event: PortMessageEvent): void => {
@@ -264,16 +274,21 @@ export function relayPort(
     }
 
     if (!request.want) {
-      waiting = Math.max(0, waiting - 1)
+      const index = waiting.indexOf(request.id)
+
+      if (index !== -1) {
+        waiting.splice(index, 1)
+      }
+
       return
     }
 
     const ports = held.shift()
 
     if (ports) {
-      post(ports)
+      post(request.id, ports)
     } else {
-      waiting += 1
+      waiting.push(request.id)
     }
   }
 
@@ -291,8 +306,11 @@ export function relayPort(
 }
 
 function parseRequest(data: unknown, type: string): PortRequest | undefined {
-  return isRecord(data) && data.type === type && typeof data.want === "boolean"
-    ? { type, want: data.want }
+  return isRecord(data)
+    && data.type === type
+    && typeof data.id === "string"
+    && typeof data.want === "boolean"
+    ? { id: data.id, type, want: data.want }
     : undefined
 }
 

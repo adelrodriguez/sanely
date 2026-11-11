@@ -2,6 +2,7 @@ import type { Transport } from "#lib/core/transport.ts"
 import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { isRecord } from "#lib/core/guards.ts"
+import { randomId } from "#lib/core/id.ts"
 import { SetupError } from "#lib/core/setup-error.ts"
 import type { Wire } from "./types"
 import { deferWire, directWire, subscribe } from "./deferred"
@@ -114,7 +115,7 @@ export function connect<Context = void>(
         options: { context?: Context; signal?: AbortSignal }
       ) => Promise<unknown>)
     | undefined
-  const sid = createSessionId()
+  const sid = randomId()
   const pending = new Map<number, PendingEntry>()
   // Requests this end is serving, by the caller's session and id, so a cancel reaches its resolver.
   const serving = new Map<string, AbortController>()
@@ -322,12 +323,4 @@ function ignoreFailure(): void {
 
 function servingKey(message: { id: number; sid: string }): string {
   return `${message.sid}:${message.id}`
-}
-
-// Unique per session, across every realm that may share a wire. `getRandomValues` works outside
-// secure contexts, where `randomUUID` is missing.
-function createSessionId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
