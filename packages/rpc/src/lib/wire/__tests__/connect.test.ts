@@ -486,6 +486,98 @@ describe("connect", () => {
     }
   })
 
+  describe("sessions sharing one wire", () => {
+    // Two call-only sessions on the same end, as two features that each connect to one port.
+    function createSharedCallers() {
+      const [serverWire, callerWire] = createWirePair()
+      const signals = new Map<string, AbortSignal>()
+      const echoContract = defineContract({
+        echo: channel({ input: z.string(), output: z.string() }),
+      })
+      const router = createRouter(echoContract, {
+        echo: async ({ input, signal }) => {
+          signals.set(input, signal)
+
+          // "hang" settles only when its caller cancels it.
+          if (input === "hang") {
+            await new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                reject(new Error("stopped"))
+              })
+            })
+          }
+
+          await new Promise((resolve) => {
+            setTimeout(resolve, input === "slow" ? 20 : 0)
+          })
+          return input
+        },
+      })
+
+      connect(serverWire, { router })
+
+      return { first: connect(callerWire), second: connect(callerWire), signals }
+    }
+
+    test("each session settles only with the replies to its own calls", async () => {
+      const { first, second } = createSharedCallers()
+
+      await expect(
+        Promise.all([first.transport("echo", "slow"), second.transport("echo", "fast")])
+      ).resolves.toEqual(["slow", "fast"])
+    })
+
+    test("a cancel aborts only the calling session's request", async () => {
+      const { first, second, signals } = createSharedCallers()
+      const controller = new AbortController()
+
+      const cancelled = Promise.resolve(
+        first.transport("echo", "hang", { signal: controller.signal })
+      ).catch((error: unknown) => error)
+      const kept = Promise.resolve(second.transport("echo", "fast"))
+
+      await vi.waitFor(
+        () => {
+          expect(signals.size).toBe(2)
+        },
+        { interval: 1 }
+      )
+      controller.abort("gave up")
+
+      await expect(cancelled).resolves.toBe("gave up")
+      await expect(kept).resolves.toBe("fast")
+      await vi.waitFor(() => {
+        expect(signals.get("hang")?.aborted).toBe(true)
+      })
+      expect(signals.get("fast")?.aborted).toBe(false)
+    })
+
+    test("ignores messages without the protocol marker", async () => {
+      const [serverWire, peerWire] = createWirePair()
+      const seen: unknown[] = []
+      let calls = 0
+      const router = createRouter(pullContract, {
+        "math.add": ({ input: { a, b } }) => {
+          calls += 1
+          return a + b
+        },
+      })
+
+      connect(serverWire, { router })
+      peerWire.onMessage((data) => {
+        seen.push(data)
+      })
+      // The shape `connect` used before the marker, which another protocol could also produce.
+      peerWire.send({ id: 0, kind: "req", path: "math.add", payload: { a: 1, b: 2 } })
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+
+      expect(calls).toBe(0)
+      expect(seen).toEqual([])
+    })
+  })
+
   test("survives a synchronously-throwing send without leaking pending entries", async () => {
     vi.useFakeTimers()
 
