@@ -14,8 +14,8 @@ import {
   MINIMUM_CHECK_INTERVAL,
 } from "./scheduler"
 
-export type CheckStatus = "checking" | "idle"
-export type ReloadStatus = "blocked" | "ready" | "unprotected"
+type CheckStatus = "checking" | "idle"
+type ReloadStatus = "blocked" | "ready" | "unprotected"
 
 interface DeploymentStatusBase {
   readonly check: () => Promise<DeploymentStatus>
