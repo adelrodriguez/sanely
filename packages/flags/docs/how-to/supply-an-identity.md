@@ -15,7 +15,7 @@ const flags = createFlags({
 await flags.get(betaAccess)
 ```
 
-`identify` can be async, and it runs for each read. If it returns `null` or `undefined`, or throws, the read returns the default with an `IdentityNotFoundError`.
+`identify` can be async. It runs once for each read, and once for a whole `getMany`, `detailsMany`, or `snapshot` call. If it returns `null` or `undefined`, or throws, the read returns the default with an `IdentityNotFoundError`.
 
 ## Name the identity for each read
 
