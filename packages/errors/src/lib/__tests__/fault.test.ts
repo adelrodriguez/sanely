@@ -61,6 +61,45 @@ describe("Fault", () => {
     expect(fault.stack).toBe(originalStack)
   })
 
+  it("rebuilds the cause block when cause is assigned directly", () => {
+    const first = new Error("first")
+    first.stack = "Error: first\nfirst-line"
+    const second = new Error("second")
+    second.stack = "Error: second\nsecond-line"
+
+    const fault = new ExampleFault()
+    const originalStack = fault.stack
+
+    fault.cause = first
+    expect(fault.stack).toBe(`${originalStack}\nCaused by: Error: first\n  first-line`)
+
+    fault.cause = second
+    expect(fault.stack).toBe(`${originalStack}\nCaused by: Error: second\n  second-line`)
+
+    fault.cause = "not an error"
+    expect(fault.stack).toBe(originalStack)
+  })
+
+  it("writes the message from withMessage into a stack that already has a cause", () => {
+    const cause = new Error("root")
+    cause.stack = "Error: root\nroot-line"
+
+    const fault = new ExampleFault().withCause(cause)
+    const frames = fault.stack?.split("\n").slice(1)
+    fault.withMessage("new message")
+
+    expect(fault.stack?.split("\n")).toStrictEqual(["ExampleFault: new message", ...(frames ?? [])])
+  })
+
+  it("writes a directly assigned message into the stack when the cause changes", () => {
+    const fault = new ExampleFault().withCause("not an error")
+    const frames = fault.stack?.split("\n").slice(1)
+    fault.message = "new message"
+    fault.cause = "another value"
+
+    expect(fault.stack?.split("\n")).toStrictEqual(["ExampleFault: new message", ...(frames ?? [])])
+  })
+
   it("returns full unwrap chain from latest fault to root cause", () => {
     class DatabaseError extends Tagged("DatabaseError")() {}
     class ServiceError extends Tagged("ServiceError")() {}

@@ -111,6 +111,24 @@ describe("revived fault stack", () => {
     expect(stack).toContain("Caused by: Error: second cause")
   })
 
+  it("keeps the serialized stack as it was, cause block included", () => {
+    const wire = {
+      ...new LookupError().toSerializable(),
+      cause: { kind: "error", message: "root", name: "Error", stack: "Error: root\nroot-line" },
+      stack: "LookupError: LookupError\nsent-line\nCaused by: Error: earlier\n  earlier-line",
+    }
+
+    expect(fromSerializable(wire).stack).toBe(wire.stack)
+  })
+
+  it("writes a new message into the serialized stack and keeps its cause block", () => {
+    const sent = new LookupError().withCause(new Error("first cause"))
+    const [, ...rest] = sent.stack?.split("\n") ?? []
+    const revived = fromSerializable(sent.toSerializable()).withMessage("new message")
+
+    expect(revived.stack?.split("\n")).toStrictEqual(["LookupError: new message", ...rest])
+  })
+
   it("drops a serialized cause block when the new cause is not an Error", () => {
     const stack = revivedWithCause().withCause("a thrown string").stack ?? ""
 

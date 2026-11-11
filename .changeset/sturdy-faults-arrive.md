@@ -22,3 +22,4 @@ New in this release:
 - `findCause` finds a fault in a cause chain by class, and the standalone `toSerializable` serializes any caught value.
 - `isSerializable` (also exported as `isSerializableFault`) returns `true` exactly when `fromSerializable` accepts a value.
 - `registry.toSerializable` types a member's payload by `_tag`, with that member's fields.
+- `stack` follows the current message and cause. Assigning `cause` directly now updates the `Caused by:` block, as `withCause` does, and `withMessage` writes the new message into the first line of `stack`. Revived faults keep their serialized stack.

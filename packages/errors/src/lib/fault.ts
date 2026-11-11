@@ -14,21 +14,81 @@ export type FlattenOptions = {
   formatter?: (value: string) => string
 }
 
-// A WeakMap rather than a #private field: the declaration emitter turns
-// native private fields into a bare `private;` member that breaks consumer
-// typechecking (see scripts/verify-package.ts).
-const originalStacks = new WeakMap<Fault, string | undefined>()
+// The part of a fault's stack that its message and cause do not write. `frames` follows the
+// `${name}: ${message}` header when the runtime writes one, and is the whole stack otherwise.
+type StackBase =
+  | { kind: "headed"; frames: string }
+  | { kind: "headless"; stack: string }
+  | { kind: "missing" }
+
+// WeakMaps rather than #private fields: the declaration emitter turns native private
+// fields into a bare `private;` member that breaks consumer typechecking
+// (see scripts/verify-package.ts).
+const causes = new WeakMap<Fault, unknown>()
+const stackBases = new WeakMap<Fault, StackBase>()
 
 const CAUSE_BLOCK_MARKER = "\nCaused by: "
 
-// Cuts a serialized cause block from a stack. The search starts after the stack's header,
-// `${name}: ${message}`, because a multiline message can contain the marker too.
-function stripCauseBlock(stack: string | undefined, header: string): string | undefined {
-  if (stack === undefined) return undefined
+function getHeader(fault: Fault): string {
+  return fault.message === "" ? fault.name : `${fault.name}: ${fault.message}`
+}
 
-  const start = stack.startsWith(header) ? header.length : 0
-  const index = stack.indexOf(CAUSE_BLOCK_MARKER, start)
-  return index === -1 ? stack : stack.slice(0, index)
+// Splits a stack into its base, cutting any serialized cause block. The search for the block
+// starts after the header, because a multiline message can contain the marker too.
+function toStackBase(stack: string | undefined, header: string): StackBase {
+  if (stack === undefined) return { kind: "missing" }
+
+  const headed = stack.startsWith(header)
+  const rest = headed ? stack.slice(header.length) : stack
+  const index = rest.indexOf(CAUSE_BLOCK_MARKER)
+  const kept = index === -1 ? rest : rest.slice(0, index)
+  return headed ? { frames: kept, kind: "headed" } : { kind: "headless", stack: kept }
+}
+
+// Returns the stack that describes the fault's current message and cause. The runtime writes
+// the header on the first read of `stack`, so the base is read only when a change needs it:
+// a subclass sets its message after super(), and a stack read in the constructor would
+// keep the tag as its message.
+function renderStack(fault: Fault): string | undefined {
+  let base = stackBases.get(fault)
+  if (base === undefined) {
+    base = toStackBase(fault.stack, getHeader(fault))
+    stackBases.set(fault, base)
+  }
+  if (base.kind === "missing") return undefined
+
+  const head = base.kind === "headed" ? `${getHeader(fault)}${base.frames}` : base.stack
+  const cause = causes.get(fault)
+  return cause instanceof Error && cause.stack
+    ? `${head}${CAUSE_BLOCK_MARKER}${cause.stack.replaceAll("\n", "\n  ")}`
+    : head
+}
+
+// An accessor shared by every fault, so that assigning `cause` from any caller updates
+// `stack`. Fault defines it on each instance, so that `cause` stays an own property.
+// `message` stays a data property, because Bun reads it directly to write the header.
+const causeProperty: PropertyDescriptor = {
+  configurable: true,
+  enumerable: true,
+  get(this: Fault): unknown {
+    return causes.get(this)
+  },
+  set(this: Fault, cause: unknown): void {
+    causes.set(this, cause)
+    this.stack = renderStack(this)
+  },
+}
+
+// Revival sets a cause without writing it into the stack, because a serialized stack already
+// holds its cause block.
+export function restoreCause(fault: Fault, cause: unknown): void {
+  causes.set(fault, cause)
+}
+
+// Revival keeps a serialized stack as it was, and makes it the base that later message and
+// cause changes rebuild from.
+export function restoreStackBase(fault: Fault): void {
+  stackBases.set(fault, toStackBase(fault.stack, getHeader(fault)))
 }
 
 function defaultTrimFormatter(value: string): string {
@@ -114,12 +174,15 @@ export abstract class Fault<
   // The typed fields live in their own object, so no field name can collide with a
   // Fault method or an envelope key.
   readonly fields: Readonly<Fields>
-  override cause?: unknown
+  // `declare` keeps the type without a class field, which would replace the cause accessor
+  // that the constructor defines.
+  declare cause?: unknown
   meta?: Record<string, SerializableValue>
   description?: string
 
   protected constructor(tag: string, fields?: Fields) {
     super(tag)
+    Object.defineProperty(this, "cause", causeProperty)
     this._tag = tag
     this.name = tag
     // Spread copies an own "__proto__" key as data instead of calling its setter. A subclass
@@ -135,6 +198,8 @@ export abstract class Fault<
 
   withMessage(message: string): this {
     this.message = message
+    // Before the base is read, the runtime still writes the new message into the header.
+    if (stackBases.has(this)) this.stack = renderStack(this)
     return this
   }
 
@@ -145,26 +210,6 @@ export abstract class Fault<
 
   withCause(cause: unknown): this {
     this.cause = cause
-
-    // The runtime writes the stack header on the first read of `stack`, so the constructor
-    // must not read it: a subclass sets its message after super(). Save the pre-cause stack
-    // on the first withCause() call instead. A revived stack can already hold a serialized
-    // cause block, which the new cause replaces.
-    if (!originalStacks.has(this)) {
-      const header = this.message === "" ? this.name : `${this.name}: ${this.message}`
-      originalStacks.set(this, stripCauseBlock(this.stack, header))
-    }
-    const originalStack = originalStacks.get(this)
-
-    // Rebuild stack from the original (pre-cause) stack on every call,
-    // so replacing a cause doesn't leave stale "Caused by:" blocks.
-    if (cause instanceof Error && cause.stack && originalStack) {
-      const indented = cause.stack.replaceAll("\n", "\n  ")
-      this.stack = `${originalStack}${CAUSE_BLOCK_MARKER}${indented}`
-    } else {
-      this.stack = originalStack
-    }
-
     return this
   }
 
