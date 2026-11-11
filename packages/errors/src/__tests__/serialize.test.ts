@@ -466,15 +466,21 @@ describe("fromSerializable", () => {
   it("caps revived cause chains at the documented depth of 100", () => {
     class LinkError extends Tagged("LinkError")<{ index: number }>() {}
 
+    // A cause's stack nests into each outer stack, which grows quadratically and times out
+    // at depth 150 with full runtime stacks. One-line stacks keep the chain small.
+    function createLink(index: number): Fault {
+      const link = new LinkError({ index })
+      link.stack = `LinkError ${index}`
+      return link
+    }
+
     fc.assert(
       fc.property(
         fc.oneof(fc.constantFrom(0, 1, 99, 100, 101, 150), fc.integer({ max: 150, min: 0 })),
         (edges) => {
-          let fault: Fault = new LinkError({ index: 0 })
+          let fault = createLink(0)
           for (let index = 1; index <= edges; index += 1) {
-            // Assign cause directly: withCause() nests every inner stack into
-            // each outer one, which grows quadratically and times out at depth 150.
-            const link: Fault = new LinkError({ index })
+            const link = createLink(index)
             link.cause = fault
             fault = link
           }

@@ -9,7 +9,7 @@ These files select the published exports. They do not create another copy of an 
 | Module        | Ownership                                                                     |
 | ------------- | ----------------------------------------------------------------------------- |
 | `wire.ts`     | Wire types, depth limit, and thrown-value normalization.                      |
-| `fault.ts`    | Fault instances, fields, cause traversal, encoding, and original stacks.      |
+| `fault.ts`    | Fault instances, fields, cause traversal, encoding, and stacks.               |
 | `errors.ts`   | The package's tagged error classes.                                           |
 | `tagged.ts`   | Tagged subclass construction and payload-field rejection.                     |
 | `match.ts`    | Tag dispatch and standalone matching signatures.                              |
@@ -22,7 +22,8 @@ The root lint configuration rejects imports from `lib/` into public entry points
 
 ## State and compatibility
 
-Fault instances own their data. A fault keeps its fields in its own `fields` object, which the `Fault` constructor copies, so a field name never collides with a method or an envelope key. `fault.ts` owns the original-stack `WeakMap`.
+Fault instances own their data. A fault keeps its fields in its own `fields` object, which the `Fault` constructor copies, so a field name never collides with a method or an envelope key. `fault.ts` owns the `WeakMap`s that hold each fault's cause and stack base.
+Setting `cause` or calling `withMessage` rewrites `stack` from that base, so `stack` describes the current message and cause. Revival keeps a serialized stack as it was and makes it the new base.
 Registry closures own their constructor maps, and `registry.ts` owns the registry-composition `WeakMap`.
 
 - Registry membership uses constructor identity, not only `_tag`. A foreign Fault with the same tag is not a registry member.

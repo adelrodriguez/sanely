@@ -1,5 +1,5 @@
 import { InvalidPayloadError } from "./errors"
-import { Fault } from "./fault"
+import { Fault, restoreStackBase } from "./fault"
 import {
   MAX_CAUSE_DEPTH,
   type SerializableCause,
@@ -132,7 +132,6 @@ function restoreDeserializedFields(fault: Fault, json: SerializableFault): void 
   if (json.message !== undefined) target.message = json.message
   if (json.description !== undefined) target.description = json.description
   if (json.meta !== undefined) target.meta = json.meta
-  if (json.stack !== undefined) target.stack = json.stack
 }
 
 // Revives an envelope that assertSerializableFault already checked, causes included.
@@ -141,10 +140,12 @@ function reviveFault(json: SerializableFault, resolveFault?: FaultResolver): Fau
   const fault = resolveFault?.(json._tag, fields) ?? new DeserializedFault(json._tag, fields)
   restoreDeserializedFields(fault, json)
 
-  if (json.cause !== undefined) {
-    // Intentionally assign cause directly instead of withCause().
-    // Serialized stacks already contain any prior "Caused by:" enhancement.
-    fault.cause = deserializeCause(json.cause, resolveFault)
+  if (json.cause !== undefined) fault.cause = deserializeCause(json.cause, resolveFault)
+
+  // A serialized stack already holds its cause block, so revival keeps it as it was.
+  if (json.stack !== undefined) {
+    fault.stack = json.stack
+    restoreStackBase(fault)
   }
 
   return fault

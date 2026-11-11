@@ -144,6 +144,47 @@ describe("registry", () => {
     expect((restored.cause as TimeoutError).message).toBe("Timed out")
   })
 
+  it("keeps the serialized stack when a registered constructor sets a cause", () => {
+    class WrappedError extends Tagged("WrappedError")() {
+      constructor() {
+        super()
+        this.withCause(new Error("constructor cause"))
+      }
+    }
+    const Faults = registry({ WrappedError })
+    const wire: SerializableFault = {
+      __fault: true,
+      _tag: "WrappedError",
+      cause: { kind: "error", message: "root", name: "Error", stack: "Error: root\nroot-line" },
+      message: "WrappedError",
+      name: "WrappedError",
+      stack: "WrappedError: WrappedError\nsent-line\nCaused by: Error: root\n  root-line",
+    }
+
+    const restored = Faults.fromSerializable(wire)
+    expect(restored.stack).toBe(wire.stack)
+
+    restored.withMessage("new message")
+    expect(restored.stack).toBe(
+      "WrappedError: new message\nsent-line\nCaused by: Error: root\n  root-line"
+    )
+  })
+
+  it("restores the serialized cause of a subclass with a cause field", () => {
+    class FieldError extends Tagged("FieldError")() {
+      override cause: unknown = new Error("default")
+    }
+    const Faults = registry({ FieldError })
+    const sent = new FieldError().withCause(new Error("wire"))
+
+    const restored = Faults.fromSerializable(sent.toSerializable())
+
+    expect(sent.stack).toContain("Caused by: Error: wire")
+    expect(restored.cause).toBeInstanceOf(Error)
+    expect((restored.cause as Error).message).toBe("wire")
+    expect(restored.stack).toBe(sent.stack)
+  })
+
   it("restores registered causes beneath unregistered faults", () => {
     const Faults = registry({ NotFoundError, TimeoutError })
 

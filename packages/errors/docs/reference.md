@@ -16,31 +16,31 @@ The abstract base class of every fault. It extends `Error`. Create subclasses wi
 
 ### Properties
 
-| Property      | Type                                             | Description                                       |
-| ------------- | ------------------------------------------------ | ------------------------------------------------- |
-| `_tag`        | `string`                                         | The tag. Also the value of `name`.                |
-| `fields`      | `Readonly<Record<string, SerializableValue>>`    | The typed fields. Empty when the fault has none.  |
-| `message`     | `string`                                         | The message for the user. The default is the tag. |
-| `description` | `string \| undefined`                            | What happened, for debugging.                     |
-| `meta`        | `Record<string, SerializableValue> \| undefined` | Structured metadata, such as `{ traceId }`.       |
-| `cause`       | `unknown`                                        | The cause.                                        |
+| Property      | Type                                             | Description                                                                                                                                         |
+| ------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_tag`        | `string`                                         | The tag. Also the value of `name`.                                                                                                                  |
+| `fields`      | `Readonly<Record<string, SerializableValue>>`    | The typed fields. Empty when the fault has none.                                                                                                    |
+| `message`     | `string`                                         | The message for the user. The default is the tag.                                                                                                   |
+| `description` | `string \| undefined`                            | What happened, for debugging.                                                                                                                       |
+| `meta`        | `Record<string, SerializableValue> \| undefined` | Structured metadata, such as `{ traceId }`.                                                                                                         |
+| `cause`       | `unknown`                                        | The cause. When the cause is an `Error`, setting it adds the stack of the cause to `stack` after `Caused by:`, in place of any earlier cause block. |
 
 ### Methods
 
 Each `with` method changes the fault and returns it, so you can chain the calls.
 
-| Method                         | Description                                                                                                                                  |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `withMessage(message)`         | Sets `message`.                                                                                                                              |
-| `withDescription(description)` | Sets `description`.                                                                                                                          |
-| `withMeta(meta)`               | Merges `meta` into the current metadata.                                                                                                     |
-| `withCause(cause)`             | Sets `cause`. When `cause` is an `Error`, it adds the stack of the cause to `stack` after `Caused by:`, in place of any earlier cause block. |
-| `unwrap()`                     | Returns the cause chain as an array, from the head to the leaf.                                                                              |
-| `getTags()`                    | Returns the `_tag` of each fault in the chain.                                                                                               |
-| `getContext()`                 | Returns the merged `meta` of every fault in the chain. The head wins a conflict.                                                             |
-| `flatten(options?)`            | Joins the chain into one string. See [`flatten(options)`](#flattenoptions).                                                                  |
-| `toSerializable()`             | Returns the [wire format](#wire-format) of the fault.                                                                                        |
-| `toJSON()`                     | Returns the same value as `toSerializable()`, so `JSON.stringify` writes the wire format.                                                    |
+| Method                         | Description                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `withMessage(message)`         | Sets `message`, and writes it into the first line of `stack`.                             |
+| `withDescription(description)` | Sets `description`.                                                                       |
+| `withMeta(meta)`               | Merges `meta` into the current metadata.                                                  |
+| `withCause(cause)`             | Sets `cause`.                                                                             |
+| `unwrap()`                     | Returns the cause chain as an array, from the head to the leaf.                           |
+| `getTags()`                    | Returns the `_tag` of each fault in the chain.                                            |
+| `getContext()`                 | Returns the merged `meta` of every fault in the chain. The head wins a conflict.          |
+| `flatten(options?)`            | Joins the chain into one string. See [`flatten(options)`](#flattenoptions).               |
+| `toSerializable()`             | Returns the [wire format](#wire-format) of the fault.                                     |
+| `toJSON()`                     | Returns the same value as `toSerializable()`, so `JSON.stringify` writes the wire format. |
 
 ```ts
 const fault = new ValidationError({ field: "email" })
@@ -173,7 +173,7 @@ Fault.isSerializable({ __fault: true, _tag: "X", name: "X" }) // true
 | `message`     | `string`                            | No       | The message for the user. The package always writes it. |
 | `description` | `string`                            | No       | What happened, for debugging.                           |
 | `meta`        | `Record<string, SerializableValue>` | No       | The metadata.                                           |
-| `stack`       | `string`                            | No       | The stack.                                              |
+| `stack`       | `string`                            | No       | The stack. Deserialization keeps it as it was.          |
 | `cause`       | `SerializableCause`                 | No       | The cause.                                              |
 | `fields`      | `Record<string, SerializableValue>` | No       | The fields. The package writes it when a fault has any. |
 
