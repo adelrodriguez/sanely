@@ -87,4 +87,4 @@ if (body instanceof MalformedRequestError) {
 
 `catch` must not throw. A `catch` that throws, or that rejects in `run`, `all`, or `flow`, is a `Panic`. In `runSync`, `catch` must not return a promise.
 
-`catch` receives only errors that started inside `try`. A `TimeoutError` or a `CancellationError` from the call's own policy never goes through `catch`. One that `try` rethrows from a nested call is an ordinary error, so `catch` receives it. To handle those, see [How to add retries, a deadline, and cancellation](./add-retries-a-deadline-and-cancellation.md).
+`catch` receives only errors that started inside `try`. A `TimeoutError` or a `CancellationError` from the call's own policy never goes through `catch`. One that `try` rethrows from a nested call is an ordinary error, so `catch` receives it. To handle the call's own policy failures, see [How to add retries, a deadline, and cancellation](./add-retries-a-deadline-and-cancellation.md).
