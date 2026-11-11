@@ -81,6 +81,9 @@
     "test:valkey-store": "vitest run --project valkey-store",
     "test:watch": "vitest --project unit"
   },
+  "dependencies": {
+    "@sanely/duration": "workspace:^"
+  },
   "devDependencies": {
     "@sanely/core": "workspace:*",
     "@tooling/tsconfig": "workspace:*",

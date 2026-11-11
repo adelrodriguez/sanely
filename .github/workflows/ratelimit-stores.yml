@@ -8,12 +8,14 @@ on:
       - main
     paths:
       - "packages/core/**"
+      - "packages/duration/**"
       - "packages/ratelimit/**"
       - ".github/workflows/ratelimit-stores.yml"
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "packages/core/**"
+      - "packages/duration/**"
       - "packages/ratelimit/**"
       - ".github/workflows/ratelimit-stores.yml"
 
@@ -56,9 +58,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The package imports `@sanely/core/time`, which resolves to core's build output.
-      - name: Build core
-        run: pnpm turbo run build --filter=@sanely/core
+      # The package imports `@sanely/core/time` and `@sanely/duration`, which resolve to their build
+      # output.
+      - name: Build dependencies
+        run: pnpm turbo run build --filter=@sanely/ratelimit^...
 
       - name: Run Redis store tests
         run: pnpm --filter @sanely/ratelimit run test:redis-store
@@ -94,9 +97,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The package imports `@sanely/core/time`, which resolves to core's build output.
-      - name: Build core
-        run: pnpm turbo run build --filter=@sanely/core
+      # The package imports `@sanely/core/time` and `@sanely/duration`, which resolve to their build
+      # output.
+      - name: Build dependencies
+        run: pnpm turbo run build --filter=@sanely/ratelimit^...
 
       - name: Run Valkey store tests
         run: pnpm --filter @sanely/ratelimit run test:valkey-store
@@ -137,9 +141,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The package imports `@sanely/core/time`, which resolves to core's build output.
-      - name: Build core
-        run: pnpm turbo run build --filter=@sanely/core
+      # The package imports `@sanely/core/time` and `@sanely/duration`, which resolve to their build
+      # output.
+      - name: Build dependencies
+        run: pnpm turbo run build --filter=@sanely/ratelimit^...
 
       - name: Run Bun store tests
         run: pnpm --filter @sanely/ratelimit run test:bun-redis-store

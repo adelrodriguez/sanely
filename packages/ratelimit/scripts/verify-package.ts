@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
@@ -51,7 +59,22 @@ try {
     join(temporaryDirectory, "package.json"),
     `${JSON.stringify({ name: "ratelimit-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
-  run("npm", ["install", "--ignore-scripts", "--no-package-lock", tarballPath], temporaryDirectory)
+  // npm may not have the workspace dependency versions that the tarball names, so install each
+  // from its own tarball.
+  const dependencyDirectory = join(temporaryDirectory, "dependencies")
+  mkdirSync(dependencyDirectory)
+  for (const dependency of Object.keys(packageJson.dependencies)) {
+    const dependencyRoot = realpathSync(join(packageRoot, "node_modules", dependency))
+    run("pnpm", ["pack", "--pack-destination", dependencyDirectory], dependencyRoot)
+  }
+  const dependencyTarballs = readdirSync(dependencyDirectory).map((file) =>
+    join(dependencyDirectory, file)
+  )
+  run(
+    "npm",
+    ["install", "--ignore-scripts", "--no-package-lock", tarballPath, ...dependencyTarballs],
+    temporaryDirectory
+  )
 
   writeFileSync(
     join(temporaryDirectory, "runtime.mjs"),
@@ -61,11 +84,12 @@ import { buildLimiter, fixedWindow, InvalidOptionError, rateLimit } from "@sanel
 import { memoryStore } from "@sanely/ratelimit/stores/memory"
 
 const limiter = buildLimiter({ store: memoryStore() })
-const perKey = limiter({ algorithm: fixedWindow({ limit: 1, window: 60_000 }), name: "key" })
+const perKey = limiter({ algorithm: fixedWindow({ limit: 1, window: "1m" }), name: "key" })
 
 assert.equal((await rateLimit(perKey, "a")).success, true)
 assert.equal((await rateLimit(perKey, "a")).success, false)
 assert.throws(() => fixedWindow({ limit: 0, window: 1 }), InvalidOptionError)
+assert.throws(() => fixedWindow({ limit: 1, window: "soon" }), InvalidOptionError)
 
 for (const specifier of ${JSON.stringify(specifiers)}) {
   const entry = await import(specifier)
@@ -85,7 +109,7 @@ import type { IoredisClient } from "@sanely/ratelimit/stores/redis"
 
 const limiter = buildLimiter({ store: memoryStore() })
 const perIp = limiter({
-  algorithm: fixedWindow({ limit: 1, window: 60_000 }),
+  algorithm: fixedWindow({ limit: 1, window: "1m" }),
   identify: (request: { ip: string }) => request.ip,
   name: "ip",
 })
@@ -96,6 +120,8 @@ const client: IoredisClient = {
   evalsha: () => Promise.resolve([1, 0, 0, 0]),
 }
 
+// @ts-expect-error -- "M" is ambiguous between minutes and months.
+fixedWindow({ limit: 1, window: "1M" })
 // @ts-expect-error -- perIp identifies a request, not a string.
 void rateLimit(perIp, "203.0.113.7")
 

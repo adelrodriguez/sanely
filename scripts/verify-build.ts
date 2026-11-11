@@ -1,10 +1,21 @@
 // Packs the package in the current directory, installs the tarball in a temporary consumer, and
-// checks that the consumer can load the entry point and type-check against its declarations.
+// checks that the consumer can load the entry point and type-check against its declarations. The
+// consumer installs each workspace dependency from its own tarball, because npm may not have the
+// version that the packed package names.
 //
 // Usage, from a package directory after a build: node ../../scripts/verify-build.ts
 
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -52,14 +63,24 @@ function readManifest() {
     subpath === "." ? name : `${name}${subpath.slice(1)}`
   )
 
-  return { name, specifiers, targets }
+  const dependencies =
+    "dependencies" in manifest
+    && typeof manifest.dependencies === "object"
+    && manifest.dependencies !== null
+      ? Object.entries(manifest.dependencies)
+      : []
+  const workspaceDependencies = dependencies
+    .filter(([, range]) => typeof range === "string" && range.startsWith("workspace:"))
+    .map(([dependency]) => realpathSync(join(packageRoot, "node_modules", dependency)))
+
+  return { name, specifiers, targets, workspaceDependencies }
 }
 
 function run(command: string, arguments_: string[], cwd: string) {
   execFileSync(command, arguments_, { cwd, stdio: "inherit" })
 }
 
-const { name, specifiers, targets } = readManifest()
+const { name, specifiers, targets, workspaceDependencies } = readManifest()
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "sanely-build-"))
 
 try {
@@ -81,9 +102,24 @@ try {
     join(temporaryDirectory, "package.json"),
     `${JSON.stringify({ name: "sanely-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
+  const dependencyDirectory = join(temporaryDirectory, "dependencies")
+  mkdirSync(dependencyDirectory)
+  for (const dependency of workspaceDependencies) {
+    run("pnpm", ["pack", "--pack-destination", dependencyDirectory], dependency)
+  }
+  const dependencyTarballs = readdirSync(dependencyDirectory).map((file) =>
+    join(dependencyDirectory, file)
+  )
+
   run(
     "npm",
-    ["install", "--ignore-scripts", "--no-package-lock", join(temporaryDirectory, tarball)],
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-package-lock",
+      join(temporaryDirectory, tarball),
+      ...dependencyTarballs,
+    ],
     temporaryDirectory
   )
 
