@@ -99,6 +99,17 @@ describe("Fault", () => {
     expect(fault.stack?.split("\n")).toStrictEqual(["ExampleFault: new message", ...(frames ?? [])])
   })
 
+  it("keeps a stack whose first line only starts with the current header", () => {
+    const fault = new ExampleFault()
+    const stack = fault.stack
+    fault.message = ""
+    fault.withMessage("new message")
+
+    // The first line `ExampleFault: ExampleFault` is not the header `ExampleFault`, so the
+    // stack has no header to rewrite.
+    expect(fault.stack).toBe(stack)
+  })
+
   it("writes a directly assigned message into the stack when the cause changes", () => {
     const fault = new ExampleFault().withCause("not an error")
     const frames = fault.stack?.split("\n").slice(1)

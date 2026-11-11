@@ -38,7 +38,8 @@ function getHeader(fault: Fault): string {
 function toStackBase(stack: string | undefined, header: string): StackBase {
   if (stack === undefined) return { kind: "missing" }
 
-  const headed = stack.startsWith(header)
+  // The header ends the first line, so a longer first line that starts with it is not one.
+  const headed = stack === header || stack.startsWith(`${header}\n`)
   const rest = headed ? stack.slice(header.length) : stack
   const index = rest.indexOf(CAUSE_BLOCK_MARKER)
   const kept = index === -1 ? rest : rest.slice(0, index)
