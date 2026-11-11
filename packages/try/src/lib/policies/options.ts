@@ -138,6 +138,9 @@ export type ValidateRetryLimit<N extends number> = number extends N
       ? InvalidRetryLimit
       : number
 
+// Distributes over a union such as `number | "2s"`, so each string member is checked.
+type ValidateDelay<D> = D extends string ? ValidateTimeExpression<D> : D
+
 /**
  * Compile-time validation for full {@link RetryOptions} values, including unions of number and
  * policy forms. Distributes over union members so that mixed inputs like `flag ? 3 : { backoff:
@@ -150,8 +153,6 @@ export type ValidateRetryOptions<P extends RetryOptions<TimeExpression>> = P ext
   ? ValidateRetryLimit<P>
   : P extends { limit: infer N extends number }
     ? { limit: ValidateRetryLimit<N> } & Record<Exclude<keyof P, keyof RetryPolicy>, never> & {
-          [K in keyof P & ("delay" | "maxDelay")]: P[K] extends string
-            ? ValidateTimeExpression<P[K]>
-            : P[K]
+          [K in keyof P & ("delay" | "maxDelay")]: ValidateDelay<P[K]>
         }
     : never

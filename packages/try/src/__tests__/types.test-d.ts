@@ -1234,6 +1234,11 @@ function _negativeTypeTests() {
     void try$.retry({ backoff: "constant", delay: "0x10h", limit: 2 })
     // @ts-expect-error -- the strict grammar has no hexadecimal numbers
     void try$.retry({ backoff: "exponential", limit: 2, maxDelay: "0x10h" })
+    const mixedDelay = Math.random() > 0.5 ? 200 : ("0x10h" as const)
+    // @ts-expect-error -- the strict grammar applies to each member of a delay union
+    void try$.retry({ backoff: "constant", delay: mixedDelay, limit: 2 })
+    const validMixedDelay = Math.random() > 0.5 ? 200 : ("2s" as const)
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelay: validMixedDelay })
     void try$.retry(
       // @ts-expect-error -- the strict grammar applies to union members too
       Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delay: "0x10h", limit: 5 }
