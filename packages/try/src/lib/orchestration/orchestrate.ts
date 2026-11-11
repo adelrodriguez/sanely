@@ -67,11 +67,15 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
   async #runGraph(): Promise<unknown> {
     const graph = new TaskGraph(this.#tasks, settlements[this.#mode], this.executionSignal)
     let outcome: Outcome
+    // The failure that stopped the graph, kept even after catch maps it. A record, so a task that
+    // throws undefined still counts.
+    let stoppedBy: { error: unknown } | undefined
     let cleanup: Cleanup
 
     try {
       outcome = { mapped: await this.race(graph.run()) }
     } catch (error) {
+      stoppedBy = { error }
       outcome = await this.#mapFailure(graph, error)
     } finally {
       await graph.waitForTasksToSettle()
@@ -93,14 +97,15 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
       throw outcome.panic
     }
 
-    // A cleanup that throws is misuse, like a catch handler that throws. When a failure stopped the
-    // graph, the Panic keeps that failure as the suppressed error, so the cleanup does not hide it.
+    // A cleanup that throws is misuse, like a catch handler that throws. The Panic keeps this
+    // call's own policy failure, or else the task failure that stopped the graph, as the suppressed
+    // error, so the cleanup does not hide it.
     if (cleanup.status === "threw") {
+      const controlFailure = this.checkDidControlFail(stoppedBy?.error)
+      const suppressed = controlFailure ? { error: controlFailure } : stoppedBy
+
       throw new Panic("TASK_CLEANUP_THROW", {
-        cause:
-          "thrown" in outcome
-            ? createSuppressedError(cleanup.error, outcome.thrown)
-            : cleanup.error,
+        cause: suppressed ? createSuppressedError(cleanup.error, suppressed.error) : cleanup.error,
       })
     }
 

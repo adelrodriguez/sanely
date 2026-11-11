@@ -177,7 +177,7 @@ All tasks start together. Every orchestration call waits for every running task 
 
 Like `run`, an orchestration call resolves with a result union and never rejects with an error from the work. A task failure that `catch` does not map becomes an `UnhandledException`, with the original error as the `cause`. The `TimeoutError` of this call's own deadline and the `CancellationError` of its own signal are part of the result. When the deadline and cancellation both fire, the call resolves with `CancellationError`. A `Panic` throws, and wins over every other outcome.
 
-The cleanup on `this.$disposer` runs after every task settles. When a cleanup throws or rejects, the other cleanup still runs, and then the call throws a `Panic` with the code `TASK_CLEANUP_THROW`. Its `cause` is the cleanup error. When a task failure or a policy failure stopped the graph, the `cause` is a `SuppressedError` instead, with the cleanup error as `error` and that failure as `suppressed`. A `Panic` from a task or from `catch` wins over this `Panic`.
+The cleanup on `this.$disposer` runs after every task settles. When a cleanup throws or rejects, the other cleanup still runs, and then the call throws a `Panic` with the code `TASK_CLEANUP_THROW`. Its `cause` is the cleanup error. When this call's own deadline or signal fired, or a task failure stopped the graph, the `cause` is a `SuppressedError` instead, with the cleanup error as `error` and that failure as `suppressed`. The `TimeoutError` or `CancellationError` comes before the task failure, and a task failure that `catch` mapped still counts. A `Panic` from a task or from `catch` wins over this `Panic`.
 
 ### `all(tasks, options?)`
 
