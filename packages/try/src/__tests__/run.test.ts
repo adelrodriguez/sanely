@@ -882,6 +882,31 @@ describe("timeout and cancellation behavior", () => {
     }
   })
 
+  it("ends a long deadline at once when a timer runs after the deadline passed", async () => {
+    // Fake only the timers, so the test can move the monotonic clock past the deadline while the
+    // first timer is still pending, as when the machine sleeps.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let now = 0
+    vi.spyOn(performance, "now").mockImplementation(() => now)
+
+    try {
+      const timeoutMs = 3_000_000_000
+      const pending = try$.timeout(timeoutMs).run(() => never<string>())
+
+      now = timeoutMs + 1
+      // The first timer runs late, after the full deadline passed. The deadline must end on the
+      // next timer tick instead of waiting for another chunk.
+      await vi.advanceTimersByTimeAsync(2_147_483_647 + 1)
+
+      expect(await Promise.race([pending, Promise.resolve("still running")])).toBeInstanceOf(
+        TimeoutError
+      )
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
   it.each([
     { delays: [3_000_000_000], policy: { backoff: "constant", delayMs: 3_000_000_000, limit: 2 } },
     // The second delay, 2 ** 31 ms, is one above the timer limit.
