@@ -9,6 +9,8 @@ Property tests compare `count`, `shortestFill`, and `generate` with `maxLength` 
 The `count` suite also checks default counts against a closed-form formula over the built-in lists.
 The generate suite has a timing check for the tightest `maxLength` that fits eight words, which once took over a minute.
 
+`src/__tests__/docs.test.ts` checks the `count` examples in the README, the reference, and the `count` doc comment, and the category sizes in the reference. Update them when you change a list.
+
 `build:verify` installs the packed runtime and declarations in an isolated consumer.
 `test:compat` loads the built exports, and CI runs it on the package's Node.js floor.
 
