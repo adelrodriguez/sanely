@@ -734,6 +734,27 @@ describe("deployment monitor", () => {
       expect(monitor.getState().reloadStatus).toBe("unprotected")
     })
 
+    it("counts several reload requests in one page as one reload", async () => {
+      expect.assertions(4)
+
+      const storage = new MemoryStorage()
+      const environment = new FakeEnvironment(storage)
+      const first = await loadStalePageAndReload(environment)
+      first.reload()
+      first.reload()
+
+      expect(first.getState().reloadStatus).toBe("ready")
+      expect(environment.reloadCalls).toBe(3)
+
+      const second = await loadStalePageAndReload(environment)
+
+      expect(second.getState().reloadStatus).toBe("ready")
+
+      const third = await loadStalePageAndReload(environment)
+
+      expect(third.getState().reloadStatus).toBe("blocked")
+    })
+
     it("starts a new reload sequence after the cooldown", async () => {
       expect.assertions(2)
 
@@ -754,6 +775,8 @@ describe("deployment monitor", () => {
 
       const storage = new MemoryStorage()
       const environment = new FakeEnvironment(storage)
+      await loadStalePageAndReload(environment)
+      await loadStalePageAndReload(environment)
       let target = "B"
       const monitor = monitorOf(
         {
@@ -763,8 +786,6 @@ describe("deployment monitor", () => {
         { environment }
       )
       await monitor.check()
-      monitor.reload()
-      monitor.reload()
       monitor.reload()
       expect(monitor.getState().reloadStatus).toBe("blocked")
 

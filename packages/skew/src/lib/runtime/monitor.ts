@@ -279,6 +279,9 @@ class DeploymentMonitorImplementation implements DeploymentMonitor {
 class ReloadGuard {
   readonly #environment: RuntimeEnvironment
   readonly #running: Deployment
+  // The target whose reload this page already recorded. Another request for it reloads again
+  // without counting a second reload.
+  #requestedTarget: string | undefined
   #status: ReloadStatus
 
   constructor(running: Deployment, environment: RuntimeEnvironment) {
@@ -304,7 +307,12 @@ class ReloadGuard {
 
   request(target: Deployment | null): ReloadStatus {
     const storage = this.#environment.storage
-    if (storage === null || this.#status === "unprotected" || target === null) {
+    if (
+      storage === null
+      || this.#status === "unprotected"
+      || target === null
+      || target.id === this.#requestedTarget
+    ) {
       this.#environment.reload()
       return this.#status
     }
@@ -374,6 +382,7 @@ class ReloadGuard {
       return "blocked"
     }
 
+    this.#requestedTarget = target.id
     this.#environment.reload()
     return "ready"
   }
