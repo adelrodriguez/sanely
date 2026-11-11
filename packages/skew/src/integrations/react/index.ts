@@ -37,7 +37,10 @@ function useShallowStableOptions<T extends string>(
   options: DeploymentStatusOptions<T>
 ): DeploymentStatusOptions {
   return useMemo(
-    () => ({
+    // The type requires every option, so a new option fails to compile until the hook passes it on.
+    (): {
+      readonly [K in keyof Required<DeploymentStatusOptions>]: DeploymentStatusOptions[K]
+    } => ({
       checkInterval:
         options.checkInterval === undefined ? undefined : milliseconds(options.checkInterval),
       checkOnReconnect: options.checkOnReconnect,

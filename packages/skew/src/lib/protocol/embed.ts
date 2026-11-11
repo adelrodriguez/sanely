@@ -7,12 +7,15 @@ export interface DeploymentEmbed {
   readonly endpoint?: string
 }
 
+// The global that adapters assign the embed to. `declare global` below must use the same name.
+export const EMBED_GLOBAL = "__DEPLOYMENT_CHECK__"
+
 declare global {
   var __DEPLOYMENT_CHECK__: DeploymentEmbed | undefined
 }
 
 export function readEmbed(): DeploymentEmbed | undefined {
-  const embed: unknown = globalThis.__DEPLOYMENT_CHECK__
+  const embed: unknown = globalThis[EMBED_GLOBAL]
 
   if (embed === undefined) {
     return undefined

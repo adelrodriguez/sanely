@@ -13,13 +13,25 @@ interface DescriptorCandidate {
   readonly v?: unknown
 }
 
+// The position of each field in the serialized descriptor. The type requires every field of
+// DescriptorV1, so a new field fails to compile until serialization includes it.
+const DESCRIPTOR_FIELD_ORDER: Record<keyof DescriptorV1, number> = {
+  builtAt: 2,
+  id: 1,
+  v: 0,
+}
+
+const DESCRIPTOR_FIELDS = Object.entries(DESCRIPTOR_FIELD_ORDER)
+  .toSorted(([, left], [, right]) => left - right)
+  .map(([field]) => field)
+
 export function serializeDescriptor(deployment: Deployment): string {
   const descriptor: DescriptorV1 =
     deployment.builtAt === undefined
       ? { id: deployment.id, v: 1 }
       : { builtAt: deployment.builtAt.toISOString(), id: deployment.id, v: 1 }
 
-  return JSON.stringify(descriptor, ["v", "id", "builtAt"])
+  return JSON.stringify(descriptor, DESCRIPTOR_FIELDS)
 }
 
 export function parseDescriptor(text: string): Deployment {
