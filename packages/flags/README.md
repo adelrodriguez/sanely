@@ -12,7 +12,7 @@
 </div>
 
 <p align="center">
-  Declare flags as values in code, and read them through a provider that you write for LaunchDarkly, PostHog, or any other feature flag service.
+  Declare flags as values in code, and evaluate them with a provider that you write for LaunchDarkly, PostHog, or any other feature flag service.
 </p>
 
 `@sanely/flags` adds a type-safe evaluation layer to your feature flag service. You declare each flag once, write or install a provider, and read flags through a reader. The package manages identity resolution, validation, fallback values, hooks, caching, request coalescing, batches, timeouts, and server snapshots.

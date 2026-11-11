@@ -154,7 +154,7 @@ type DecisionStore = {
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The read does not wait for the write, and the timeout does not cover it. Writes and deletes for one key run one at a time, in order. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider, which `delete` removes when the store has it.
+The package reads the store before the provider work, and writes the provider decision after it validates. The read does not wait for the write, and the timeout does not cover it. Writes and deletes for one key run one at a time, in order. The store owns serialization and expiry. A store failure never fails the evaluation. The package asks the provider instead of using an invalid stored decision, and removes that decision with `delete` when the store has it.
 
 With a provider `subscribe` and a store with `deleteFlags`, a change notification after the reader's first shared evaluation calls `deleteFlags` with the changed flag keys, or with none for a notification that names no flags. The store deletes those flags' decisions, including those that other processes stored. `set` passes each decision's `flagKey` so that the store can find them. The package waits for the writes of those flags that already started, and reads of those flags skip the store until the delete completes. A store without `deleteFlags` keeps its decisions after a change until it expires them.
 
@@ -270,7 +270,7 @@ Evaluations return these errors in `details().error` and never throw them. Each 
 
 `EvaluationError` is the union of these classes.
 
-`FlagDefinitionError`, with a `reason` field, is thrown by `flag.boolean`, `flag.variant`, `defineProvider`, and `createFlags` for an invalid definition, and by `FlagsProvider` for an invalid `cache` prop. `@sanely/flags/react` exports `FlagsProviderMissingError`, which the hooks and `FeatureFlag` throw outside a `FlagsProvider`.
+`flag.boolean`, `flag.variant`, `defineProvider`, and `createFlags` throw `FlagDefinitionError` for an invalid definition, and `FlagsProvider` throws it for an invalid `cache` prop. `FlagDefinitionError` has a `reason` field. `@sanely/flags/react` exports `FlagsProviderMissingError`, which the hooks and `FeatureFlag` throw outside a `FlagsProvider`.
 
 ## Error reports
 

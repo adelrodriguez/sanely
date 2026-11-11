@@ -43,7 +43,7 @@ pnpm run dev            # Rebuild when source files change.
 pnpm run test           # Run the Vitest suite and enforce coverage thresholds.
 pnpm run test:watch     # Run tests when files change.
 pnpm run test:coverage  # Run tests and collect coverage.
-pnpm run test:compat    # Load the built package with the engines.node globals.
+pnpm run test:compat    # Load the built package without globals newer than engines.node.
 pnpm --workspace-root run check    # Check formatting, lint rules, and TypeScript types.
 pnpm --workspace-root run fix      # Apply formatting and safe lint fixes.
 pnpm --workspace-root run analyze  # Find unused files, exports, and dependencies.
@@ -58,7 +58,7 @@ script.
 - Follow the [testing guide](docs/testing.md) when you change tests.
 - Public API type changes require coverage in `src/__tests__/types.test-d.tsx`.
 - Write type assertions with `expectTypeOf` from `vitest`.
-- Type assertions are checked by `pnpm --workspace-root run check`, not Vitest.
+- `pnpm --workspace-root run check` checks type assertions. Vitest does not run them.
 - Update user documentation when public behavior, types, or entry points change.
 - Consider package consumers before you change `@sanely/flags`, `@sanely/flags/react`, or
   `@sanely/flags/testing`.
@@ -69,9 +69,10 @@ Run the full repository workflow before you open a pull request:
 
 ```sh
 pnpm run test
+pnpm run build
 pnpm run build:verify
-pnpm --workspace-root run check
 pnpm --workspace-root run fix
+pnpm --workspace-root run check
 ```
 
 Run `pnpm --workspace-root run analyze` after you add or remove dependencies or change imports and exports.

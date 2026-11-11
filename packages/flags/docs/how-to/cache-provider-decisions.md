@@ -4,7 +4,7 @@ This guide shows you how to store provider decisions, drop them when the provide
 
 ## Add a store
 
-1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This one stamps each decision with a version for its flag. `deleteFlags` advances the version, and `get` ignores a decision with an older one, so there is no index to keep in step with writes, and old decisions leave with their expiry:
+1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This example stamps each decision with the version of its flag. `deleteFlags` advances the version, and `get` ignores a decision with an older version. The store needs no index of keys, and old decisions leave when they expire:
 
    ```typescript
    import type { DecisionStore, Decision } from "@sanely/flags"
@@ -57,7 +57,7 @@ A store failure does not fail the evaluation. The package discards an invalid st
 
 ## Drop decisions when the provider changes a flag
 
-Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags. With a store that has `deleteFlags`, it also deletes their stored decisions, including the ones that other processes stored. A store without `deleteFlags` keeps them until it expires them. See [`DecisionStore`](../reference.md#decisionstore).
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). After a change notification, later evaluations of the changed flags no longer join a provider call that is already running. With a store that has `deleteFlags`, the package also deletes their stored decisions, including the ones that other processes stored. A store without `deleteFlags` keeps them until it expires them. See [`DecisionStore`](../reference.md#decisionstore).
 
 If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
 

@@ -4,7 +4,7 @@ This page explains how `@sanely/flags` evaluates a flag: why flags are values, w
 
 ## Flags are values in code
 
-A flag definition holds a key, a default, its variants, and its timeout. It does not hold a provider or an identity. Code reads a flag by passing the definition to a reader, as in `flags.get(theme)`, and not by a string key.
+A flag definition holds a key, a default, and an optional timeout, and a variant flag also holds its variants and payload parser. It does not hold a provider or an identity. Code reads a flag by passing the definition to a reader, as in `flags.get(theme)`, and not by a string key.
 
 This follows the [flags-as-code principles](https://flags-sdk.dev/docs/principles/flags-as-code) of the Flags SDK. Each read site has the same shape. The default lives on the declaration, so it is the same at every read site. Your editor can find every read of a flag and jump to its declaration. A change of provider changes the reader, not the read sites.
 
