@@ -1,6 +1,8 @@
 export type TimerHandle = number | ReturnType<typeof globalThis.setTimeout>
 
-export type RuntimeEventType = "online" | "pageshow" | "visibilitychange"
+// The window events the monitor listens for: "online", "pageshow", "visibilitychange", and the load
+// error event that the embed names, which can be any event.
+export type RuntimeEventType = string
 
 export interface RuntimeEvent {
   readonly persisted?: boolean

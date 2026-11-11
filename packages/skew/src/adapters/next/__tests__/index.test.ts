@@ -163,6 +163,13 @@ describe("next adapter", () => {
     expect(wrapped.env?.DEPLOYMENT_CHECK_EMBED).toContain('"id":"netlify-sha"')
   })
 
+  it("names no load error event in the embed", async () => {
+    expect.assertions(1)
+    const wrapped = await resolveNextConfig(withDeploymentCheck({}, { deploymentId: "A" }))
+
+    expect(JSON.parse(readEmbedJson(wrapped))).not.toHaveProperty("loadErrorEvent")
+  })
+
   it("prefixes the default endpoint with the Next base path", async () => {
     expect.assertions(2)
     const wrapped = await resolveNextConfig(

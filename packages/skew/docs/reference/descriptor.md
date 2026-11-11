@@ -42,14 +42,16 @@ globalThis.__DEPLOYMENT_CHECK__ = {
   v: 1,
   running: { id: "3f9c2a1", builtAt: "2026-08-10T12:00:00.000Z" },
   endpoint: "/_deployment-check/deployment.json",
+  loadErrorEvent: "vite:preloadError",
 }
 ```
 
-| Field             | Type     | Required | Description                                                           |
-| ----------------- | -------- | -------- | --------------------------------------------------------------------- |
-| `v`               | `1`      | Yes      | The format version. Any other value makes the embed invalid.          |
-| `running.id`      | `string` | Yes      | The running deployment ID. Must not be empty.                         |
-| `running.builtAt` | `string` | No       | The build time of the running deployment, as an ISO 8601 string.      |
-| `endpoint`        | `string` | No       | The descriptor URL. Defaults to `/_deployment-check/deployment.json`. |
+| Field             | Type     | Required | Description                                                                                                            |
+| ----------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `v`               | `1`      | Yes      | The format version. Any other value makes the embed invalid.                                                           |
+| `running.id`      | `string` | Yes      | The running deployment ID. Must not be empty.                                                                          |
+| `running.builtAt` | `string` | No       | The build time of the running deployment, as an ISO 8601 string.                                                       |
+| `endpoint`        | `string` | No       | The descriptor URL. Defaults to `/_deployment-check/deployment.json`.                                                  |
+| `loadErrorEvent`  | `string` | No       | A `window` event that the build fires when it fails to load code. The monitor checks when it fires. Must not be empty. |
 
 The monitor ignores an embed that does not match this shape, and logs a warning outside production.

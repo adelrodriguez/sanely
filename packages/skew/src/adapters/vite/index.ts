@@ -14,6 +14,9 @@ import { serializeDescriptor } from "#lib/protocol/descriptor.ts"
 
 export type { DeploymentIdOption, DeploymentPlatform } from "#adapters/shared.ts"
 
+// Vite fires this event on `window` when a dynamic import or one of its preloaded files fails.
+const PRELOAD_ERROR_EVENT = "vite:preloadError"
+
 export interface ViteAdapterOptions {
   readonly deploymentId?: DeploymentIdOption
   readonly endpoint?: string
@@ -49,6 +52,7 @@ export function deploymentCheck(options: ViteAdapterOptions = {}): Plugin {
       const currentDeployment = requireDeployment(deployment)
       const embed: DeploymentEmbed = {
         endpoint,
+        loadErrorEvent: PRELOAD_ERROR_EVENT,
         running: {
           builtAt: currentDeployment.builtAt?.toISOString(),
           id: currentDeployment.id,

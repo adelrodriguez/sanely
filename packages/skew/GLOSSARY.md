@@ -36,7 +36,9 @@ Each word below belongs to one kind of text. Use it only there.
 
 **Descriptor.** The JSON file that holds the target deployment, at `/_deployment-check/deployment.json` by default. It has a version field (`v: 1`). The descriptor format must stay readable by old clients, because a tab that stays open for a week reads descriptors from newer adapters.
 
-**Embed.** The value that the adapter writes into the page as `globalThis.__DEPLOYMENT_CHECK__`. It holds the running deployment and the descriptor endpoint. The core reads the running deployment from the embed and does not know which adapter wrote it.
+**Embed.** The value that the adapter writes into the page as `globalThis.__DEPLOYMENT_CHECK__`. It holds the running deployment, the descriptor endpoint, and the load error event. The core reads the running deployment from the embed and does not know which adapter wrote it.
+
+**Load error event.** A `window` event that the build fires when it fails to load code, such as Vite's `vite:preloadError`. An adapter names it in the embed, and the monitor checks when it fires. The core never names an event itself.
 
 **Endpoint.** The URL of the descriptor. A **local endpoint** is a path on the app origin, and the adapter writes the descriptor for it. An **external endpoint** is an absolute or protocol-relative URL, and another service serves the descriptor.
 

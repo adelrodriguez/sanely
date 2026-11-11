@@ -72,9 +72,14 @@ A check runs at these times:
 - when the first subscriber attaches (`checkOnSubscribe`),
 - when the tab becomes visible, or when the browser restores the page from the back-forward cache (`checkOnVisible`),
 - when the browser comes back online (`checkOnReconnect`),
-- on an interval (`checkInterval`, 5 minutes by default, 10 seconds at least).
+- on an interval (`checkInterval`, 5 minutes by default, 10 seconds at least),
+- in a Vite build, when a lazy chunk fails to load (`checkOnLoadError`).
 
 The interval pauses while the tab is hidden. A hidden tab cannot show a notice, so a check there wastes a request. The monitor listens to `visibilitychange` and not to `focus`. The browser also fires `focus` when the user comes back from another window while the page was visible the whole time, so a `focus` check adds a request and no information.
+
+A failed lazy chunk is often the first sign of skew: the new deployment deleted a file that the old JavaScript still asks for. Without this trigger, the tab would learn that it is stale only at the next scheduled check, up to 5 minutes later. The Vite adapter names Vite's `vite:preloadError` event in the embed, and the monitor checks when that event fires. A burst of failures sends one request, because a check joins the check in progress. The monitor never cancels the event, so the failed import still rejects, and the app's error boundary still runs.
+
+Vite fires `vite:preloadError` only for a dynamic import that has files to preload, such as CSS or a shared chunk. A lazy chunk with no such files loads through a plain `import()`, and its failure starts no check. The Next.js adapter names no event, because Next.js loads chunks without one.
 
 A check that takes longer than 30 seconds stops and records a `TargetResolutionError` with reason `"timeout"`. `checkTimeout` changes this limit, in milliseconds or as a time expression such as `"10s"`.
 

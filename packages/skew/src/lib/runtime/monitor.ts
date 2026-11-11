@@ -82,6 +82,11 @@ export interface DeploymentMonitorOptions<T extends string = never> {
   readonly checkOnReconnect?: boolean
   readonly checkOnSubscribe?: boolean
   readonly checkOnVisible?: boolean
+  /**
+   * Whether to check when the build fails to load code, through the event that the embed names.
+   * Only the Vite adapter names one. Defaults to `true`.
+   */
+  readonly checkOnLoadError?: boolean
   readonly environment?: RuntimeEnvironment
 }
 
@@ -420,6 +425,7 @@ export function createDeploymentMonitor<const T extends string = never>(
   }
 
   const target = options.target ?? embed?.endpoint ?? DEFAULT_DESCRIPTOR_ENDPOINT
+  const loadErrorEvent = (options.checkOnLoadError ?? true) ? embed?.loadErrorEvent : undefined
 
   return new DeploymentMonitorImplementation({
     checkTimeout: milliseconds("checkTimeout", options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT),
@@ -431,6 +437,7 @@ export function createDeploymentMonitor<const T extends string = never>(
       checkOnReconnect: options.checkOnReconnect ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnReconnect,
       checkOnSubscribe: options.checkOnSubscribe ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnSubscribe,
       checkOnVisible: options.checkOnVisible ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnVisible,
+      ...(loadErrorEvent === undefined ? {} : { loadErrorEvent }),
     },
     target: typeof target === "string" ? fetchDescriptor(target) : target,
   })

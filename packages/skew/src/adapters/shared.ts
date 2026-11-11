@@ -53,6 +53,7 @@ const EMBED_FIELD_ORDER: Record<keyof DeploymentEmbed | keyof DeploymentEmbed["r
     builtAt: 3,
     endpoint: 4,
     id: 2,
+    loadErrorEvent: 5,
     running: 1,
     v: 0,
   }

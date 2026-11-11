@@ -82,6 +82,13 @@ describe("vite adapter", () => {
     expect(parseDescriptor(descriptor).id).toBe("A")
   })
 
+  it("names Vite's preload error event in the embed", async () => {
+    expect.assertions(1)
+    const { html } = await buildFixture({ deploymentId: "A" })
+
+    expect(html).toContain('"loadErrorEvent":"vite:preloadError"')
+  })
+
   it("prefers an explicit id, then the detected platform, GIT_SHA, and a random ID", async () => {
     expect.assertions(4)
     isolateDeploymentEnvironment()
