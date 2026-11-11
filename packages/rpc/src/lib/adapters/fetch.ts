@@ -35,6 +35,7 @@ export type FetchTransportOptions = {
 // envelope, never from the status. Only the always-exposed codes cross by default: the rest reach a
 // response only when `expose` lets them through.
 const STATUS: Record<ChannelErrorDetail["code"], number> = {
+  application: 422,
   closed: 502,
   internal: 500,
   "malformed-envelope": 502,
@@ -55,9 +56,10 @@ type Dispatch = (
  * names the channel, so mount the handler on any prefix, such as `/rpc/*`.
  *
  * Every response is a `WireResult` envelope, with status 200 on success, 400 for `validation`, 404
- * for `unknown-channel`, and 500 for a hidden failure. A body that isn't JSON is a `validation`
- * failure, and a method other than `POST` gets 405. The request's `signal` reaches the resolver, so
- * a client that disconnects aborts it, and its failure is not reported to `onHidden`.
+ * for `unknown-channel`, 422 for `application`, and 500 for a hidden failure. A body that isn't
+ * JSON is a `validation` failure, and a method other than `POST` gets 405. The request's `signal`
+ * reaches the resolver, so a client that disconnects aborts it, and its failure is not reported to
+ * `onHidden`.
  */
 export function fetchHandler<Context = void>(
   router: Router<Context>,
