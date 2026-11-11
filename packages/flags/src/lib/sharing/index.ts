@@ -1,6 +1,7 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Flag } from "#lib/definition/index.ts"
 import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
+import type { FlagCacheKey } from "#lib/promise-cache/key.ts"
 import {
   type Decision,
   type DecisionSource,
@@ -22,24 +23,44 @@ import { createResolutionState } from "./resolution-state"
  */
 export type DecisionStore = {
   delete?(key: string): Promise<unknown>
+  /**
+   * Deletes every stored decision of these flag keys, or of every flag without keys, including the
+   * decisions that other processes stored. A change notification calls it. A store with it needs no
+   * `delete`, and the reader keeps no index of the keys it stored.
+   */
+  deleteFlags?(flagKeys?: readonly string[]): Promise<unknown>
   get(key: string): Promise<Decision | null | undefined>
-  set(key: string, decision: Decision): Promise<void>
+  /**
+   * Stores a decision. `entry.flagKey` names its flag, so a store with `deleteFlags` can find it.
+   */
+  set(key: string, decision: Decision, entry: { readonly flagKey: string }): Promise<void>
 }
 
 /**
- * A store operation failed. The evaluation continued without the store.
+ * A store operation failed. The evaluation continued without the store. `operation` tells an
+ * operation on one entry from `deleteFlags`, which has no entry.
  */
-export type StoreFailedReport<TIdentity extends Subject = Subject> = {
-  readonly _tag: "StoreFailed"
-  readonly error: Error
-  readonly flagKey: string
-  readonly identity: TIdentity | null
-  /**
-   * The evaluation key, or the flag key when the `key` function failed.
-   */
-  readonly key: string
-  readonly operation: "delete" | "get" | "key" | "set" | "validate"
-}
+export type StoreFailedReport<TIdentity extends Subject = Subject> =
+  | {
+      readonly _tag: "StoreFailed"
+      readonly error: Error
+      readonly flagKey: string
+      readonly identity: TIdentity | null
+      /**
+       * The evaluation key, or the flag key when the `key` function failed.
+       */
+      readonly key: string
+      readonly operation: "delete" | "get" | "key" | "set" | "validate"
+    }
+  | {
+      readonly _tag: "StoreFailed"
+      readonly error: Error
+      /**
+       * The changed flag keys, or `undefined` when the notification named none.
+       */
+      readonly flagKeys: readonly string[] | undefined
+      readonly operation: "deleteFlags"
+    }
 
 /**
  * The provider's `subscribe` threw. Evaluations continue without live invalidation, and the next
@@ -57,10 +78,12 @@ export type CacheOptions<TIdentity extends Subject> = {
    */
   coalesce?: boolean
   /**
-   * Replaces the evaluation key, which the store and coalescing use to identify interchangeable
-   * evaluations.
+   * Returns the identity fields, beyond `distinctId`, that change the decision, such as a plan or a
+   * tenant. The package adds them to the evaluation key, which the store and coalescing use to
+   * identify interchangeable evaluations. It keeps the provider, the flag, and `distinctId` in the
+   * key, so two flags never share a decision.
    */
-  key?: (context: EvaluationContext<TIdentity>) => string
+  key?: (context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]
   store?: DecisionStore
 }
 
@@ -70,7 +93,7 @@ export type CacheOptions<TIdentity extends Subject> = {
 export type Sharing<TIdentity extends Subject> = {
   changes: ChangeBroadcaster | undefined
   coalesce: boolean
-  key: ((context: EvaluationContext<TIdentity>) => string) | undefined
+  key: ((context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]) | undefined
   onError:
     | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
     | undefined
@@ -130,7 +153,7 @@ function accept(decision: unknown, flag: Flag): { decision: Decision; payload: u
 function reportStoreError<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: StoreContext<TIdentity>,
-  operation: StoreFailedReport["operation"],
+  operation: Exclude<StoreFailedReport["operation"], "deleteFlags">,
   key: string,
   error: unknown
 ): void {
@@ -154,9 +177,13 @@ function mutateStore<TIdentity extends Subject>(
   key: string,
   operation: "delete" | "set",
   mutation: () => Promise<unknown> | undefined
-): void {
+): Promise<unknown> {
   const { mutations } = config.state
-  const queue = mutations.get(key) ?? { deletes: 0, tail: Promise.resolve() }
+  const queue = mutations.get(key) ?? {
+    deletes: 0,
+    flagKey: context.flagKey,
+    tail: Promise.resolve(),
+  }
   if (operation === "delete") {
     queue.deletes += 1
   }
@@ -176,6 +203,7 @@ function mutateStore<TIdentity extends Subject>(
     })
   queue.tail = tail
   mutations.set(key, queue)
+  return tail
 }
 
 function deleteCacheEntry<TIdentity extends Subject>(
@@ -187,7 +215,7 @@ function deleteCacheEntry<TIdentity extends Subject>(
   if (!store.delete) {
     return
   }
-  mutateStore(config, context, key, "delete", () => store.delete?.(key))
+  void mutateStore(config, context, key, "delete", () => store.delete?.(key))
 }
 
 function indexCacheKey<TIdentity extends Subject>(
@@ -196,7 +224,8 @@ function indexCacheKey<TIdentity extends Subject>(
   store: DecisionStore,
   key: string
 ): void {
-  if (!store.delete || !config.changes) {
+  // A store with `deleteFlags` finds a flag's entries itself, so the reader indexes nothing.
+  if (!store.delete || store.deleteFlags || !config.changes) {
     return
   }
 
@@ -204,6 +233,61 @@ function indexCacheKey<TIdentity extends Subject>(
   const keys = state.keysByFlag.get(context.flag.key) ?? new Map<string, TIdentity | null>()
   keys.set(key, context.identity)
   state.keysByFlag.set(context.flag.key, keys)
+}
+
+/**
+ * Calls the store's `deleteFlags` for a change, after the writes of the changed flags that already
+ * started, so none of them lands after the delete. Until it completes, reads of those flags skip
+ * the store. A failure is reported and leaves the entries to the store's expiry.
+ */
+function deleteFlags<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  remove: (flagKeys?: readonly string[]) => Promise<unknown>,
+  flagKeys: readonly string[] | undefined
+): void {
+  const { flagDeletes, mutations } = config.state
+  const changed = flagKeys && new Set(flagKeys)
+  const writes = [...mutations.values()]
+    .filter((queue) => !changed || changed.has(queue.flagKey))
+    .map((queue) => queue.tail)
+  const track = (step: 1 | -1) => {
+    if (!flagKeys) {
+      flagDeletes.all += step
+      return
+    }
+    for (const flagKey of flagKeys) {
+      const count = (flagDeletes.byFlag.get(flagKey) ?? 0) + step
+      if (count === 0) flagDeletes.byFlag.delete(flagKey)
+      else flagDeletes.byFlag.set(flagKey, count)
+    }
+  }
+  track(1)
+  void Promise.allSettled(writes)
+    .then(() => remove(flagKeys))
+    .catch((error: unknown) => {
+      reportInBackground(config.onError, {
+        _tag: "StoreFailed",
+        error: normalizeError(error),
+        flagKeys,
+        operation: "deleteFlags",
+      })
+    })
+    .finally(() => {
+      track(-1)
+    })
+}
+
+/**
+ * Drops the reader's decision memory for good: calls in flight, the key index, and open write
+ * tickets. The reader's later reads skip the store and coalescing, so nothing attaches again.
+ */
+export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdentity>): void {
+  const { state } = config
+  state.disposed = true
+  state.pending.clear()
+  state.tickets.clear()
+  state.keysByFlag.clear()
+  state.writes.generation += 1
 }
 
 /**
@@ -248,6 +332,10 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
     if (!store) {
       return
     }
+    if (store.deleteFlags) {
+      deleteFlags(config, store.deleteFlags.bind(store), changedFlagKeys)
+      return
+    }
     const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
     for (const flagKey of flagKeys) {
       const cacheKeys = state.keysByFlag.get(flagKey)
@@ -276,8 +364,15 @@ async function consultStore<TIdentity extends Subject>(
 ): Promise<StoreConsultation> {
   const { state } = config
   const generationBeforeRead = state.writes.generation
+  // A refresh that starts while the get is in flight deletes the decision that the get can return.
+  const refreshesBeforeRead = state.writes.refreshes
   // The delete for an earlier change has not completed, so the store can hold a stale decision.
-  if (state.mutations.get(key)?.deletes) {
+  const { flagDeletes } = state
+  if (
+    state.mutations.get(key)?.deletes
+    || flagDeletes.all > 0
+    || (flagDeletes.byFlag.get(flag.key) ?? 0) > 0
+  ) {
     return { generation: generationBeforeRead }
   }
 
@@ -289,7 +384,12 @@ async function consultStore<TIdentity extends Subject>(
     return { generation: state.writes.generation }
   }
   const generation = state.writes.generation
-  if (generation !== generationBeforeRead || cached === null || cached === undefined) {
+  if (
+    generation !== generationBeforeRead
+    || state.writes.refreshes !== refreshesBeforeRead
+    || cached === null
+    || cached === undefined
+  ) {
     return { generation }
   }
 
@@ -302,28 +402,57 @@ async function consultStore<TIdentity extends Subject>(
   }
 }
 
+/**
+ * A read's permission to store the decision it fetches. A change notification voids every open
+ * ticket through `generation`, and a fresh read voids the older tickets of its key through `epoch`.
+ * Each ticket closes once: when its write starts, or when its read ends without one.
+ */
+type WriteTicket = { epoch: number; generation: number; key: string; store: DecisionStore }
+
+function openTicket<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  store: DecisionStore,
+  key: string,
+  generation: number,
+  fresh: boolean
+): WriteTicket {
+  const { tickets } = config.state
+  const entry = tickets.get(key) ?? { epoch: 0, open: 0 }
+  if (fresh) entry.epoch += 1
+  entry.open += 1
+  tickets.set(key, entry)
+  return { epoch: entry.epoch, generation, key, store }
+}
+
+function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
+  const { tickets } = config.state
+  const entry = tickets.get(ticket.key)
+  if (!entry) return
+  entry.open -= 1
+  if (entry.open === 0) tickets.delete(ticket.key)
+}
+
 function writeThrough<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: EvaluationContext<TIdentity>,
-  store: DecisionStore,
-  generation: number,
-  key: string,
+  ticket: WriteTicket,
   decision: Decision
-): void {
-  // The generation check runs when the write starts, after the earlier operations for this key. A
-  // change during the write queues its delete after the write.
-  mutateStore(config, storeContext(context), key, "set", () => {
-    if (config.state.writes.generation !== generation) {
+): Promise<unknown> {
+  const { key, store } = ticket
+  // The checks run when the write starts, after the earlier operations for this key. A change
+  // during the write queues its delete after the write.
+  return mutateStore(config, storeContext(context), key, "set", () => {
+    const epoch = config.state.tickets.get(key)?.epoch
+    closeTicket(config, ticket)
+    if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
       return
     }
     // A change during the read removed this key from the index, so index it again for the decision
     // that this write stores.
     indexCacheKey(config, context, store, key)
-    return store.set(key, decision)
+    return store.set(key, decision, { flagKey: context.flag.key })
   })
 }
-
-type WriteTicket = { generation: number; store: DecisionStore }
 
 /**
  * Starts the provider call that concurrent evaluations with one evaluation key share, and registers
@@ -350,6 +479,16 @@ function startSharedCall<TIdentity extends Subject>(
   )
   const accepted = promise.then((decision) => accept(decision, context.flag))
   void accepted.catch(() => null)
+  // Each evaluation reports its own invalid decision. The call only skips storing it.
+  if (write) {
+    void accepted.then(
+      ({ decision }) => writeThrough(config, context, write, decision),
+      () => {
+        closeTicket(config, write)
+        return null
+      }
+    )
+  }
   const call: PendingResolution = {
     accepted,
     flag: context.flag,
@@ -365,17 +504,6 @@ function startSharedCall<TIdentity extends Subject>(
     }
   }
   void promise.then(settle, settle)
-  if (write) {
-    const { generation, store } = write
-    // Each evaluation reports its own invalid decision. The call only skips storing it.
-    void accepted.then(
-      ({ decision }) => {
-        writeThrough(config, context, store, generation, key, decision)
-        return null
-      },
-      () => null
-    )
-  }
   return call
 }
 
@@ -393,7 +521,8 @@ export async function resolveDecision<TIdentity extends Subject>(
   context: EvaluationContext<TIdentity>,
   flag: Flag,
   provider: (signal: AbortSignal) => MaybePromise<unknown>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  fresh: boolean
 ): Promise<DecisionResolution> {
   const { coalesce, state } = config
   const store = config.store
@@ -406,7 +535,7 @@ export async function resolveDecision<TIdentity extends Subject>(
     key = undefined
   }
 
-  if (key === undefined || (!store && !coalesce)) {
+  if (key === undefined || state.disposed || (!store && !coalesce)) {
     const decision = await raceWithSignal(() => provider(signal), signal)
     return { ...accept(decision, flag), source: "provider" }
   }
@@ -415,32 +544,47 @@ export async function resolveDecision<TIdentity extends Subject>(
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
-    const consultation = await raceWithSignal(
-      () => consultStore(config, context, flag, store, key),
-      signal
-    )
+    // A fresh read skips the stored decision but still stores the provider's. Its ticket voids
+    // the older tickets of its key, so a slower older call cannot store over its decision.
+    const consultation = fresh
+      ? { generation: state.writes.generation }
+      : await raceWithSignal(() => consultStore(config, context, flag, store, key), signal)
     if (consultation.accepted) {
       return { ...consultation.accepted, source: "cache" }
     }
-    write = { generation: consultation.generation, store }
+    write = openTicket(config, store, key, consultation.generation, fresh)
+    // A fresh read deletes the decision it replaces before it asks the provider. Reads of the key
+    // skip the store while the delete is pending and miss it afterward, so none of them returns
+    // the old decision, even when this read's own write later fails or stalls.
+    if (fresh) {
+      state.writes.refreshes += 1
+      deleteCacheEntry(config, storeContext(context), store, key)
+    }
   }
 
   if (!coalesce) {
-    const accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
-    if (write) {
-      writeThrough(config, context, write.store, write.generation, key, accepted.decision)
+    let accepted: { decision: Decision; payload: unknown }
+    try {
+      accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
+    } catch (error) {
+      if (write) closeTicket(config, write)
+      throw error
     }
+    if (write) void writeThrough(config, context, write, accepted.decision)
     return { ...accepted, source: "provider" }
   }
 
   // The in-flight check, the leadership registration, and the join must stay in one synchronous
   // block: an await between them lets two concurrent evaluations both miss the pending map and
   // both lead, or lets the shared call stop before this evaluation joins it.
-  const existing = state.pending.get(key)
+  // A fresh read starts its own call, which later evaluations join instead of an older one.
+  const existing = fresh ? undefined : state.pending.get(key)
   const call =
     existing && !existing.shared.signal.aborted
       ? existing
       : startSharedCall(config, context, key, provider, write)
+  // Only the call that this evaluation started stores the decision, with this evaluation's ticket.
+  if (write && call === existing) closeTicket(config, write)
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.

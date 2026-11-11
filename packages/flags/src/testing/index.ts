@@ -81,15 +81,22 @@ export function fakeProvider<const TFlags extends readonly Flag[]>(entries?: {
 }
 
 /**
- * A `DecisionStore` that keeps decisions in memory.
+ * A `DecisionStore` that keeps decisions in memory, with each decision's flag key so that a change
+ * notification can delete a flag's decisions.
  */
 export function memoryStore(): DecisionStore {
-  const decisions = new Map<string, Decision>()
+  const entries = new Map<string, { decision: Decision; flagKey: string }>()
   return {
-    delete: (key) => Promise.resolve(decisions.delete(key)),
-    get: (key) => Promise.resolve(decisions.get(key)),
-    set(key, decision) {
-      decisions.set(key, decision)
+    delete: (key) => Promise.resolve(entries.delete(key)),
+    deleteFlags(flagKeys) {
+      for (const [key, entry] of entries) {
+        if (!flagKeys || flagKeys.includes(entry.flagKey)) entries.delete(key)
+      }
+      return Promise.resolve()
+    },
+    get: (key) => Promise.resolve(entries.get(key)?.decision),
+    set(key, decision, { flagKey }) {
+      entries.set(key, { decision, flagKey })
       return Promise.resolve()
     },
   }

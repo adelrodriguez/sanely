@@ -118,11 +118,11 @@ An invalid `provider`, `timeout`, or `identify` throws `FlagDefinitionError`.
 
 ### `CacheOptions`
 
-| Option     | Type                                                | Default   | Description                                                                  |
-| ---------- | --------------------------------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `store`    | `DecisionStore`                                     | None      | Stores decisions between evaluations.                                        |
-| `coalesce` | `boolean`                                           | `true`    | Lets concurrent evaluations with one evaluation key share one provider call. |
-| `key`      | `(context: EvaluationContext<TIdentity>) => string` | See below | Replaces the evaluation key, which the store and coalescing use.             |
+| Option     | Type                                                                 | Default   | Description                                                                                                                                 |
+| ---------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store`    | `DecisionStore`                                                      | None      | Stores decisions between evaluations.                                                                                                       |
+| `coalesce` | `boolean`                                                            | `true`    | Lets concurrent evaluations with one evaluation key share one provider call.                                                                |
+| `key`      | `(context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]` | See below | Returns the identity fields that also change the decision. The package adds them to the evaluation key, which the store and coalescing use. |
 
 The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
 
@@ -131,27 +131,36 @@ The default evaluation key holds the provider's `name`, the flag key, the flag k
 ```ts
 type DecisionStore = {
   get(key: string): Promise<Decision | null | undefined>
-  set(key: string, decision: Decision): Promise<void>
+  set(key: string, decision: Decision, entry: { readonly flagKey: string }): Promise<void>
   delete?(key: string): Promise<unknown>
+  deleteFlags?(flagKeys?: readonly string[]): Promise<unknown>
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With `delete` and a provider `subscribe`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote since it was created. A decision that another process or an earlier reader stored stays until the store expires it, so give a shared store an expiry.
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With a provider `subscribe`, a change notification deletes the stored decisions of the changed flags:
+
+- With `deleteFlags`, the package calls it with the changed flag keys, or with none for a notification that names no flags. The store deletes those flags' decisions, including those that other processes stored. `set` passes each decision's `flagKey` so that the store can find them. The package waits for the writes of those flags that already started, and reads of those flags skip the store until the delete completes.
+- With only `delete`, the package deletes the entries that this reader read or wrote since it was created, and it remembers each of those keys until its flag changes. A decision that another process stored stays until the store expires it.
+
+Give a store that several processes share `deleteFlags`, or an expiry.
 
 ## Readers
 
 ### `Flags<TIdentity>`
 
-The value that `createFlags` returns with `identify`. It has every `FlagReader` method, `for`, and `subscribe`.
+The value that `createFlags` returns with `identify`. It has every `FlagReader` method, `for`, `subscribe`, and `dispose`.
 
 ### `CallerFlags<TIdentity>`
 
-The value that `createFlags` returns without `identify`. It has only `for` and `subscribe`.
+The value that `createFlags` returns without `identify`. It has only `for`, `subscribe`, and `dispose`.
 
 | Member                | Description                                                                                                                |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `for(identity)`       | Returns a `FlagReader` for `identity`. A missing identity makes its reads return defaults with an `IdentityNotFoundError`. |
 | `subscribe(listener)` | Calls `listener(keys?)` after each provider change. Returns a function that removes the listener.                          |
+| `dispose()`           | Detaches the reader from its provider and drops its decision memory. Also available as `using flags = createFlags(...)`.   |
+
+A reader stays attached to its provider until you dispose it, so create one reader for the process, or dispose a reader that you create for one request. After `dispose`, reads still work, but they skip the store and coalescing, and `subscribe` does nothing. Calling `dispose` again does nothing.
 
 `subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report. The listener stays registered, and it receives changes once a later subscription or evaluation attaches the provider.
 
@@ -165,7 +174,7 @@ The value that `createFlags` returns without `identify`. It has only `for` and `
 | `detailsMany(flags, options?)` | A tuple of `EvaluationDetails`      | The details of several flags, in the order of `flags`.             |
 | `snapshot(flags, options?)`    | `Promise<FlagSnapshot>`             | Serializable values of several flags, for a client's first render. |
 
-`options` is `{ signal?: AbortSignal }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. No read rejects.
+`options` is `{ signal?: AbortSignal; fresh?: boolean }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. `fresh: true` deletes the stored decision with the store's `delete`, skips any provider call in flight, asks the provider, and stores its decision. Other reads of the flag then miss the store until the new decision is stored, so none of them returns the replaced one. A store without `delete` keeps the replaced decision, and other reads can return it until the fresh decision is stored. No read rejects.
 
 `getMany`, `detailsMany`, and `snapshot` resolve the identity once. Within one tick, the flags that need provider work share one provider request. A provider with `decide` gets one call with each flag key once. A provider with `decideOne` gets one call for each flag key. Each flag keeps its own hooks, validation, timeout, and fallback. The batch deadline is the longest flag timeout, or none when any flag has none.
 
@@ -235,13 +244,13 @@ Hooks and the cache `key` function receive this context.
 
 Evaluations return these errors in `details().error` and never throw them. Each class has a literal `_tag` equal to its name.
 
-| Error                    | Fields               | When                                                                                                                                                                                                                 |
-| ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, `for` received no identity, or the identity has no non-empty string or finite number `distinctId`. `cause` holds what `identify` threw, or a `TypeError` for the `distinctId`. |
-| `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result.                                            |
-| `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                                                                      |
-| `EvaluationTimeoutError` | `timeout`            | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                                                                   |
-| `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                                                                      |
+| Error                    | Fields                          | When                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IdentityNotFoundError`  | `cause`                         | `identify` returned nothing or threw, `for` received no identity, or the identity has no non-empty string or finite number `distinctId`. `cause` holds what `identify` threw, or a `TypeError` for the `distinctId`.                                                                                  |
+| `InvalidDecisionError`   | `decision`, `problem`, `reason` | The decision does not fit the flag. `problem` is `"malformed"`, `"kind"` for the other kind, `"variant"` for a variant that the flag does not allow, `"payload"` for a payload that the parser rejects, or `"missing"` for a key that a `decide` result leaves out. `reason` describes it for people. |
+| `ProviderFailedError`    | `provider`, `cause`             | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                                                                                                                                                       |
+| `EvaluationTimeoutError` | `timeout`                       | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                                                                                                                                                    |
+| `EvaluationAbortedError` | `cause`                         | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                                                                                                                                                       |
 
 `EvaluationError` is the union of these classes.
 
@@ -251,11 +260,11 @@ Evaluations return these errors in `details().error` and never throw them. Each 
 
 `onError` receives an `ErrorReport`, a union of three reports with a literal `_tag`:
 
-| Report            | Fields                                             | When                                                                                                                   |
-| ----------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `HookFailed`      | `phase`, `hookIndex`, `error`, `context`           | A hook threw or rejected. The other hooks still run, and the result does not change.                                   |
-| `StoreFailed`     | `operation`, `key`, `flagKey`, `identity`, `error` | A store operation or the `key` function failed. `operation` is `"get"`, `"set"`, `"delete"`, `"validate"`, or `"key"`. |
-| `SubscribeFailed` | `error`                                            | The provider's `subscribe` threw. Evaluations continue without live invalidation.                                      |
+| Report            | Fields                                                                                  | When                                                                                                                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HookFailed`      | `phase`, `hookIndex`, `error`, `context`                                                | A hook threw or rejected. The other hooks still run, and the result does not change.                                                                                                                              |
+| `StoreFailed`     | `operation`, `key`, `flagKey`, `identity`, `error`, or `operation`, `flagKeys`, `error` | A store operation or the `key` function failed. `operation` is `"get"`, `"set"`, `"delete"`, `"validate"`, or `"key"` for one entry. For `"deleteFlags"`, `flagKeys` holds the changed flag keys, or `undefined`. |
+| `SubscribeFailed` | `error`                                                                                 | The provider's `subscribe` threw. Evaluations continue without live invalidation.                                                                                                                                 |
 
 ## Types
 
@@ -290,13 +299,13 @@ Every export is client-only. The module has a `"use client"` directive. A compon
 
 Each mount creates its own flag cache, so a server never shares one between requests. A provider without `identity` accepts any snapshot, because its reader resolves the identity itself.
 
-An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. Other values throw a `TypeError`.
+An identity in a cache key can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. The type of the `identity` prop rejects a named field of another type, such as a `Date`. A value that reaches the cache without that check throws a `TypeError`.
 
 ### `FlagCacheOptions`
 
 | Option       | Type                                  | Default  | Description                                                                                                                  |
 | ------------ | ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `maxEntries` | `number`                              | `100`    | The most settled entries for each list of flags. A positive integer.                                                         |
+| `maxEntries` | `number`                              | `100`    | The most settled entries for each list of flags. A positive integer. An invalid option throws `FlagDefinitionError`.         |
 | `ttl`        | `number \| ValidateTimeExpression<T>` | `300000` | How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.                                 |
 | `pendingTtl` | `number \| ValidateTimeExpression<T>` | None     | How long a pending evaluation stays before the cache can remove it, such as `"30s"`. Removal does not cancel the evaluation. |
 
@@ -324,11 +333,11 @@ A provider change for one of the flags drops its cached value and its snapshot e
 
 Returns `FlagCacheControls` for the nearest `FlagsProvider` and its identity:
 
-| Method              | Description                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. |
-| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers.                        |
-| `clear()`           | Drops every cached value and the snapshot.                                                                                     |
+| Method              | Description                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend.                                               |
+| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. The next evaluation reads fresh, so it skips the reader's store too. |
+| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                  |
 
 ### React types
 

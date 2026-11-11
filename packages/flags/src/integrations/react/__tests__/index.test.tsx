@@ -10,11 +10,13 @@ import {
   anonymous,
   type CallerFlags,
   createFlags,
+  type DecisionStore,
   decision,
   defineProvider,
   type Flag,
   flag,
   type FlagReader,
+  FlagDefinitionError,
   type FlagSnapshot,
   type Identity,
 } from "#index.ts"
@@ -28,7 +30,7 @@ import {
   useFlagCache,
   useFlags,
 } from "#integrations/react/index.tsx"
-import { fakeProvider } from "#testing/index.ts"
+import { fakeProvider, memoryStore } from "#testing/index.ts"
 
 const hydrated: Array<{ container: HTMLElement; unmount: () => void }> = []
 
@@ -146,6 +148,18 @@ function CacheConsumer() {
 function BetaAndTheme() {
   const [betaValue, themeValue] = useFlags([beta, theme])
   return <span>{`${betaValue}:${themeValue}`}</span>
+}
+
+const third = flag.boolean("third", false)
+
+function BetaAndThird() {
+  const [betaValue, thirdValue] = useFlags([beta, third])
+  return <span>{`${betaValue}:${thirdValue}`}</span>
+}
+
+function ThemeAndBeta() {
+  const [themeValue, betaValue] = useFlags([theme, beta])
+  return <span>{`${themeValue}:${betaValue}`}</span>
 }
 
 function EmptyTuple() {
@@ -493,6 +507,332 @@ describe("React integration", () => {
     expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
+  it("asks the provider again on invalidate when the reader has a store", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    const { capture, controls } = captureCache()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+
+    provider.state.value = true
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+  })
+
+  it("reads fresh for a flag list that mounts after invalidate or clear", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<Value item={beta} />))
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    // No reader is mounted, and the other flag list has no bucket yet, when the cache drops beta.
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    await act(() => {
+      rerender(tree(<BetaAndTheme />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+    provider.state.value = true
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    await act(() => {
+      rerender(tree(<ThemeAndBeta />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("dark:true")).toBeTruthy()
+  })
+
+  it("reads fresh for every flag list that mounts while a refresh is in flight", async () => {
+    const provider = makeProvider()
+    // A slow provider keeps the first fresh read in flight while the second list reads.
+    const slow = defineProvider({
+      decideOne: async (item: Flag) => {
+        await sleep(20)
+        return item.kind === "variant"
+          ? decision.variant("dark")
+          : decision.boolean(provider.state.value)
+      },
+      name: "slow",
+    })
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: slow,
+    })
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<Value item={beta} />))
+    expect(await screen.findByText("true")).toBeTruthy()
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    // Both lists read beta in one render, so the second starts before the first refresh ends.
+    await act(() => {
+      rerender(
+        tree(
+          <>
+            <Value item={beta} />
+            <BetaAndTheme />
+          </>
+        )
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh when a newer refresh voids an older refresh's write", async () => {
+    // Each provider call waits until the test answers it, in the order the calls start.
+    const answers: Array<(value: boolean) => void> = []
+    let value = true
+    const held = { on: false }
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: defineProvider({
+        decideOne: (item: Flag) => {
+          if (item.kind === "variant") return decision.variant("dark")
+          if (!held.on) return decision.boolean(value)
+          return new Promise((resolve) => {
+            answers.push((answer) => {
+              resolve(decision.boolean(answer))
+            })
+          })
+        },
+        name: "held",
+      }),
+    })
+    await flags.get(beta)
+    const other = flag.boolean("other", false)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    value = false
+    held.on = true
+    controls().invalidate([beta])
+    // A and B both read beta fresh. B's fresh read voids A's write ticket.
+    const first = controls().prefetch([beta])
+    const second = controls().prefetch([beta, other])
+    await sleep(5)
+    answers.shift()?.(false)
+    await first
+    // C reads while B is still in flight.
+    held.on = false
+    const later = controls().prefetch([beta, third])
+    await sleep(5)
+    for (const answer of answers.splice(0)) answer(false)
+    await Promise.all([second, later])
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <BetaAndThird />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:false")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh when the newer of two refreshes fails", async () => {
+    // Held provider calls, by flag key, in the order they start.
+    const held = new Map<string, Array<(answer: boolean | Error) => void>>()
+    let value = true
+    const holding = { on: false }
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: defineProvider({
+        decideOne: (item: Flag) => {
+          if (item.kind === "variant") return decision.variant("dark")
+          if (!holding.on) return decision.boolean(value)
+          return new Promise((resolve, reject) => {
+            const calls = held.get(item.key) ?? []
+            calls.push((answer) => {
+              if (answer instanceof Error) reject(answer)
+              else resolve(decision.boolean(answer))
+            })
+            held.set(item.key, calls)
+          })
+        },
+        name: "held",
+      }),
+    })
+    const answer = (flagKey: string, result: boolean | Error) =>
+      held.get(flagKey)?.shift()?.(result)
+    await flags.get(beta)
+    const other = flag.boolean("other", false)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    value = false
+    holding.on = true
+    controls().invalidate([beta])
+    // B's fresh read voids A's store write, then B fails, so the store still holds true.
+    const first = controls().prefetch([beta])
+    const second = controls().prefetch([beta, other])
+    await sleep(5)
+    answer("beta", false)
+    answer("beta", new Error("provider down"))
+    answer("other", false)
+    await Promise.all([first, second])
+    holding.on = false
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <ThemeAndBeta />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("dark:false")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh until its refreshed decision is stored", async () => {
+    const provider = makeProvider()
+    const store = memoryStore()
+    // A slow store write: the refreshed decision lands after the refresh's evaluation ends.
+    const slowStore: DecisionStore = {
+      ...store,
+      set: async (key, value, entry) => {
+        await sleep(20)
+        await store.set(key, value, entry)
+      },
+    }
+    const flags = createFlags({
+      cache: { store: slowStore },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    await flags.get(beta)
+    await sleep(30)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    provider.state.value = false
+    controls().invalidate([beta])
+    await controls().prefetch([beta])
+    await controls().prefetch([beta, theme])
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <BetaAndTheme />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("reads fresh when it prefetches a snapshot flag after clear", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    // The store holds the server's decision, which the provider no longer returns.
+    await flags.get(beta)
+    provider.state.value = false
+    const snapshot: FlagSnapshot = {
+      distinctId: "core",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        {capture}
+      </FlagsProvider>
+    )
+    await act(async () => {
+      controls().clear()
+      await controls().prefetch([beta])
+    })
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags} snapshot={snapshot}>
+          {capture}
+          <Suspense fallback="loading">
+            <Value item={beta} />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+  })
+
   it("re-renders readers on invalidate after React resubscribes them", async () => {
     const { decideOne, flags, state } = makeFlags()
     const { capture, controls } = captureCache()
@@ -730,6 +1070,8 @@ describe("React integration", () => {
     )
     const reader = { ...makeFlags().flags, details } as FlagReader
     const flags: CallerFlags<Identity> = {
+      [Symbol.dispose]: () => null,
+      dispose: () => null,
       for: () => reader,
       subscribe: () => () => null,
     }
@@ -775,7 +1117,7 @@ describe("React integration", () => {
               child
             </FlagsProvider>
           )
-        ).toThrow(RangeError)
+        ).toThrow(FlagDefinitionError)
       }
     } finally {
       silenced.restore()

@@ -53,9 +53,25 @@ describe("memoryStore", () => {
     const decision = { type: "boolean", value: true } as const
 
     await expect(store.get("k")).resolves.toBeUndefined()
-    await store.set("k", decision)
+    await store.set("k", decision, { flagKey: "beta" })
     await expect(store.get("k")).resolves.toEqual(decision)
     await expect(store.delete?.("k")).resolves.toBe(true)
     await expect(store.get("k")).resolves.toBeUndefined()
+  })
+
+  test("deletes the decisions of the named flags, or of every flag", async () => {
+    const store = memoryStore()
+    const decision = { type: "boolean", value: true } as const
+    await store.set("a1", decision, { flagKey: "a" })
+    await store.set("a2", decision, { flagKey: "a" })
+    await store.set("b1", decision, { flagKey: "b" })
+
+    await store.deleteFlags?.(["a"])
+    await expect(store.get("a1")).resolves.toBeUndefined()
+    await expect(store.get("a2")).resolves.toBeUndefined()
+    await expect(store.get("b1")).resolves.toEqual(decision)
+
+    await store.deleteFlags?.()
+    await expect(store.get("b1")).resolves.toBeUndefined()
   })
 })

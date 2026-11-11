@@ -136,6 +136,7 @@ export function pickDecision(decisions: unknown, flag: Flag): unknown {
   if (typeof decisions !== "object" || decisions === null || !Object.hasOwn(decisions, flag.key)) {
     throw new InvalidDecisionError({
       decision: undefined,
+      problem: "missing",
       reason: "the provider returned no decision for this flag",
     })
   }

@@ -27,8 +27,15 @@ export type PendingResolution = {
  */
 export type StoreMutations = {
   deletes: number
+  flagKey: string
   tail: Promise<unknown>
 }
+
+/**
+ * The `deleteFlags` calls that have not completed, for each flag key and for every flag. Until one
+ * completes, the store can still hold a stale decision of those flags.
+ */
+export type FlagDeletes = { all: number; byFlag: Map<string, number> }
 
 /**
  * Decision memory for one reader: in-flight coalesced provider calls plus cache invalidation
@@ -36,6 +43,9 @@ export type StoreMutations = {
  * built from the same options.
  */
 export type ResolutionState<TIdentity extends Subject> = {
+  // A disposed reader keeps no decision memory: its reads go straight to the provider.
+  disposed: boolean
+  flagDeletes: FlagDeletes
   keysByFlag: Map<string, Map<string, TIdentity | null>>
   mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
@@ -45,15 +55,22 @@ export type ResolutionState<TIdentity extends Subject> = {
   // One counter for the reader: any flag-change notification invalidates every open write ticket.
   // A pending write lives for milliseconds and the next evaluation re-establishes it, so dropping
   // one is always safe. It is cheaper than tracking which flags a notification covers.
-  writes: { generation: number }
+  writes: { generation: number; refreshes: number }
+  // The open write tickets of each evaluation key. A fresh read advances its key's epoch, which
+  // voids only that key's older tickets. A key leaves the map when its last ticket closes, so the
+  // map holds only keys with a read in flight.
+  tickets: Map<string, { epoch: number; open: number }>
 }
 
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
   return {
+    disposed: false,
+    flagDeletes: { all: 0, byFlag: new Map() },
     keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),
     subscription: { registered: false },
-    writes: { generation: 0 },
+    tickets: new Map(),
+    writes: { generation: 0, refreshes: 0 },
   }
 }

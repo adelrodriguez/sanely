@@ -96,7 +96,7 @@ function RefreshButton() {
 }
 ```
 
-`prefetch(flags)` helps a later `useFlag` or `useFlags` with the same flags in the same order. When the provider has a [`subscribe` function](./write-a-provider.md#report-flag-changes), a change drops the cached values of the changed flags, and the components that read them evaluate again.
+`invalidate` and `clear()` make the next evaluation of those flags read fresh, so they also skip a store that the reader has. `prefetch(flags)` helps a later `useFlag` or `useFlags` with the same flags in the same order. When the provider has a [`subscribe` function](./write-a-provider.md#report-flag-changes), a change drops the cached values of the changed flags, and the components that read them evaluate again.
 
 To render flags on the server without a loading state, see [How to render flags on the server](./render-flags-on-the-server.md).
 

@@ -309,7 +309,8 @@ describe("first-class cache", () => {
       {
         type: "variant",
         variant: "dark",
-      }
+      },
+      { flagKey: "theme" }
     )
     const cacheDetails = await flags.details(theme)
     expect(cacheDetails.source).toBe("cache")
@@ -341,13 +342,282 @@ describe("first-class cache", () => {
     expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
-  test("supports a custom identity-sensitive key", async () => {
+  test.each([true, false])(
+    "keeps a fresh decision when an older call finishes later, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const older = createDeferred<Decision>()
+      const answers: Array<() => Promise<Decision>> = [
+        () => older.promise,
+        () => Promise.resolve(FALSE),
+      ]
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => answers.shift()?.() ?? TRUE, name: "test" }),
+      })
+
+      const first = flags.details(betaAccess)
+      await flushBackground()
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({ value: false })
+      await flushBackground()
+      older.resolve(TRUE)
+      await first
+      await flushBackground()
+
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+    }
+  )
+
+  test.each([true, false])(
+    "stores every decision of a fresh batch, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
+      })
+
+      await flags.detailsMany([flag.boolean("a", false), flag.boolean("b", false)], {
+        fresh: true,
+      })
+      await flushBackground()
+      expect(stored.size).toBe(2)
+    }
+  )
+
+  test.each([true, false])(
+    "returns a fresh decision even when its store write stalls, with coalesce %s",
+    async (coalesce) => {
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: () => Promise.resolve(null),
+            // A store write that never finishes.
+            set: () =>
+              new Promise(() => {
+                // Never settles.
+              }),
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
+        timeout: 50,
+      })
+
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({
+        source: "provider",
+        value: true,
+      })
+    }
+  )
+
+  test.each([true, false])(
+    "keeps reading past an old stored decision after a fresh write fails, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const writes = { fail: false }
+      const { control, decideOne, provider } = controlledProvider()
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            // A fresh read deletes the decision it replaces, so the store needs `delete`.
+            delete: (key) => Promise.resolve(stored.delete(key)),
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              if (writes.fail) return Promise.reject(new Error("store down"))
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider,
+      })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      control.value = false
+      writes.fail = true
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      await flushBackground()
+      // The store still holds true, so the next read asks the provider and stores again.
+      writes.fail = false
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: false })
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+      expect(decideOne).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  test.each([true, false])(
+    "uses the store again once the latest refresh is stored, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const older = createDeferred<Decision>()
+      const answers: Array<() => Promise<Decision>> = [() => older.promise]
+      const decideOne = vi.fn(() => answers.shift()?.() ?? Promise.resolve(FALSE))
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne, name: "test" }),
+      })
+
+      // Refresh A waits for its provider while refresh B stores its decision.
+      const first = flags.details(betaAccess, { fresh: true })
+      await flushBackground()
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({ value: false })
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+      older.resolve(TRUE)
+      await first
+    }
+  )
+
+  test.each([true, false])(
+    "never returns a replaced decision while an older refresh is still storing, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const writing: { hold?: Promise<null> } = {}
+      const store: DecisionStore = {
+        delete: (key) => Promise.resolve(stored.delete(key)),
+        get: (key) => Promise.resolve(stored.get(key)),
+        set: async (key, value) => {
+          await writing.hold
+          stored.set(key, value)
+        },
+      }
+      let answer: Decision | Error = TRUE
+      const flags = createFlags({
+        cache: { coalesce, store },
+        identify,
+        provider: defineProvider({
+          decideOne: () => (answer instanceof Error ? Promise.reject(answer) : answer),
+          name: "test",
+        }),
+      })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      // Refresh A answers false, and its store write waits.
+      const release = createDeferred<null>()
+      writing.hold = release.promise
+      answer = FALSE
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      // Refresh B starts while A's write waits, and fails.
+      answer = new Error("provider down")
+      const failed = await flags.details(betaAccess, { fresh: true })
+      expect(failed.error).toBeInstanceOf(ProviderFailedError)
+      answer = FALSE
+      expect(await flags.details(betaAccess)).toMatchObject({ value: false })
+      release.resolve(null)
+      delete writing.hold
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ value: false })
+    }
+  )
+
+  test.each([true, false])(
+    "does not return a stored decision that a refresh replaced during the read, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const reading: { hold?: Promise<null> } = {}
+      const store: DecisionStore = {
+        delete: (key) => Promise.resolve(stored.delete(key)),
+        get: async (key) => {
+          // The value is read when the get starts, as a store round trip would.
+          const value = stored.get(key)
+          await reading.hold
+          return value
+        },
+        set: (key, value) => {
+          stored.set(key, value)
+          return Promise.resolve()
+        },
+      }
+      const { control, provider } = controlledProvider()
+      const flags = createFlags({ cache: { coalesce, store }, identify, provider })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      // A plain read starts its store get, then a refresh replaces the decision.
+      const release = createDeferred<null>()
+      reading.hold = release.promise
+      control.value = false
+      const plain = flags.details(betaAccess)
+      await flushBackground()
+      delete reading.hold
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      release.resolve(null)
+      expect(await plain).toMatchObject({ value: false })
+    }
+  )
+
+  test("skips the stored decision on a fresh read and stores the new one", async () => {
+    const stored = new Map<string, Decision>()
+    const store: DecisionStore = {
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: (key, value) => {
+        stored.set(key, value)
+        return Promise.resolve()
+      },
+    }
+    const { control, decideOne, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+    await flushBackground()
+    control.value = false
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: true })
+
+    expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({
+      source: "provider",
+      value: false,
+    })
+    expect(await flags.detailsMany([betaAccess], { fresh: true })).toMatchObject([
+      { source: "provider", value: false },
+    ])
+    await flushBackground()
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+    expect(decideOne).toHaveBeenCalledTimes(3)
+  })
+
+  test("adds the identity parts of a custom key to the evaluation key", async () => {
     type TenantIdentity = Identity & { tenant: string }
     const keys: string[] = []
     const flags = createFlags({
       cache: {
-        key: (context) =>
-          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+        key: ({ identity }) => [identity?.tenant],
         store: {
           get: (key) => {
             keys.push(key)
@@ -364,7 +634,41 @@ describe("first-class cache", () => {
     })
 
     await flags.get(betaAccess)
-    expect(keys).toEqual(["acme:beta-access"])
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toContain('"beta-access"')
+    expect(keys[0]).toContain("acme")
+  })
+
+  test("never shares a decision between flags under a custom key", async () => {
+    type PlanIdentity = Identity & { plan: string }
+    const stored = new Map<string, Decision>()
+    const flags = createFlags({
+      cache: {
+        // The parts name only what the identity adds, as the docs recommend.
+        key: ({ identity }) => [identity?.plan],
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify: () => ({ distinctId: "user123", plan: "pro" }),
+      provider: defineProvider({
+        decideOne: (item, _identity: PlanIdentity): Decision => ({
+          type: "boolean",
+          value: item.key === "a",
+        }),
+        name: "test",
+      }),
+    })
+    const a = flag.boolean("a", false)
+    const b = flag.boolean("b", false)
+
+    expect(await Promise.all([flags.get(a), flags.get(b)])).toEqual([true, false])
+    await flushBackground()
+    expect(await flags.get(b)).toBe(false)
   })
 
   test("reports custom cache key failures without reading the store", async () => {
@@ -960,7 +1264,7 @@ describe("first-class cache", () => {
   })
 
   test("does not call a custom key function for an anonymous identity", async () => {
-    const key = vi.fn(() => "shared")
+    const key = vi.fn(() => ["shared"])
     const get = vi.fn(() => Promise.resolve<Decision | null>(null))
     const flags = createFlags({
       cache: { key, store: { get, set: () => Promise.resolve() } },
@@ -1022,6 +1326,174 @@ describe("first-class cache", () => {
 
     expect(await flags.get(betaAccess)).toBe(true)
     write.resolve(null)
+  })
+})
+
+// A store shared by two processes. Each `createFlags` call stands for one process.
+function sharedStore() {
+  const entries = new Map<string, { decision: Decision; flagKey: string }>()
+  const deleteFlags = vi.fn((flagKeys?: readonly string[]) => {
+    for (const [key, entry] of entries) {
+      if (!flagKeys || flagKeys.includes(entry.flagKey)) entries.delete(key)
+    }
+    return Promise.resolve()
+  })
+  const store: DecisionStore = {
+    deleteFlags,
+    get: (key) => Promise.resolve(entries.get(key)?.decision),
+    set: (key, decision, { flagKey }) => {
+      entries.set(key, { decision, flagKey })
+      return Promise.resolve()
+    },
+  }
+  return { deleteFlags, entries, store }
+}
+
+describe("store invalidation by flag", () => {
+  test("deletes another process's stored decisions for a changed flag", async () => {
+    const { deleteFlags, entries, store } = sharedStore()
+    const first = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "p" }),
+    })
+    await first.get(betaAccess)
+    await flushBackground()
+    expect(entries.size).toBe(1)
+
+    // The second process never read beta-access, but its notification still reaches the entry.
+    const { control, provider } = controlledProvider()
+    const second = createFlags({
+      cache: { store },
+      identify: () => ({ distinctId: "other" }),
+      provider,
+    })
+    await second.get(flag.boolean("other-flag", false))
+    control.notify(["beta-access"])
+    await flushBackground()
+
+    expect(deleteFlags).toHaveBeenCalledWith(["beta-access"])
+    expect([...entries.values()].map(({ flagKey }) => flagKey)).toEqual(["other-flag"])
+  })
+
+  test("deletes a flag only after its writes in flight, and skips the store meanwhile", async () => {
+    const entries = new Map<string, Decision>()
+    const write = createDeferred<null>()
+    const removal = createDeferred<null>()
+    const order: string[] = []
+    const store: DecisionStore = {
+      deleteFlags: async () => {
+        order.push("deleteFlags")
+        await removal.promise
+        entries.clear()
+      },
+      get: (key) => Promise.resolve(entries.get(key)),
+      set: async (key, decision) => {
+        await write.promise
+        order.push("set")
+        entries.set(key, decision)
+      },
+    }
+    const { control, decideOne, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+
+    await flags.get(betaAccess)
+    // The write started before the change, so the delete waits for it.
+    control.notify(["beta-access"])
+    write.resolve(null)
+    await flushBackground()
+    expect(order).toEqual(["set", "deleteFlags"])
+
+    // The stored decision is still there until the delete completes, so reads skip the store.
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "provider" })
+    removal.resolve(null)
+    await flushBackground()
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("reports a deleteFlags failure", async () => {
+    const reports: ErrorReport[] = []
+    const failure = new Error("store down")
+    const { control, provider } = controlledProvider()
+    const flags = createFlags({
+      cache: {
+        store: {
+          deleteFlags: () => Promise.reject(failure),
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+        },
+      },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider,
+    })
+    await flags.get(betaAccess)
+    control.notify(["beta-access"])
+    await flushBackground()
+    expect(reports).toEqual([
+      { _tag: "StoreFailed", error: failure, flagKeys: ["beta-access"], operation: "deleteFlags" },
+    ])
+  })
+
+  test("deletes every flag for a notification without keys", async () => {
+    const { deleteFlags, entries, store } = sharedStore()
+    const { control, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+    await flags.get(betaAccess)
+    await flushBackground()
+    control.notify()
+    await flushBackground()
+    expect(deleteFlags).toHaveBeenCalledWith(undefined)
+    expect(entries.size).toBe(0)
+  })
+})
+
+describe("disposal", () => {
+  test("detaches a disposed reader from its provider", async () => {
+    const listeners = new Set<ChangeListener>()
+    const provider = defineProvider({
+      decideOne: () => TRUE,
+      name: "shared",
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    })
+
+    // A server that makes one reader per request disposes it when the request ends.
+    const serve = async () => {
+      using flags = createFlags({ identify, provider })
+      return await flags.get(betaAccess)
+    }
+    const values = await Promise.all(Array.from({ length: 50 }, serve))
+    expect(values.every(Boolean)).toBe(true)
+    expect(listeners.size).toBe(0)
+  })
+
+  test("reads straight from the provider after dispose", async () => {
+    const stored = new Map<string, Decision>()
+    const { decideOne, provider } = controlledProvider()
+    const flags = createFlags({
+      cache: {
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify,
+      provider,
+    })
+    expect(await flags.get(betaAccess)).toBe(true)
+    await flushBackground()
+    flags.dispose()
+    flags.dispose()
+
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: true })
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    expect(flags.subscribe(() => null)).toBeTypeOf("function")
   })
 })
 
@@ -1101,8 +1573,7 @@ describe("request coalescing", () => {
     const flags = createFlags({
       cache: {
         coalesce: true,
-        key: (context) =>
-          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+        key: ({ identity }) => [identity?.tenant],
       },
       provider: defineProvider({ decideOne, name: "test" }),
     })
@@ -1152,10 +1623,10 @@ describe("request coalescing", () => {
     const flags = createFlags({
       cache: {
         // The second key read is the follower's, in the same synchronous step as its join.
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,
@@ -1237,10 +1708,10 @@ describe("request coalescing", () => {
       let keyReads = 0
       const flags = createFlags({
         cache: {
-          key: (context) => {
+          key: () => {
             keyReads += 1
             if (keyReads === 2) followerJoined.resolve(null)
-            return context.flag.key
+            return []
           },
         },
         identify,
@@ -1285,10 +1756,10 @@ describe("request coalescing", () => {
     let keyReads = 0
     const flags = createFlags({
       cache: {
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,
@@ -1327,10 +1798,10 @@ describe("request coalescing", () => {
     let keyReads = 0
     const flags = createFlags({
       cache: {
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,

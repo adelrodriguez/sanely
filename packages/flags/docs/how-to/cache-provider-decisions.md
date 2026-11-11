@@ -37,7 +37,7 @@ A store failure does not fail the evaluation. The package discards an invalid st
 
 ## Drop decisions when the provider changes a flag
 
-Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). With a store that has `delete`, a change notification deletes the stored decisions of the changed flags that this reader read or wrote, and drops the running provider calls for them. Decisions that another process stored stay until the store expires them, so give a shared store an expiry.
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags and deletes their stored decisions. Give the store a `deleteFlags` method, so it can delete every stored decision of a flag, including the ones that other processes stored. `set` passes each decision's `flagKey` for that. A store with only `delete` loses just the entries that this reader read or wrote. See [`DecisionStore`](../reference.md#decisionstore).
 
 If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
 
@@ -59,7 +59,7 @@ To keep coalescing and still track each exposure, use an `after` hook. See [How 
 
 ## Include more identity fields in the key
 
-The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `distinctId`. If other identity fields change the decision, give a `key` function:
+The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `distinctId`. If other identity fields change the decision, give a `key` function that returns them:
 
 ```typescript
 const flags = createFlags({
@@ -67,11 +67,11 @@ const flags = createFlags({
   identify,
   cache: {
     store,
-    key: ({ flag, identity }) => JSON.stringify([flag.key, identity?.distinctId, identity?.plan]),
+    key: ({ identity }) => [identity?.plan],
   },
 })
 ```
 
-The function replaces the whole default key. Return the same key only for evaluations that can share one provider decision. The package never calls it for an anonymous evaluation.
+The package adds the returned values to the default key, so two flags or two `distinctId` values never share a decision. Return strings, numbers, booleans, `null`, `undefined`, arrays, or plain records. Another value fails the key, which `onError` reports as a `StoreFailed` report with `operation: "key"`, and the evaluation then calls the provider without sharing. The package never calls the function for an anonymous evaluation.
 
 [About flag evaluation](../explanation/about-flag-evaluation.md#concurrent-evaluations-share-provider-work) explains the store and coalescing model.

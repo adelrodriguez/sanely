@@ -48,7 +48,10 @@ describe("evaluateMany", () => {
     const decide = vi.fn(bulkDecide)
 
     await expect(
-      evaluateMany(createEvaluator({ decide, name: "bulk" }), [], identifyAs(user), caller.signal)
+      evaluateMany(createEvaluator({ decide, name: "bulk" }), [], identifyAs(user), {
+        fresh: false,
+        signal: caller.signal,
+      })
     ).resolves.toEqual([])
     expect(decide).not.toHaveBeenCalled()
   })
@@ -62,7 +65,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decide, name: "bulk" }),
       [betaAccess, theme, otherBeta],
       identifyWith(identify),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results.map((result) => result.value)).toEqual([true, "dark", true])
@@ -80,7 +83,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decideOne, name: "one" }),
       [betaAccess, theme, betaAccess],
       identifyAs(user),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results.map((result) => result.value)).toEqual([true, "dark", true])
@@ -98,7 +101,7 @@ describe("evaluateMany", () => {
       }),
       [betaAccess, theme],
       identifyAs(user),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results[0]).toMatchObject({ source: "provider", value: true })
@@ -110,7 +113,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decide: () => ({ "beta-access": decision.boolean(true) }), name: "bulk" }),
       [betaAccess, theme],
       identifyAs(user),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results[0].value).toBe(true)
@@ -122,7 +125,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decide: () => Promise.reject(new Error("down")), name: "bulk" }),
       [betaAccess, theme],
       identifyAs(user),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results.map((result) => result.error?._tag)).toEqual([
@@ -138,7 +141,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decide, name: "bulk" }),
       [betaAccess, theme],
       identifyWith<Identity>(() => null),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results.map((result) => result.error?._tag)).toEqual([
@@ -159,7 +162,7 @@ describe("evaluateMany", () => {
       createEvaluator({ decideOne, name: "one" }, { timeout: 100 }),
       [fast, betaAccess],
       identifyAs(user),
-      caller.signal
+      { fresh: false, signal: caller.signal }
     )
 
     expect(results[0].error).toBeInstanceOf(EvaluationTimeoutError)
@@ -170,12 +173,18 @@ describe("evaluateMany", () => {
     const controller = new AbortController()
     const decide = vi.fn(bulkDecide)
     const evaluator = createEvaluator({ decide, name: "bulk" })
-    const first = evaluateMany(evaluator, [betaAccess], identifyAs(user), controller.signal)
+    const first = evaluateMany(evaluator, [betaAccess], identifyAs(user), {
+      fresh: false,
+      signal: controller.signal,
+    })
     await sleep(0)
     controller.abort(new Error("stop"))
 
     const [aborted] = await first
-    const [again] = await evaluateMany(evaluator, [betaAccess], identifyAs(user), caller.signal)
+    const [again] = await evaluateMany(evaluator, [betaAccess], identifyAs(user), {
+      fresh: false,
+      signal: caller.signal,
+    })
     expect(aborted.error?._tag).toBe("EvaluationAbortedError")
     expect(again.value).toBe(true)
   })
@@ -185,8 +194,11 @@ describe("evaluateMany", () => {
     const evaluator = createEvaluator({ decide, name: "bulk" })
 
     const results = await Promise.all([
-      evaluateMany(evaluator, [betaAccess], identifyAs(user), caller.signal),
-      evaluateMany(evaluator, [theme], identifyAs(user), caller.signal),
+      evaluateMany(evaluator, [betaAccess], identifyAs(user), {
+        fresh: false,
+        signal: caller.signal,
+      }),
+      evaluateMany(evaluator, [theme], identifyAs(user), { fresh: false, signal: caller.signal }),
     ])
 
     expect(results.flat().map((result) => result.value)).toEqual([true, "dark"])

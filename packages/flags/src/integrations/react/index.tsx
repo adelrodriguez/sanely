@@ -21,15 +21,15 @@ import {
   isFlagKind,
   type VariantFlag,
 } from "#lib/definition/index.ts"
-import { IdentityNotFoundError } from "#lib/errors/index.ts"
-import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
+import { FlagDefinitionError, IdentityNotFoundError } from "#lib/errors/index.ts"
+import { type Anonymous, anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import {
   DEFAULT_MAX_ENTRIES,
   DEFAULT_TTL,
   evictOnRejection,
   type FlagCacheOptions,
 } from "#lib/promise-cache/index.ts"
-import { serializeKey } from "#lib/promise-cache/key.ts"
+import { type FlagCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
 import { milliseconds } from "#lib/shared/utils.ts"
 
 /**
@@ -59,7 +59,27 @@ type IdentityOf<TFlags extends AnyFlags> = TFlags extends {
   ? TIdentity
   : never
 
-export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never> = {
+/**
+ * Limits the named fields of an identity to what the flag cache can key. The cache serializes the
+ * identity, so a field such as a `Date`, a `bigint`, or a class instance is a type error at the
+ * `identity` prop instead of a throw during render. An index signature from `Identity` is left
+ * alone, so a value typed as the reader's identity still passes.
+ */
+// `Anonymous` maps to itself, not `unknown`, so the check of each object in an identity union
+// survives the union with `anonymous`: `unknown | X` would accept anything.
+type CacheableFields<TSubject> = TSubject extends Anonymous
+  ? TSubject
+  : {
+      readonly [
+        K in keyof TSubject as string extends K ? never : number extends K ? never : K
+      ]: FlagCacheKey
+    }
+
+export type FlagsProviderProps<
+  TFlags extends AnyFlags,
+  T extends string = never,
+  TIdentity extends IdentityOf<TFlags> = IdentityOf<TFlags>,
+> = {
   /**
    * The reader from `createFlags`.
    */
@@ -76,9 +96,9 @@ export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never
       /**
        * Evaluates for this identity instead of the reader's `identify`.
        */
-      identity?: IdentityOf<TFlags>
+      identity?: TIdentity & CacheableFields<TIdentity>
     }
-  : { identity: IdentityOf<TFlags> })
+  : { identity: TIdentity & CacheableFields<TIdentity> })
 
 type VersionStore = {
   // The identity key whose entry the store's readers read.
@@ -136,8 +156,94 @@ type SnapshotState = {
   watch: Omit<ChangeWatch, "keys">
 }
 
+/**
+ * Which flags `invalidate` and `clear` dropped, so that their next evaluation reads fresh and skips
+ * the reader's store too. The marks belong to the cache, not to a bucket, so a list of flags that
+ * no component has read yet also reads fresh. Each mark is an epoch: a flag reads fresh while its
+ * latest mark, or the latest `clear`, is newer than its latest fresh read for that identity.
+ */
+type FreshRead = { epoch: number; start: number }
+
+/**
+ * The marks of one identity. `all` is the epoch of the latest `clear` that covered the identity.
+ * `started` holds the latest fresh read of each flag, because only that read retires the flag's
+ * mark: a newer fresh read voids the store write of an older one.
+ */
+type FreshRecord = {
+  all: number
+  marked: Map<string, number>
+  read: Map<string, number>
+  started: Map<string, number>
+}
+
+class FreshMarks {
+  #epoch = 0
+  #starts = 0
+  // Only identities that `invalidate` or `clear` marked have a record, and a record leaves once
+  // nothing is marked or in flight, so reads without marks keep nothing.
+  readonly #records = new Map<string, FreshRecord>()
+
+  mark(identity: string, flagKeys: Iterable<string>): void {
+    this.#epoch += 1
+    const record = this.#recordOf(identity)
+    for (const flagKey of flagKeys) record.marked.set(flagKey, this.#epoch)
+  }
+
+  clear(identities: Iterable<string>): void {
+    this.#epoch += 1
+    for (const identity of identities) this.#recordOf(identity).all = this.#epoch
+  }
+
+  /**
+   * Starts a fresh read when an evaluation of `flags` for `identity` must read fresh, and returns
+   * `undefined` otherwise. It retires no mark, so another list that reads the same flags while this
+   * read is in flight also reads fresh.
+   */
+  begin(identity: string, flags: readonly Flag[]): FreshRead | undefined {
+    const record = this.#records.get(identity)
+    if (!record) return undefined
+    const stale = flags.some(
+      ({ key }) => Math.max(record.all, record.marked.get(key) ?? 0) > (record.read.get(key) ?? 0)
+    )
+    if (!stale) return undefined
+    this.#starts += 1
+    for (const { key } of flags) record.started.set(key, this.#starts)
+    return { epoch: this.#epoch, start: this.#starts }
+  }
+
+  /**
+   * Retires the marks of `flags` that `fresh` stored, when it is still the latest fresh read of
+   * each flag. Marks made after it started still apply.
+   */
+  read(identity: string, flags: readonly Flag[], fresh: FreshRead): void {
+    const record = this.#records.get(identity)
+    if (!record) return
+    for (const { key } of flags) {
+      if (record.started.get(key) !== fresh.start) continue
+      record.started.delete(key)
+      record.read.set(key, Math.max(record.read.get(key) ?? 0, fresh.epoch))
+      if ((record.marked.get(key) ?? 0) <= fresh.epoch) record.marked.delete(key)
+    }
+    if (record.all === 0 && record.marked.size === 0 && record.started.size === 0) {
+      this.#records.delete(identity)
+    }
+  }
+
+  #recordOf(identity: string): FreshRecord {
+    const record = this.#records.get(identity) ?? {
+      all: 0,
+      marked: new Map(),
+      read: new Map(),
+      started: new Map(),
+    }
+    this.#records.set(identity, record)
+    return record
+  }
+}
+
 type FlagCache = {
   buckets: Map<string, Bucket>
+  fresh: FreshMarks
   maxEntries: number
   pendingTtl: number | undefined
   snapshot: SnapshotState | undefined
@@ -164,7 +270,7 @@ type CacheInput = {
 function lengthOfTime(option: string, value: unknown): number {
   const parsed = milliseconds(value)
   if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
-    throw new RangeError(
+    throw new FlagDefinitionError(
       `${option} must be a time expression or a positive finite number of milliseconds`
     )
   }
@@ -174,7 +280,7 @@ function lengthOfTime(option: string, value: unknown): number {
 function readCacheOptions(options: CacheInput) {
   const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
-    throw new RangeError("maxEntries must be a positive finite integer")
+    throw new FlagDefinitionError("maxEntries must be a positive finite integer")
   }
   return {
     maxEntries,
@@ -293,13 +399,14 @@ function readerOf(context: FlagsContextValue): FlagReader {
 
 async function evaluateFlags(
   reader: FlagReader,
-  flags: readonly Flag[]
+  flags: readonly Flag[],
+  fresh: boolean
 ): Promise<readonly FlagResult[]> {
   const [single] = flags
   if (flags.length === 1 && single) {
-    return [await reader.details(single)]
+    return [await reader.details(single, { fresh })]
   }
-  return await reader.detailsMany(flags)
+  return await reader.detailsMany(flags, { fresh })
 }
 
 function storeEntry(
@@ -329,12 +436,25 @@ function storeEntry(
     }, 0)
     return null
   }
-  entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags), () => {
+  const freshRead = cache.fresh.begin(key, bucket.flags)
+  const fresh = freshRead !== undefined
+  entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
       if (bucket.entries.get(key) === entry) bucket.entries.delete(key)
     }, 0)
   })
   void entry.promise.then(settle, settle)
+  if (freshRead !== undefined) {
+    // Only a flag that the provider answered has a fresh stored decision. Another keeps its mark.
+    void entry.promise.then(
+      (results) => {
+        const answered = bucket.flags.filter((_, index) => results[index]?.source === "provider")
+        cache.fresh.read(key, answered, freshRead)
+        return null
+      },
+      () => null
+    )
+  }
   bucket.entries.set(key, entry)
   prune(cache, bucket)
   return entry.promise
@@ -516,6 +636,7 @@ function createFlagCache(
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
   return {
     buckets: new Map(),
+    fresh: new FreshMarks(),
     maxEntries,
     pendingTtl,
     snapshot: snapshotState(snapshot, getChangeClock(flags)),
@@ -532,9 +653,11 @@ function createFlagCache(
  *     <App />
  *   </FlagsProvider>
  */
-export function FlagsProvider<TFlags extends AnyFlags, const T extends string = never>(
-  props: FlagsProviderProps<TFlags, T>
-): ReactNode {
+export function FlagsProvider<
+  TFlags extends AnyFlags,
+  const T extends string = never,
+  const TIdentity extends IdentityOf<TFlags> & Subject = IdentityOf<TFlags> & Subject,
+>(props: FlagsProviderProps<TFlags, T, TIdentity>): ReactNode {
   const { cache: cacheOptions, children, flags, snapshot } = props
   const identity: Subject | undefined = props.identity
   const [mounted, setMounted] = useState(() => ({
@@ -550,7 +673,7 @@ export function FlagsProvider<TFlags extends AnyFlags, const T extends string = 
     cache = next.cache
   }
   const key = identityKey(identity)
-  const value = useMemo(
+  const value = useMemo<FlagsContextValue>(
     () => ({ cache, flags, identity, identityKey: key }),
     [cache, flags, identity, key]
   )
@@ -609,6 +732,13 @@ export function useFlagCache(): FlagCacheControls {
     return {
       clear() {
         cache.snapshot?.entries.clear()
+        // Clear covers the identities that this cache has read for, and the provider's own.
+        const identities = new Set([key])
+        for (const bucket of cache.buckets.values()) {
+          for (const identity of bucket.entries.keys()) identities.add(identity)
+          for (const store of storesOf(bucket)) identities.add(store.key)
+        }
+        cache.fresh.clear(identities)
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
           for (const store of storesOf(bucket)) store.bump()
@@ -616,6 +746,7 @@ export function useFlagCache(): FlagCacheControls {
       },
       invalidate(flags) {
         const keys = new Set(flags.map((flag) => flag.key))
+        cache.fresh.mark(key, keys)
         for (const flagKey of keys) cache.snapshot?.entries.delete(flagKey)
         for (const bucket of cache.buckets.values()) {
           if (bucket.flags.some((flag) => keys.has(flag.key))) drop(bucket)
