@@ -190,6 +190,22 @@ describe("connect", () => {
     )
   })
 
+  test("carries an application error's data to the peer by default", async () => {
+    const [serverWire, clientWire] = createWirePair()
+    const data = { _tag: "Overflow", fields: { limit: 10 } }
+    const router = createRouter(pullContract, {
+      "math.add": () => {
+        throw new ChannelError({ code: "application", data })
+      },
+    })
+    connect(serverWire, { router })
+    const { transport } = connect(clientWire)
+
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toThrow(
+      expect.objectContaining({ code: "application", data }) as Error
+    )
+  })
+
   test("carries resolver crashes as plain errors to a trusted peer", async () => {
     const [serverWire, clientWire] = createWirePair()
     const router = createRouter(pullContract, {
@@ -962,6 +978,31 @@ describe("toWire / fromWire", () => {
       "unknown-channel",
       "internal",
     ])
+  })
+
+  test("always exposes an application error with its data", async () => {
+    const hidden: unknown[] = []
+    const data = { _tag: "NotFound", fields: { id: "42" } }
+
+    const wire = await toWire(
+      () => {
+        throw new ChannelError({ code: "application", data })
+      },
+      { expose: () => false, onHidden: (error) => hidden.push(error) }
+    )
+
+    expect(wire).toEqual({
+      error: {
+        detail: { code: "application", data },
+        message: "Application error",
+        name: "ChannelError",
+      },
+      ok: false,
+    })
+    expect(() => fromWire(wire)).toThrow(
+      expect.objectContaining({ code: "application", data }) as Error
+    )
+    expect(hidden).toEqual([])
   })
 
   test("exposes whatever the predicate accepts", async () => {

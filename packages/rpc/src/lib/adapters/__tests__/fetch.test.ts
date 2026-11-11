@@ -154,6 +154,27 @@ describe("fetchHandler and fetchTransport", () => {
     expect(hidden).toEqual([crash])
   })
 
+  test("send an application error's data with status 422, without expose", async () => {
+    const data = { _tag: "NotFound", fields: { path: "/a.md" } }
+    const handler = fetchHandler(
+      createRouter(contract, {
+        ...resolvers(),
+        "notes.open": () => {
+          throw new ChannelError({ code: "application", data })
+        },
+      })
+    )
+    const { send } = viaHandler(handler)
+    const api = createClient(contract, fetchTransport(URL_BASE, { fetch: send }))
+
+    await expect(post(handler, "notes.open", '{"path":"/a.md"}')).resolves.toMatchObject({
+      status: 422,
+    })
+    await expect(api.notes.open({ path: "/a.md" })).rejects.toThrow(
+      expect.objectContaining({ code: "application", data }) as Error
+    )
+  })
+
   test("let expose send an application error as-is", async () => {
     class NotFoundError extends Error {
       override name = "NotFoundError"
