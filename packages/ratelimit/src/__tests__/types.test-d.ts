@@ -6,6 +6,8 @@ import { isTimeExpression } from "@sanely/duration"
 import { describe, expectTypeOf, it } from "vitest"
 import type {
   FixedWindow,
+  State,
+  StoreResult,
   InvalidOptionError,
   Limiter,
   LimitResult,
@@ -14,7 +16,14 @@ import type {
   Store,
   StoreError,
 } from "#index.ts"
-import { buildLimiter, fixedWindow, rateLimit, slidingWindow, tokenBucket } from "#index.ts"
+import {
+  buildLimiter,
+  fixedWindow,
+  rateLimit,
+  slidingWindow,
+  stateStore,
+  tokenBucket,
+} from "#index.ts"
 import { bunRedisStore } from "#stores/bun-redis.ts"
 import { memoryStore } from "#stores/memory.ts"
 import { redisStore } from "#stores/redis.ts"
@@ -155,6 +164,32 @@ describe("client stores", () => {
     void valkeyStore(nodeRedis)
     // @ts-expect-error -- node-redis has no `send`, which the Bun store calls.
     void bunRedisStore(nodeRedis)
+  })
+})
+
+describe("stateStore", () => {
+  it("hands update an unparsed saved value and the state to save", () => {
+    const store = stateStore({
+      clear: () => Promise.resolve(),
+      update: (_key, apply) => {
+        const { result, state } = apply(JSON.parse("null"), 0)
+        expectTypeOf(state).toEqualTypeOf<State | undefined>()
+        return Promise.resolve(result)
+      },
+    })
+
+    expectTypeOf(store).toEqualTypeOf<Store>()
+  })
+
+  it("needs update to resolve with the result", () => {
+    stateStore({
+      clear: () => Promise.resolve(),
+      // @ts-expect-error -- update resolves with the result that apply returns.
+      update: () => Promise.resolve(),
+    })
+    expectTypeOf<
+      Parameters<typeof stateStore>[0]["update"]
+    >().returns.resolves.toEqualTypeOf<StoreResult>()
   })
 })
 

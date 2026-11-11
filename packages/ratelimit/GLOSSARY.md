@@ -41,6 +41,10 @@ The moment a denied request can succeed, or the end of the current window for an
 A result in which the store or the cache refused the request.
 _Avoid_: Block, rejection
 
+**State**:
+What a store saves for one key between requests: the counts or tokens of one algorithm, and when they stop mattering.
+_Avoid_: Record, entry, bucket (for the saved value)
+
 **Store error**:
 A result in which the store failed or did not answer in time. A store error is never a success, but the request may have been counted, because a command that timed out can still complete.
 _Avoid_: Timeout result, error decision

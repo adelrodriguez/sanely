@@ -2,7 +2,7 @@
 
 The package has five entry points:
 
-- `@sanely/ratelimit`: algorithms, limiters, results, headers, errors, and the store contract.
+- `@sanely/ratelimit`: algorithms, limiters, results, headers, errors, the store contract, and `stateStore`.
 - `@sanely/ratelimit/stores/memory`: the memory store.
 - `@sanely/ratelimit/stores/redis`: the store for ioredis and node-redis.
 - `@sanely/ratelimit/stores/valkey`: the store for iovalkey.
@@ -313,7 +313,22 @@ A store must follow these rules:
 - A denial changes nothing.
 - A cost of 0 reads without writing.
 - The store's own clock decides.
-- The arithmetic matches the built-in stores in `src/lib/transitions/index.ts`.
+- The arithmetic matches the built-in stores. A store built with [`stateStore`](#statestoreoptions) gets it from the package.
+
+### `stateStore(options)`
+
+```typescript
+function stateStore(options: StateStoreOptions): Store
+```
+
+Builds a store from one atomic read and write of a key. The package applies the algorithm and decides what to save, so the store follows the rules above except atomicity and the clock.
+
+| Option   | Type                                                                                                                    | Description                                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update` | `(key: string, apply: (saved: unknown, now: number) => { result: StoreResult; state?: State }) => Promise<StoreResult>` | Reads the value saved for `key` and the store's clock in epoch ms, which the package rounds down to a whole millisecond, calls `apply` with them, saves `state` when `apply` returns one, and resolves with `result`. All of it must be one atomic step. |
+| `clear`  | `(key: string) => Promise<void>`                                                                                        | Deletes the value saved for `key`.                                                                                                                                                                                                                       |
+
+`apply` returns no `state` after a denial or for a cost of 0, and the store then saves nothing. A saved value that is not a `State` counts as no state, and so does a state from its `expiresAt`, in epoch ms on the store's clock. The store may delete a state then or at any time later.
 
 ## Errors
 
@@ -344,4 +359,5 @@ A store must follow these rules:
 | `Remaining`                                                                        | The value that `remaining` resolves with.                |
 | `Store`, `StoreRequest`, `StoreResult`                                             | See [`Store`](#store).                                   |
 | `MemoryStoreOptions`                                                               | The options of `memoryStore`.                            |
+| `StateStoreOptions`, `State`                                                       | See [`stateStore`](#statestoreoptions).                  |
 | `IoredisClient`, `NodeRedisClient`, `IovalkeyClient`, `BunRedisClient`             | The client shapes that the Redis stores accept.          |
