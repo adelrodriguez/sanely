@@ -34,9 +34,14 @@ export function createChangeBroadcaster(
   let detach: (() => void) | undefined
 
   const notify: ChangeListener = (keys) => {
+    // A JavaScript provider can send any value. An array keeps its string keys, and anything else
+    // means that any flag may have changed, so no listener misses a change.
+    const changed: readonly string[] | undefined = Array.isArray(keys)
+      ? keys.filter((key): key is string => typeof key === "string")
+      : undefined
     // Snapshot: a listener added during this notification does not receive it.
     for (const entry of Array.from(listeners)) {
-      entry.listener(keys)
+      entry.listener(changed)
     }
   }
 

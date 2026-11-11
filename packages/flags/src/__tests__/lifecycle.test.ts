@@ -679,6 +679,52 @@ describe("first-class cache", () => {
     expect(storeReports(reports).map(({ operation }) => operation)).toContain("delete")
   })
 
+  test.each([
+    { expected: ["first", "second"], keys: "first" },
+    { expected: ["first", "second"], keys: null },
+    { expected: ["first"], keys: ["first", 7] },
+  ])(
+    "reads a malformed change notification $keys as a change to $expected",
+    async ({ expected, keys }) => {
+      let notify!: ChangeListener
+      const removed: string[] = []
+      const flags = createFlags({
+        cache: {
+          store: {
+            delete: (key: string) => {
+              removed.push(key)
+              return Promise.resolve(true)
+            },
+            get: () => Promise.resolve(null),
+            set: () => Promise.resolve(),
+          },
+        },
+        identify,
+        provider: defineProvider({
+          decideOne: () => TRUE,
+          name: "test",
+          subscribe: (listener) => {
+            notify = listener
+            return () => null
+          },
+        }),
+      })
+      const changes: unknown[] = []
+      flags.subscribe((changed) => void changes.push(changed))
+
+      await flags.get(flag.boolean("first", false))
+      await flags.get(flag.boolean("second", false))
+      // A JavaScript provider can send any value.
+      notify(keys as never)
+      await flushBackground()
+      const removedFlags = removed.map((key) =>
+        expected.find((flagKey) => key.includes(`"${flagKey}"`))
+      )
+      expect(removedFlags).toEqual(expected)
+      expect(changes).toEqual([Array.isArray(keys) ? ["first"] : undefined])
+    }
+  )
+
   test("invalidates only notified flags and supports keyless invalidation", async () => {
     let notify!: ChangeListener
     const removed: string[] = []
