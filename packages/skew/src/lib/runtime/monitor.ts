@@ -112,7 +112,6 @@ class DeploymentMonitorImplementation
     const running = source?.running ?? { id: "" }
     this.#reloadGuard = new ReloadGuard(running, this.#environment)
     if (source === undefined && process.env.NODE_ENV !== "production" && "document" in globalThis) {
-      // eslint-disable-next-line no-console -- Missing adapter data must be visible in development.
       console.warn(
         "[deployment-check] The monitor is inert because no adapter registered a deployment embed."
       )
@@ -319,7 +318,6 @@ class DeploymentMonitorImplementation
 
     this.#isCurrent = isCurrent ?? this.#defaultIsCurrent
     if (checkInterval < MINIMUM_CHECK_INTERVAL) {
-      // eslint-disable-next-line no-console -- Excessive polling is a deployment configuration error.
       console.warn(`[deployment-check] Increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
     }
 
