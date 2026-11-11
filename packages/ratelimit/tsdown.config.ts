@@ -6,9 +6,11 @@ export default defineConfig({
   clean: true,
   deps: {
     alwaysBundle: ["@sanely/core/time"],
+    neverBundle: ["cloudflare:workers"],
     onlyBundle: [],
-    // Tracks package.json, so the bundle imports only its runtime dependencies.
-    onlyImport: Object.keys(packageJson.dependencies),
+    // Tracks package.json, so the bundle imports only its runtime dependencies. The Durable Object
+    // store also imports the Workers runtime module, which only workerd provides, so it stays external.
+    onlyImport: [...Object.keys(packageJson.dependencies), "cloudflare:workers"],
   },
   dts: true,
   // `scripts/verify-package.ts` fails when a built store has no export in `package.json`.

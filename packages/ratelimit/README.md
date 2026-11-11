@@ -15,6 +15,7 @@ You define limiters once and run them with plain functions. The package has no f
 - **Atomic.** Each check runs as one indivisible step in the store, such as a Lua script in Redis.
 - **Three algorithms.** Fixed window, sliding window, and token bucket. A denied request spends nothing, the limiter checks the cost before it spends any units, and a denial reports the exact time the request can succeed.
 - **Your Redis client as it is.** Pass an ioredis, node-redis, iovalkey, or Bun client directly to its store, with no adapter and no type assertions.
+- **Cloudflare Workers.** Count in Durable Objects, one object for each key.
 - **Safe on failure.** When the store fails, the result is never a success, so a spending cap stays a cap.
 - **One clock.** Windows follow the store's clock, so instances with clocks that drift agree.
 - **Composable.** Limiters are definitions that plain functions run, so you can build middleware for any platform.
@@ -27,7 +28,7 @@ You define limiters once and run them with plain functions. The package has no f
 npm install @sanely/ratelimit
 ```
 
-The package needs Node.js 22 or later, or Bun 1.4 or later.
+The package needs Node.js 22 or later, or Bun 1.4 or later. The Durable Object store runs in Cloudflare Workers.
 
 ## Get started
 
@@ -69,6 +70,7 @@ How-to guides:
 - [How to handle store errors](docs/how-to/handle-store-errors.md)
 - [How to try a limit in dry-run mode](docs/how-to/try-a-limit-in-dry-run-mode.md)
 - [How to share a store with other apps](docs/how-to/share-a-store-with-other-apps.md)
+- [How to count in Durable Objects](docs/how-to/count-in-durable-objects.md)
 - [How to write a store](docs/how-to/write-a-store.md)
 
 Reference:

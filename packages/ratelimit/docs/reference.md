@@ -1,12 +1,13 @@
 # `@sanely/ratelimit` reference
 
-The package has five entry points:
+The package has six entry points:
 
 - `@sanely/ratelimit`: algorithms, limiters, results, headers, errors, the store contract, and `stateStore`.
 - `@sanely/ratelimit/stores/memory`: the memory store.
 - `@sanely/ratelimit/stores/redis`: the store for ioredis and node-redis.
 - `@sanely/ratelimit/stores/valkey`: the store for iovalkey.
 - `@sanely/ratelimit/stores/bun-redis`: the store for `Bun.RedisClient`.
+- `@sanely/ratelimit/stores/durable-object`: the store for Cloudflare Durable Objects. It loads only in workerd.
 
 ## Algorithms
 
@@ -285,6 +286,25 @@ The three stores run the same Lua scripts, so they count the same way. They work
 - ioredis and iovalkey send unanswered commands again after they reconnect, because `autoResendUnfulfilledCommands` defaults to `true`. When the connection drops after the server ran a check, the check runs twice and spends its cost twice. Set `autoResendUnfulfilledCommands: false` on the client to spend at most once. The lost check then ends as a store error.
 
 Each entry point also exports `InvalidReplyError`.
+
+### `durableObjectStore(namespace)` and `RateLimitObject`
+
+```typescript
+import { durableObjectStore, RateLimitObject } from "@sanely/ratelimit/stores/durable-object"
+
+export { RateLimitObject }
+
+durableObjectStore(env.RATE_LIMITS) // A DurableObjectNamespace<RateLimitObject>.
+```
+
+Counts in Cloudflare Durable Objects. `RateLimitObject` is the Durable Object class, and `durableObjectStore` takes the binding of its namespace, typed as `RateLimitNamespace`. Export the class from your Worker's main module and bind it with SQLite storage. See [How to count in Durable Objects](how-to/count-in-durable-objects.md).
+
+- Each key has its own object, named after the key.
+- Each check runs inside the object with no await between the read and the write, so it is atomic.
+- The object reads the time with `Date.now()`, so the object's clock decides.
+- The object sets an alarm for when its state expires, and the alarm deletes the state. A check ignores expired state, so a late alarm changes no count.
+- `clear` deletes the object's state and its alarm.
+- The entry point resolves only with the `workerd` export condition, which Wrangler and `@cloudflare/vitest-plugin` use.
 
 ### `Store`
 

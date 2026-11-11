@@ -1,0 +1,11 @@
+// The Worker that the Durable Object store tests run in. Vitest runs them in workerd with
+// @cloudflare/vitest-plugin.
+{
+  "name": "ratelimit-durable-object-store",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-11-01",
+  "durable_objects": {
+    "bindings": [{ "name": "RATE_LIMITS", "class_name": "RateLimitObject" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimitObject"] }],
+}

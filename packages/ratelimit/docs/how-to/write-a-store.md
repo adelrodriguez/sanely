@@ -4,7 +4,7 @@ This guide shows you how to count in a database that the built-in stores do not 
 
 1. Make sure that the database can read and write a key in one atomic step, such as a transaction or a script. A read followed by a separate write is not enough, because concurrent requests then pass the limit together. For this reason, key-value abstractions such as unstorage drivers cannot be stores.
 
-2. If the database runs JavaScript inside its transaction, such as Postgres, SQLite, or a Durable Object, build the store with `stateStore`. Read the saved value and the database clock, call `apply`, and save the state it returns, all in one transaction:
+2. If the database runs JavaScript inside its transaction, such as Postgres or SQLite, build the store with `stateStore`. For Cloudflare Durable Objects, use the [built-in store](count-in-durable-objects.md). Read the saved value and the database clock, call `apply`, and save the state it returns, all in one transaction:
 
    ```typescript
    import { stateStore } from "@sanely/ratelimit"

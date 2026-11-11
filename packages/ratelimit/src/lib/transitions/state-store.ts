@@ -41,7 +41,7 @@ export function stateStore({ clear, update }: StateStoreOptions): Store {
 
 // A saved state is external input: a database returns whatever its row holds. A state counts from
 // its `expiresAt` as no state, as in the memory store, because a database may delete it later.
-function parseState(saved: unknown, now: number): State | undefined {
+export function parseState(saved: unknown, now: number): State | undefined {
   if (typeof saved !== "object" || saved === null) return
   if (!("type" in saved && "expiresAt" in saved && isInteger(saved.expiresAt))) return
   if (saved.expiresAt <= now) return

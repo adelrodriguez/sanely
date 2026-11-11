@@ -1,0 +1,11 @@
+// The Worker that runs the compatibility checks in workerd. `workerd.mjs` runs in it through
+// @cloudflare/vitest-plugin.
+{
+  "name": "ratelimit-compat",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "durable_objects": {
+    "bindings": [{ "name": "RATE_LIMITS", "class_name": "RateLimitObject" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimitObject"] }],
+}

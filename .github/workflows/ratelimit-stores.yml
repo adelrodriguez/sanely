@@ -1,6 +1,7 @@
 name: ratelimit-stores
 
-# The store tests of @sanely/ratelimit need a Redis or Valkey server, and the Bun checks need Bun.
+# The store tests of @sanely/ratelimit need a Redis or Valkey server, the Bun checks need Bun, and the
+# Durable Object checks run in workerd.
 # They run only when the package changes, so they are not required checks on `main`.
 on:
   push:
@@ -148,6 +149,61 @@ jobs:
 
       - name: Run Bun store tests
         run: pnpm --filter @sanely/ratelimit run test:bun-redis-store
+
+  durable-object-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The package imports `@sanely/core/time` and `@sanely/duration`, which resolve to their build
+      # output.
+      - name: Build dependencies
+        run: pnpm turbo run build --filter=@sanely/ratelimit^...
+
+      - name: Run Durable Object store tests
+        run: pnpm --filter @sanely/ratelimit run test:durable-object-store
+
+  # Loads the built package in workerd, including the Durable Object entry, which Node.js cannot load.
+  compat-workerd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter=@sanely/ratelimit
+
+      - name: Run compatibility smoke test
+        run: pnpm --filter @sanely/ratelimit run test:compat:workerd
 
   # The `compat` job in `test.yml` runs the package on its `engines.node` floor. This job runs it on
   # its `engines.bun` floor. Vitest needs a newer Node.js version than the floors, so the job builds
