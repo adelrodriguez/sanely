@@ -673,7 +673,11 @@ describe("React integration", () => {
     // A and B both read beta fresh. B's fresh read voids A's write ticket.
     const first = controls().prefetch([beta])
     const second = controls().prefetch([beta, other])
-    await sleep(5)
+    // Answer only after every provider call starts. A fixed wait can end first on a slow runner,
+    // and then the answer is lost and the refresh never settles.
+    await waitFor(() => {
+      expect(answers).toHaveLength(3)
+    })
     answers.shift()?.(false)
     await first
     // C reads while B is still in flight.
@@ -734,7 +738,12 @@ describe("React integration", () => {
     // B's fresh read voids A's store write, then B fails, so the store still holds true.
     const first = controls().prefetch([beta])
     const second = controls().prefetch([beta, other])
-    await sleep(5)
+    // Answer only after every provider call starts. A fixed wait can end first on a slow runner,
+    // and then the answer is lost and the refresh never settles.
+    await waitFor(() => {
+      expect(held.get("beta")).toHaveLength(2)
+      expect(held.get("other")).toHaveLength(1)
+    })
     answer("beta", false)
     answer("beta", new Error("provider down"))
     answer("other", false)
