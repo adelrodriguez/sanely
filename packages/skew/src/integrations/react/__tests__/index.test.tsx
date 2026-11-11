@@ -4,17 +4,13 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from "vitest"
-import type {
-  DeploymentSource,
-  DeploymentStatus,
-  DeploymentStatusOptions,
-} from "#integrations/react/index.ts"
+import type { DeploymentMonitor, DeploymentStatus } from "#integrations/react/index.ts"
 import { useDeploymentStatus } from "#integrations/react/index.ts"
-import { getMonitor, resetRegistry } from "#lib/runtime/registry.ts"
+import { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
 
 /**
  * Registers the happy-dom globals for the current test. When the test finishes, it unmounts the
- * rendered trees, resets the monitor registry, and removes the globals.
+ * rendered trees and removes the globals.
  */
 function setupDom(): void {
   GlobalRegistrator.register()
@@ -22,55 +18,46 @@ function setupDom(): void {
   onTestFinished(async () => {
     await act(() => {
       cleanup()
-      resetRegistry()
       return Promise.resolve()
     })
     await GlobalRegistrator.unregister()
   })
 }
 
-function Status(): React.ReactNode {
-  const deployment = useDeploymentStatus({ checkOnSubscribe: false })
-  return <output>{`${deployment.status}:${deployment.reloadStatus}`}</output>
+/**
+ * Imports the hook with a new default monitor, so each test reads the embed it sets.
+ */
+async function importFreshHook() {
+  vi.resetModules()
+  const module = await import("#integrations/react/index.ts")
+  return module.useDeploymentStatus
 }
 
-function SourceStatus({
+function StatusOf({
   id,
-  options,
+  monitor,
   states,
 }: {
   readonly id: string
-  readonly options: DeploymentStatusOptions
+  readonly monitor: DeploymentMonitor
   readonly states: Map<string, DeploymentStatus>
 }): React.ReactNode {
-  const deployment = useDeploymentStatus(options)
+  const deployment = useDeploymentStatus(monitor)
   states.set(id, deployment)
   return <output>{deployment.status}</output>
 }
 
-function MinuteStatus({ source }: { readonly source: DeploymentSource }) {
-  const deployment = useDeploymentStatus({ checkInterval: "1m", checkOnSubscribe: false, source })
-  return <output>{deployment.status}</output>
-}
-
-function InlineStatus({ source }: { readonly source: DeploymentSource }) {
-  const deployment = useDeploymentStatus({ checkInterval: 20_000, source })
-  return <output>{deployment.status}</output>
-}
-
-function InlinePredicateStatus({
-  label,
-  source,
-}: {
-  readonly label: string
-  readonly source: DeploymentSource
-}): React.ReactNode {
-  const deployment = useDeploymentStatus({
-    checkOnSubscribe: false,
-    isCurrent: (running, target) => running.id !== target.id,
-    source,
+function countingMonitor(target = "running") {
+  const counter = { calls: 0 }
+  const monitor = createDeploymentMonitor({
+    checkInterval: 20_000,
+    running: { id: "running" },
+    target: () => {
+      counter.calls += 1
+      return Promise.resolve({ id: target })
+    },
   })
-  return <output>{`${label}:${deployment.status}`}</output>
+  return { counter, monitor }
 }
 
 function assertStale(
@@ -99,7 +86,7 @@ describe("react deployment integration", () => {
     // The test runner also checks for unhandled errors after setupDom's teardown.
   })
 
-  it("renders unknown with the browser and server reload status", () => {
+  it("renders unknown with the browser and server reload status", async () => {
     expect.assertions(3)
     setupDom()
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {
@@ -108,34 +95,59 @@ describe("react deployment integration", () => {
     onTestFinished(() => {
       warning.mockRestore()
     })
+    const useFreshStatus = await importFreshHook()
+    function DefaultStatus(): React.ReactNode {
+      const deployment = useFreshStatus()
+      return <output>{`${deployment.status}:${deployment.reloadStatus}`}</output>
+    }
 
-    const view = render(<Status />)
+    const view = render(<DefaultStatus />)
 
     expect(view.getByText("unknown:ready")).toBeDefined()
-    expect(renderToString(<Status />)).toContain("unknown:unprotected")
+    expect(renderToString(<DefaultStatus />)).toContain("unknown:unprotected")
     expect(warning).toHaveBeenCalledWith(expect.stringContaining("no adapter registered"))
+  })
+
+  it("uses a default monitor that reads the embed", async () => {
+    expect.hasAssertions()
+    setupDom()
+    globalThis.__DEPLOYMENT_CHECK__ = { running: { id: "running" }, v: 1 }
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response('{"v":1,"id":"target"}', { headers: { "content-type": "application/json" } })
+      )
+    )
+    onTestFinished(() => {
+      globalThis.__DEPLOYMENT_CHECK__ = undefined
+      vi.unstubAllGlobals()
+    })
+    const useFreshStatus = await importFreshHook()
+    function DefaultStatus(): React.ReactNode {
+      return <output>{useFreshStatus().status}</output>
+    }
+
+    const view = render(
+      <>
+        <DefaultStatus />
+        <DefaultStatus />
+      </>
+    )
+
+    await waitFor(() => {
+      expect(view.getAllByText("stale")).toHaveLength(2)
+    })
   })
 
   it("shares one target resolution and state reference between components", async () => {
     expect.hasAssertions()
     setupDom()
-    let calls = 0
+    const { counter, monitor } = countingMonitor()
     const states = new Map<string, DeploymentStatus>()
-    const options = {
-      checkInterval: 20_000,
-      source: {
-        resolveTarget: () => {
-          calls += 1
-          return Promise.resolve({ id: "running" })
-        },
-        running: { id: "running" },
-      },
-    } satisfies DeploymentStatusOptions
 
     const view = render(
       <>
-        <SourceStatus id="first" options={options} states={states} />
-        <SourceStatus id="second" options={options} states={states} />
+        <StatusOf id="first" monitor={monitor} states={states} />
+        <StatusOf id="second" monitor={monitor} states={states} />
       </>
     )
 
@@ -143,47 +155,34 @@ describe("react deployment integration", () => {
       expect(view.getAllByText("current")).toHaveLength(2)
     })
 
-    expect(calls).toBe(1)
+    expect(counter.calls).toBe(1)
     expect(states.get("first")).toBe(states.get("second"))
   })
 
-  it("does not resubscribe when an inline options literal is shallow-equal", async () => {
+  it("does not check again when the component rerenders", async () => {
     expect.hasAssertions()
     setupDom()
-    let calls = 0
-    const source: DeploymentSource = {
-      resolveTarget: () => {
-        calls += 1
-        return Promise.resolve({ id: "running" })
-      },
-      running: { id: "running" },
-    }
+    const { counter, monitor } = countingMonitor()
+    const states = new Map<string, DeploymentStatus>()
 
-    const view = render(<InlineStatus source={source} />)
-
+    const view = render(<StatusOf id="first" monitor={monitor} states={states} />)
     await waitFor(() => {
       expect(view.getByText("current")).toBeDefined()
     })
+    view.rerender(<StatusOf id="second" monitor={monitor} states={states} />)
     await Promise.resolve()
 
-    expect(calls).toBe(1)
+    expect(counter.calls).toBe(1)
   })
 
   it("keeps one initial check through Strict Mode mount churn", async () => {
     expect.hasAssertions()
     setupDom()
-    let calls = 0
-    const source: DeploymentSource = {
-      resolveTarget: () => {
-        calls += 1
-        return Promise.resolve({ id: "running" })
-      },
-      running: { id: "running" },
-    }
+    const { counter, monitor } = countingMonitor()
 
     const view = render(
       <StrictMode>
-        <InlineStatus source={source} />
+        <StatusOf id="strict" monitor={monitor} states={new Map()} />
       </StrictMode>
     )
 
@@ -191,69 +190,26 @@ describe("react deployment integration", () => {
       expect(view.getByText("current")).toBeDefined()
     })
 
-    expect(calls).toBe(1)
+    expect(counter.calls).toBe(1)
   })
 
-  it("reads a checkInterval given as a time expression", () => {
-    setupDom()
-    const setInterval = vi.spyOn(globalThis, "setInterval")
-    onTestFinished(() => {
-      setInterval.mockRestore()
-    })
-    const source: DeploymentSource = {
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
-    }
-
-    render(<MinuteStatus source={source} />)
-
-    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 60_000)
-  })
-
-  it("uses the isCurrent predicate supplied to the hook", async () => {
+  it("narrows a stale state to its target and check time", async () => {
     expect.hasAssertions()
     setupDom()
+    const { monitor } = countingMonitor("target")
     const states = new Map<string, DeploymentStatus>()
-    const options = {
-      checkInterval: 20_000,
-      isCurrent: () => false,
-      source: {
-        resolveTarget: () => Promise.resolve({ id: "running" }),
-        running: { id: "running" },
-      },
-    } satisfies DeploymentStatusOptions
 
-    const view = render(<SourceStatus id="is-current" options={options} states={states} />)
+    const view = render(<StatusOf id="stale" monitor={monitor} states={states} />)
 
     await waitFor(() => {
       expect(view.getByText("stale")).toBeDefined()
     })
 
-    const state = states.get("is-current")
+    const state = states.get("stale")
     assertStale(state)
     expectTypeOf(state.status).toEqualTypeOf<"stale">()
     expectTypeOf(state.target).toEqualTypeOf<{ readonly builtAt?: Date; readonly id: string }>()
     expectTypeOf(state.checkedAt).toEqualTypeOf<Date>()
-  })
-
-  it("applies an inline isCurrent predicate across parent rerenders", async () => {
-    expect.assertions(2)
-    setupDom()
-    const source: DeploymentSource = {
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
-    }
-
-    const view = render(<InlinePredicateStatus label="first" source={source} />)
-    view.rerender(<InlinePredicateStatus label="second" source={source} />)
-
-    expect(view.getByText("second:unknown")).toBeDefined()
-
-    await act(async () => {
-      await getMonitor(source).check()
-    })
-
-    expect(view.getByText("second:stale")).toBeDefined()
   })
 
   it("keeps a stale notice mounted throughout a later check", async () => {
@@ -261,15 +217,13 @@ describe("react deployment integration", () => {
     setupDom()
     let nextTarget = Promise.resolve({ id: "target" })
     let finish: (deployment: { id: string }) => void = missingResolver
-    const source: DeploymentSource = {
-      resolveTarget: () => nextTarget,
+    const monitor = createDeploymentMonitor({
+      checkOnSubscribe: false,
       running: { id: "running" },
-    }
+      target: () => nextTarget,
+    })
     const states = new Map<string, DeploymentStatus>()
-    const view = render(
-      <SourceStatus id="notice" options={{ checkOnSubscribe: false, source }} states={states} />
-    )
-    const monitor = getMonitor(source)
+    const view = render(<StatusOf id="notice" monitor={monitor} states={states} />)
 
     await act(async () => {
       await monitor.check()

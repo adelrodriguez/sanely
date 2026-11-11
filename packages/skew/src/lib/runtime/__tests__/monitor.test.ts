@@ -1,10 +1,29 @@
 import { InvalidTimeExpressionError } from "@sanely/duration"
 import { describe, expect, it, onTestFinished, vi } from "vitest"
-import type { Deployment, DeploymentSource } from "#lib/protocol/types.ts"
-import { DEFAULT_CHECK_TIMEOUT, createDeploymentMonitor } from "#lib/runtime/monitor.ts"
+import type { Deployment, TargetResolver } from "#lib/protocol/types.ts"
+import type { DeploymentMonitorOptions } from "#lib/runtime/monitor.ts"
+import { TargetResolutionError } from "#lib/protocol/errors.ts"
+import { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
 import { FakeEnvironment, MemoryStorage } from "./helpers.ts"
 
 const TEST_TIME = 10 ** 3
+
+interface TestSource {
+  readonly running: Deployment
+  readonly resolveTarget: TargetResolver
+}
+
+// Creates a monitor for a running deployment and its target, or an inert monitor without one.
+function monitorOf<const T extends string = never>(
+  source: TestSource | undefined,
+  options: DeploymentMonitorOptions<T> = {}
+) {
+  return createDeploymentMonitor(
+    source === undefined
+      ? options
+      : { running: source.running, target: source.resolveTarget, ...options }
+  )
+}
 
 function missingResolver(): never {
   throw new Error("The test resolver was not initialized")
@@ -24,7 +43,7 @@ function resolveRunning(): Promise<Deployment> {
   return Promise.resolve({ id: "running" })
 }
 
-class ControlledSource implements DeploymentSource {
+class ControlledSource implements TestSource {
   calls = 0
   respond: () => Promise<Deployment>
   readonly running: Deployment = { id: "running" }
@@ -41,35 +60,8 @@ class ControlledSource implements DeploymentSource {
   }
 }
 
-function createPredicateScheduleMonitor() {
-  const environment = new FakeEnvironment()
-  const monitor = createDeploymentMonitor(
-    {
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
-    },
-    { environment }
-  )
-  const unsubscribePriority = monitor.subscribe(noop, {
-    checkInterval: 30_000,
-    checkOnReconnect: false,
-    checkOnSubscribe: false,
-    checkOnVisible: false,
-    isCurrent: () => true,
-  })
-  const unsubscribeSchedule = monitor.subscribe(noop, {
-    checkInterval: 20_000,
-    checkOnReconnect: true,
-    checkOnSubscribe: false,
-    checkOnVisible: true,
-    isCurrent: () => false,
-  })
-
-  return { environment, monitor, unsubscribePriority, unsubscribeSchedule }
-}
-
 async function loadStalePageAndReload(environment: FakeEnvironment) {
-  const monitor = createDeploymentMonitor(
+  const monitor = monitorOf(
     {
       resolveTarget: () => Promise.resolve({ id: "B" }),
       running: { id: "A" },
@@ -85,11 +77,11 @@ async function loadStalePageAndReload(environment: FakeEnvironment) {
 describe("deployment monitor", () => {
   it("reads checkTimeout and checkInterval given as time expressions", async () => {
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
+    const monitor = monitorOf(
       { resolveTarget: neverSettles, running: { id: "running" } },
-      { checkTimeout: "2s", environment }
+      { checkInterval: "1m", checkOnSubscribe: false, checkTimeout: "2s", environment }
     )
-    const unsubscribe = monitor.subscribe(noop, { checkInterval: "1m", checkOnSubscribe: false })
+    const unsubscribe = monitor.subscribe(noop)
     onTestFinished(unsubscribe)
 
     void monitor.check()
@@ -102,12 +94,10 @@ describe("deployment monitor", () => {
   it("rejects a string that is not a time expression", () => {
     const environment = new FakeEnvironment()
     const source = { resolveTarget: neverSettles, running: { id: "running" } }
-    const monitor = createDeploymentMonitor(source, { environment })
-
-    expect(() => createDeploymentMonitor(source, { checkTimeout: "soon" as "1s" })).toThrow(
+    expect(() => monitorOf(source, { checkTimeout: "soon" as "1s", environment })).toThrow(
       InvalidTimeExpressionError
     )
-    expect(() => monitor.subscribe(noop, { checkInterval: "soon" as "1m" })).toThrow(
+    expect(() => monitorOf(source, { checkInterval: "soon" as "1m", environment })).toThrow(
       InvalidTimeExpressionError
     )
   })
@@ -121,11 +111,11 @@ describe("deployment monitor", () => {
       vi.unstubAllGlobals()
     })
 
-    const source: DeploymentSource = {
+    const source: TestSource = {
       resolveTarget: () => Promise.resolve({ id: "running" }),
       running: { id: "running" },
     }
-    const monitor = createDeploymentMonitor(source)
+    const monitor = monitorOf(source)
     const state = monitor.getState()
 
     expect(state).toMatchObject({
@@ -143,7 +133,7 @@ describe("deployment monitor", () => {
   it("uses the configured isCurrent predicate", async () => {
     expect.assertions(1)
 
-    const monitor = createDeploymentMonitor(
+    const monitor = monitorOf(
       {
         resolveTarget: () => Promise.resolve({ id: "running" }),
         running: { id: "running" },
@@ -156,108 +146,36 @@ describe("deployment monitor", () => {
     expect(monitor.getState().status).toBe("stale")
   })
 
-  it("uses the earliest active explicit subscriber predicate for one shared verdict", async () => {
-    expect.assertions(2)
-
-    const monitor = createDeploymentMonitor({
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
+  it("keeps the configured comparison when subscribers leave during a check", async () => {
+    let resolveTarget: (deployment: Deployment) => void = missingResolver
+    const target = new Promise<Deployment>((resolve) => {
+      resolveTarget = resolve
     })
-    const unsubscribeFirst = monitor.subscribe(noop, {
+    const monitor = createDeploymentMonitor({
       checkOnSubscribe: false,
+      environment: new FakeEnvironment(),
       isCurrent: () => true,
+      running: { id: "running" },
+      target: () => target,
     })
-    const unsubscribeSecond = monitor.subscribe(noop, {
-      checkOnSubscribe: false,
-      isCurrent: () => false,
-    })
+    const first: string[] = []
+    const second: string[] = []
+    const unsubscribeFirst = monitor.subscribe((state) => first.push(state.status))
+    const unsubscribeSecond = monitor.subscribe((state) => second.push(state.status))
+    onTestFinished(unsubscribeFirst)
+    onTestFinished(unsubscribeSecond)
 
-    await monitor.check()
-    expect(monitor.getState().status).toBe("current")
+    const check = monitor.check()
+    resolveTarget({ id: "different" })
+    await check
+    expect(first.at(-1)).toBe("current")
+    expect(second.at(-1)).toBe("current")
 
+    const nextCheck = monitor.check()
     unsubscribeFirst()
-    await monitor.check()
-    expect(monitor.getState().status).toBe("stale")
-
-    unsubscribeSecond()
-  })
-
-  it("skips option-free subscribers when it selects the active predicate", async () => {
-    expect.assertions(1)
-
-    const monitor = createDeploymentMonitor({
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
-    })
-    const unsubscribeWithoutPredicate = monitor.subscribe(noop, { checkOnSubscribe: false })
-    const unsubscribeExplicit = monitor.subscribe(noop, {
-      checkOnSubscribe: false,
-      isCurrent: () => false,
-    })
-
-    await monitor.check()
-
-    expect(monitor.getState().status).toBe("stale")
-    unsubscribeExplicit()
-    unsubscribeWithoutPredicate()
-  })
-
-  it("returns to the monitor default after all explicit predicates leave", async () => {
-    expect.assertions(2)
-
-    const monitor = createDeploymentMonitor({
-      resolveTarget: () => Promise.resolve({ id: "running" }),
-      running: { id: "running" },
-    })
-    const unsubscribeDefault = monitor.subscribe(noop, { checkOnSubscribe: false })
-    const unsubscribeExplicit = monitor.subscribe(noop, {
-      checkOnSubscribe: false,
-      isCurrent: () => false,
-    })
-
-    await monitor.check()
-    expect(monitor.getState().status).toBe("stale")
-
-    unsubscribeExplicit()
-    await monitor.check()
+    await nextCheck
+    expect(second.at(-1)).toBe("current")
     expect(monitor.getState().status).toBe("current")
-
-    unsubscribeDefault()
-  })
-
-  it("keeps the subscriber schedule union while the earliest predicate decides", async () => {
-    expect.assertions(4)
-
-    const { environment, monitor, unsubscribePriority, unsubscribeSchedule } =
-      createPredicateScheduleMonitor()
-
-    await monitor.check()
-
-    expect(monitor.getState().status).toBe("current")
-    expect(environment.intervalDelays).toStrictEqual([20_000])
-    expect(environment.listenerCount("online")).toBe(1)
-    expect(environment.listenerCount("pageshow")).toBe(1)
-
-    unsubscribePriority()
-    unsubscribeSchedule()
-  })
-
-  it("keeps the schedule when the priority predicate subscriber leaves", async () => {
-    expect.assertions(4)
-
-    const { environment, monitor, unsubscribePriority, unsubscribeSchedule } =
-      createPredicateScheduleMonitor()
-
-    await monitor.check()
-    unsubscribePriority()
-    await monitor.check()
-
-    expect(monitor.getState().status).toBe("stale")
-    expect(environment.intervalDelays).toStrictEqual([20_000])
-    expect(environment.listenerCount("online")).toBe(1)
-    expect(environment.listenerCount("pageshow")).toBe(1)
-
-    unsubscribeSchedule()
   })
 
   it("keeps durable status while a successful check updates target knowledge", async () => {
@@ -267,13 +185,13 @@ describe("deployment monitor", () => {
     const target = new Promise<{ id: string }>((resolve) => {
       resolveTarget = resolve
     })
-    const source: DeploymentSource = {
+    const source: TestSource = {
       resolveTarget: () => target,
       running: { id: "running" },
     }
     const environment = new FakeEnvironment()
     environment.setNow(TEST_TIME)
-    const monitor = createDeploymentMonitor(source, { checkTimeout: 50, environment })
+    const monitor = monitorOf(source, { checkTimeout: 50, environment })
 
     const check = monitor.check()
 
@@ -302,13 +220,13 @@ describe("deployment monitor", () => {
 
     const failure = new Error("offline")
     let target = Promise.resolve({ id: "target" })
-    const source: DeploymentSource = {
+    const source: TestSource = {
       resolveTarget: () => target,
       running: { id: "running" },
     }
     const environment = new FakeEnvironment()
     environment.setNow(TEST_TIME)
-    const monitor = createDeploymentMonitor(source, { environment })
+    const monitor = monitorOf(source, { environment })
 
     await monitor.check()
     target = Promise.reject(failure)
@@ -333,19 +251,16 @@ describe("deployment monitor", () => {
   it("notifies subscribers with a new immutable state for each change", async () => {
     expect.assertions(3)
 
-    const source: DeploymentSource = {
+    const source: TestSource = {
       resolveTarget: () => Promise.resolve({ id: "running" }),
       running: { id: "running" },
     }
-    const monitor = createDeploymentMonitor(source)
+    const monitor = monitorOf(source, { checkOnSubscribe: false })
     const initial = monitor.getState()
     const states: unknown[] = []
-    const unsubscribe = monitor.subscribe(
-      (state) => {
-        states.push(state)
-      },
-      { checkOnSubscribe: false }
-    )
+    const unsubscribe = monitor.subscribe((state) => {
+      states.push(state)
+    })
 
     await monitor.check()
     unsubscribe()
@@ -363,7 +278,7 @@ describe("deployment monitor", () => {
     const target = new Promise<{ id: string }>((resolve) => {
       finish = resolve
     })
-    const monitor = createDeploymentMonitor({
+    const monitor = monitorOf({
       resolveTarget: () => {
         calls += 1
         return target
@@ -388,7 +303,7 @@ describe("deployment monitor", () => {
     expect.assertions(4)
 
     let targetSignal: AbortSignal | undefined
-    const monitor = createDeploymentMonitor({
+    const monitor = monitorOf({
       resolveTarget: (signal) => {
         targetSignal = signal
         return new Promise((_resolve, reject) => {
@@ -416,10 +331,10 @@ describe("deployment monitor", () => {
   })
 
   it("finishes a never-settling check when its timeout expires", async () => {
-    expect.assertions(3)
+    expect.assertions(5)
 
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
+    const monitor = monitorOf(
       {
         resolveTarget: neverSettles,
         running: { id: "running" },
@@ -432,11 +347,9 @@ describe("deployment monitor", () => {
     const result = await check
 
     expect(result).toBe(monitor.getState())
-    expect(result).toMatchObject({
-      checkStatus: "idle",
-      error: new Error("[deployment-check] The deployment check timed out after 50ms."),
-      status: "unknown",
-    })
+    expect(result).toMatchObject({ checkStatus: "idle", status: "unknown" })
+    expect(result.error).toBeInstanceOf(TargetResolutionError)
+    expect(result.error).toMatchObject({ cause: { checkTimeout: 50 }, reason: "timeout" })
     expect(environment.timeoutDelays).toStrictEqual([])
   })
 
@@ -445,7 +358,7 @@ describe("deployment monitor", () => {
 
     const source = new ControlledSource(neverSettles)
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(source, { checkTimeout: 50, environment })
+    const monitor = monitorOf(source, { checkTimeout: 50, environment })
 
     const timedOut = monitor.check()
     environment.fireTimeouts()
@@ -466,7 +379,7 @@ describe("deployment monitor", () => {
     const source = new ControlledSource(resolveRunning)
     const environment = new FakeEnvironment()
     environment.setNow(TEST_TIME)
-    const monitor = createDeploymentMonitor(source, { checkTimeout: 50, environment })
+    const monitor = monitorOf(source, { checkTimeout: 50, environment })
 
     await monitor.check()
     const currentState = monitor.getState()
@@ -506,7 +419,7 @@ describe("deployment monitor", () => {
     })
     const source = new ControlledSource(() => firstTarget)
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(source, { checkTimeout: 50, environment })
+    const monitor = monitorOf(source, { checkTimeout: 50, environment })
 
     const firstCheck = monitor.check()
     environment.fireTimeouts()
@@ -524,14 +437,14 @@ describe("deployment monitor", () => {
     expect.assertions(4)
 
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
+    const monitor = monitorOf(
       { resolveTarget: neverSettles, running: { id: "running" } },
-      { environment }
+      { checkOnSubscribe: false, environment }
     )
-    const unsubscribe = monitor.subscribe(noop, { checkOnSubscribe: false })
+    const unsubscribe = monitor.subscribe(noop)
     const cancelledCheck = monitor.check()
 
-    expect(environment.timeoutDelays).toStrictEqual([DEFAULT_CHECK_TIMEOUT])
+    expect(environment.timeoutDelays).toStrictEqual([30_000])
 
     unsubscribe()
     await Promise.resolve()
@@ -544,34 +457,11 @@ describe("deployment monitor", () => {
     expect(monitor.getState().error).toBeNull()
   })
 
-  it("clears timeout work after destruction", async () => {
-    expect.assertions(4)
-
-    const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
-      { resolveTarget: neverSettles, running: { id: "running" } },
-      { environment }
-    )
-    monitor.subscribe(noop, { checkOnSubscribe: false })
-    const destroyedCheck = monitor.check()
-
-    expect(environment.timeoutDelays).toStrictEqual([DEFAULT_CHECK_TIMEOUT])
-
-    monitor.destroy()
-
-    expect(environment.intervalDelays).toStrictEqual([])
-    expect(environment.timeoutDelays).toStrictEqual([])
-
-    await destroyedCheck
-
-    expect(monitor.getState().error).toBeNull()
-  })
-
   it("shares the result of a timed-out check across concurrent callers", async () => {
     expect.assertions(3)
 
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
+    const monitor = monitorOf(
       {
         resolveTarget: neverSettles,
         running: { id: "running" },
@@ -587,9 +477,7 @@ describe("deployment monitor", () => {
     const [firstResult, secondResult] = await Promise.all([first, second])
 
     expect(secondResult).toBe(firstResult)
-    expect(firstResult.error?.message).toBe(
-      "[deployment-check] The deployment check timed out after 50ms."
-    )
+    expect(firstResult.error).toMatchObject({ reason: "timeout" })
   })
 
   it("stays inert without an embedded deployment source", async () => {
@@ -600,7 +488,7 @@ describe("deployment monitor", () => {
       warned = true
     })
     const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(undefined, { environment })
+    const monitor = monitorOf(undefined, { environment })
     const unsubscribe = monitor.subscribe(noop)
 
     const result = await monitor.check()
@@ -615,40 +503,6 @@ describe("deployment monitor", () => {
     warning.mockRestore()
   })
 
-  it("stays terminal after destruction", async () => {
-    expect.assertions(5)
-
-    let checks = 0
-    const environment = new FakeEnvironment()
-    const monitor = createDeploymentMonitor(
-      {
-        resolveTarget: () => {
-          checks += 1
-          return Promise.resolve({ id: "running" })
-        },
-        running: { id: "running" },
-      },
-      { environment }
-    )
-    const unsubscribe = monitor.subscribe(noop, { checkOnSubscribe: false })
-
-    monitor.destroy()
-    monitor.destroy()
-    const state = monitor.getState()
-    const unsubscribeAfterDestroy = monitor.subscribe(noop)
-    const result = await monitor.check()
-    monitor.reload()
-
-    expect(result).toBe(state)
-    expect(checks).toBe(0)
-    expect(environment.intervalDelays).toStrictEqual([])
-    expect(environment.listenerCount("visibilitychange")).toBe(0)
-    expect(environment.reloadCalls).toBe(0)
-
-    unsubscribe()
-    unsubscribeAfterDestroy()
-  })
-
   it("keeps the initial check through Strict Mode subscription churn", async () => {
     expect.assertions(3)
 
@@ -658,7 +512,7 @@ describe("deployment monitor", () => {
     const target = new Promise<{ id: string }>((resolve) => {
       finish = resolve
     })
-    const monitor = createDeploymentMonitor({
+    const monitor = monitorOf({
       resolveTarget: (signal) => {
         calls += 1
         targetSignal = signal
@@ -689,7 +543,7 @@ describe("deployment monitor", () => {
     expect.assertions(3)
 
     const source = new ControlledSource(neverSettles)
-    const monitor = createDeploymentMonitor(source)
+    const monitor = monitorOf(source)
 
     const unsubscribeFirst = monitor.subscribe(noop)
     const cancelledCheck = monitor.check()
@@ -735,7 +589,7 @@ describe("deployment monitor", () => {
       const environment = new FakeEnvironment(storage)
       await loadStalePageAndReload(environment)
 
-      createDeploymentMonitor(
+      monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "B" },
@@ -768,7 +622,7 @@ describe("deployment monitor", () => {
           throw new Error("storage unavailable")
         },
       })
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "A" },
@@ -796,7 +650,7 @@ describe("deployment monitor", () => {
           throw new Error("storage unavailable")
         },
       })
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "A" },
@@ -827,7 +681,7 @@ describe("deployment monitor", () => {
           // An unprotected monitor does not write another marker.
         },
       })
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "B" },
@@ -850,7 +704,7 @@ describe("deployment monitor", () => {
           // This test does not request a reload.
         },
       })
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "A" },
@@ -865,7 +719,7 @@ describe("deployment monitor", () => {
       expect.assertions(2)
 
       const environment = new FakeEnvironment(null)
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: "B" }),
           running: { id: "A" },
@@ -901,7 +755,7 @@ describe("deployment monitor", () => {
       const storage = new MemoryStorage()
       const environment = new FakeEnvironment(storage)
       let target = "B"
-      const monitor = createDeploymentMonitor(
+      const monitor = monitorOf(
         {
           resolveTarget: () => Promise.resolve({ id: target }),
           running: { id: "A" },
@@ -919,5 +773,76 @@ describe("deployment monitor", () => {
 
       expect(monitor.getState().reloadStatus).toBe("ready")
     })
+  })
+})
+
+function setEmbed(embed: NonNullable<typeof globalThis.__DEPLOYMENT_CHECK__>): void {
+  globalThis.__DEPLOYMENT_CHECK__ = embed
+  onTestFinished(() => {
+    globalThis.__DEPLOYMENT_CHECK__ = undefined
+  })
+}
+
+function stubDescriptorFetch(id: string) {
+  const fetch = vi.fn((_input: string | URL | Request) =>
+    Promise.resolve(
+      new Response(`{"v":1,"id":"${id}"}`, { headers: { "content-type": "application/json" } })
+    )
+  )
+  vi.stubGlobal("fetch", fetch)
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  return fetch
+}
+
+describe("monitor defaults", () => {
+  it("reads the running deployment and the endpoint from the embed", async () => {
+    expect.assertions(3)
+
+    setEmbed({
+      endpoint: "/app/deployment.json",
+      running: { builtAt: "2026-11-10T00:00:00.000Z", id: "embedded" },
+      v: 1,
+    })
+    const fetch = stubDescriptorFetch("target")
+    const monitor = createDeploymentMonitor({ environment: new FakeEnvironment() })
+
+    const state = await monitor.check()
+
+    expect(state.running).toStrictEqual({
+      builtAt: new Date("2026-11-10T00:00:00.000Z"),
+      id: "embedded",
+    })
+    expect(state.status).toBe("stale")
+    expect(fetch.mock.calls[0]?.[0]).toBe("/app/deployment.json")
+  })
+
+  it("fetches the default endpoint when the embed names none", async () => {
+    expect.assertions(1)
+
+    setEmbed({ running: { id: "embedded" }, v: 1 })
+    const fetch = stubDescriptorFetch("embedded")
+
+    await createDeploymentMonitor({ environment: new FakeEnvironment() }).check()
+
+    expect(fetch.mock.calls[0]?.[0]).toBe("/_deployment-check/deployment.json")
+  })
+
+  it("prefers the running option and a target URL over the embed", async () => {
+    expect.assertions(2)
+
+    setEmbed({ endpoint: "/embedded.json", running: { id: "embedded" }, v: 1 })
+    const fetch = stubDescriptorFetch("preview")
+    const monitor = createDeploymentMonitor({
+      environment: new FakeEnvironment(),
+      running: { id: "preview" },
+      target: "https://deployments.example.com/current.json",
+    })
+
+    const state = await monitor.check()
+
+    expect(state).toMatchObject({ running: { id: "preview" }, status: "current" })
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://deployments.example.com/current.json")
   })
 })

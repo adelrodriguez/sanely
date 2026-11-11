@@ -1,13 +1,11 @@
 import {
-  DEFAULT_CHECK_TIMEOUT,
   createDeploymentMonitor,
-  createStaticSource,
+  fetchDescriptor,
   parseDescriptor,
-  type CheckStatus,
   type Deployment,
   type DeploymentMonitor,
-  type ReloadStatus,
   type RuntimeEnvironment,
+  type TargetResolver,
 } from "@sanely/skew"
 import {
   DeploymentScript,
@@ -17,11 +15,7 @@ import {
   type NextAdapterOptions,
   type NextConfigExport,
 } from "@sanely/skew/next"
-import {
-  useDeploymentStatus,
-  type DeploymentStatus,
-  type DeploymentStatusOptions,
-} from "@sanely/skew/react"
+import { useDeploymentStatus, type DeploymentStatus } from "@sanely/skew/react"
 import {
   deploymentCheck,
   type ViteAdapterOptions,
@@ -30,10 +24,13 @@ import {
 } from "@sanely/skew/vite"
 
 const deployment: Deployment = parseDescriptor('{"v":1,"id":"package-contract"}')
-const monitor: DeploymentMonitor = createDeploymentMonitor(
-  createStaticSource(deployment, deployment),
-  { checkTimeout: "10s" }
-)
+const target: TargetResolver = fetchDescriptor("/current.json")
+const monitor: DeploymentMonitor = createDeploymentMonitor({
+  checkInterval: "5m",
+  checkTimeout: "10s",
+  running: deployment,
+  target,
+})
 const platform: DeploymentPlatform = "vercel"
 const deploymentIdOption: DeploymentIdOption = { platform }
 const vitePlugin = deploymentCheck({
@@ -42,18 +39,13 @@ const vitePlugin = deploymentCheck({
 const nextConfig: NextConfigExport = withDeploymentCheck({}, {
   deploymentId: { env: ["DEPLOYMENT_CHECK_SHA", "GIT_SHA"] },
 } satisfies NextAdapterOptions)
-const hookOptions = { checkInterval: "5m" } satisfies DeploymentStatusOptions<"5m">
 const declarationContract = {
   appRoute: GET,
-  checkStatus: undefined as unknown as CheckStatus,
-  checkTimeout: DEFAULT_CHECK_TIMEOUT,
   environment: undefined as unknown as RuntimeEnvironment,
-  hookOptions,
   hookStatus: undefined as unknown as DeploymentStatus,
   monitor,
   nextConfig,
   pagesRoute: descriptorHandler,
-  reloadStatus: undefined as unknown as ReloadStatus,
   scriptComponent: DeploymentScript,
   statusHook: useDeploymentStatus,
   vitePlugin,

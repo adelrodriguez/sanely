@@ -53,15 +53,15 @@ The guard uses session storage because a reload sequence belongs to one tab. Loc
 
 A failed check or a new check does not change `status`. When a tab knows that it is stale and the network then goes down, it stays `stale`. Its last `target` and `checkedAt` stay too. `check()` never rejects. It writes the failure to `error` and resolves with the full state.
 
-## One shared monitor serves all subscribers
+## One monitor serves the page
 
-The **monitor** is the headless runtime. It schedules checks, runs them, and holds the state. The package keeps one monitor for each `DeploymentSource` object, so ten components that use `useDeploymentStatus()` send one request, not ten. There is no provider component.
+The **monitor** is the headless runtime. It schedules checks, runs them, and holds the state. A page runs one deployment, so it needs one monitor. Ten components that call `useDeploymentStatus()` share the default monitor and send one request, not ten. There is no provider component.
 
-The first subscriber starts the schedule. The last subscriber to leave stops it and cancels a check that is in progress. When subscribers ask for different options, the monitor combines them:
+The monitor owns its whole configuration: the target, the schedule, and the `isCurrent` comparison. A component cannot change them, so two components can never disagree about whether the page is stale. To change the configuration, you create one monitor at module scope and pass it to every component.
 
-- The shortest `checkInterval` applies.
-- A trigger is on if any subscriber turns it on.
-- The `isCurrent` predicate of the earliest active subscriber that set one applies, and all subscribers see the same result.
+The first subscriber starts the schedule. The last subscriber to leave stops it and cancels a check that is in progress. A monitor has no other lifecycle, so no component can stop it while another still reads it.
+
+[ADR 0001](../adr/0001-one-monitor-per-page.md) records this decision and the designs it replaced.
 
 ## Checks follow the user's attention
 
@@ -74,11 +74,11 @@ A check runs at these times:
 
 The interval pauses while the tab is hidden. A hidden tab cannot show a notice, so a check there wastes a request. The monitor listens to `visibilitychange` and not to `focus`. The browser also fires `focus` when the user comes back from another window while the page was visible the whole time, so a `focus` check adds a request and no information.
 
-A check that takes longer than 30 seconds stops and records a timeout error. A monitor that you create with `createDeploymentMonitor` can change this limit through `checkTimeout`, in milliseconds or as a time expression such as `"10s"`.
+A check that takes longer than 30 seconds stops and records a `TargetResolutionError` with reason `"timeout"`. `checkTimeout` changes this limit, in milliseconds or as a time expression such as `"10s"`.
 
 ## Development builds stay inert
 
-The adapters do nothing in `vite dev` and `next dev`. A development server has no deployment to compare. Without an embed, the monitor reports `unknown`, never checks, and logs one warning in development. To see the `stale` state of your notice before you deploy, use a static source. [How to preview the update notice in development](../how-to/preview-the-update-notice.md) shows how.
+The adapters do nothing in `vite dev` and `next dev`. A development server has no deployment to compare. Without an embed, the monitor reports `unknown`, never checks, and logs one warning in development. To see the `stale` state of your notice before you deploy, give a monitor a running deployment and a target in development. [How to preview the update notice in development](../how-to/preview-the-update-notice.md) shows how.
 
 ## Adapters and integrations stay independent
 

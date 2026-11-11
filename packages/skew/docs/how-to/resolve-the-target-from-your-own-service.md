@@ -10,52 +10,50 @@ Set the adapter `endpoint` to the service URL. The client then fetches it with n
 deploymentCheck({ endpoint: "https://deployments.example.com/current.json" })
 ```
 
-The service must return the [descriptor format](../reference/descriptor.md) with `Cache-Control: no-store`. If the request needs headers or credentials, create the source yourself:
+The service must return the [descriptor format](../reference/descriptor.md) with `Cache-Control: no-store`. If the request needs headers or credentials, create a monitor with `fetchDescriptor` at module scope:
 
 ```ts
-import { createHttpSource } from "@sanely/skew"
+import { createDeploymentMonitor, fetchDescriptor } from "@sanely/skew"
 
-export const source = createHttpSource(
-  { id: import.meta.env.VITE_RELEASE_ID },
-  "https://deployments.example.com/current.json",
-  {
+export const monitor = createDeploymentMonitor({
+  target: fetchDescriptor("https://deployments.example.com/current.json", {
     credentials: "include",
     headers: { authorization: `Bearer ${token}` },
-  }
-)
+  }),
+})
 ```
 
-Pass `source` to `useDeploymentStatus({ source })`. Create it once at module scope.
+Pass `monitor` to `useDeploymentStatus(monitor)`.
 
 ## If your service returns another format
 
-Implement `DeploymentSource`:
+Give the monitor a `target` function that returns a `Deployment`:
 
 ```ts
-import type { DeploymentSource } from "@sanely/skew"
+import { createDeploymentMonitor } from "@sanely/skew"
 
-export const source: DeploymentSource = {
-  running: { id: import.meta.env.VITE_RELEASE_ID },
-  async resolveTarget(signal) {
+export const monitor = createDeploymentMonitor({
+  async target(signal) {
     const response = await fetch("https://releases.example.com/api/active", { signal })
-    const release = (await response.json()) as { version: string }
-    return { id: release.version }
+    const release: unknown = await response.json()
+    if (typeof release !== "object" || release === null || !("version" in release)) {
+      throw new Error("The release service returned an unexpected response.")
+    }
+    return { id: String(release.version) }
   },
-}
+})
 ```
 
 Follow these rules:
 
 - Send the request to a service that the running deployment does not control. If the old deployment answers, the client never sees a new target.
+- Return IDs in the same form as the adapter's deployment ID. The monitor reads the running ID from the embed. See [How to set the deployment ID](./set-the-deployment-id.md).
 - Pass `signal` to `fetch`. The monitor aborts a check after 30 seconds and when the last subscriber leaves.
 - Throw on a failure. The monitor stores the error in `error` and keeps the last status.
 
-## Use the source without React
+## Use the monitor without React
 
 ```ts
-import { getMonitor } from "@sanely/skew"
-
-const monitor = getMonitor(source)
 const unsubscribe = monitor.subscribe((state) => {
   if (state.status === "stale") {
     showUpdateBanner(state.target.id)

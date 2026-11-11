@@ -19,41 +19,38 @@ export const MINIMUM_CHECK_INTERVAL = 10 * MS_PER_SECOND
 
 export class DeploymentScheduler {
   readonly #environment: RuntimeEnvironment
+  readonly #schedule: DeploymentSchedule
   readonly #check: () => void
   #interval: TimerHandle | undefined
-  #schedule: DeploymentSchedule | undefined
+  #started = false
 
-  constructor(environment: RuntimeEnvironment, check: () => void) {
+  constructor(environment: RuntimeEnvironment, schedule: DeploymentSchedule, check: () => void) {
     this.#check = check
     this.#environment = environment
-  }
-
-  stop(): void {
-    this.#clearInterval()
-    this.#removeListener("visibilitychange", this.#onVisibilityChange)
-    this.#removeListener("pageshow", this.#onPageShow)
-    this.#removeListener("online", this.#onOnline)
-    this.#schedule = undefined
-  }
-
-  update(schedule: DeploymentSchedule): void {
-    if (this.#schedule !== undefined && schedulesMatch(this.#schedule, schedule)) {
-      return
-    }
-
-    this.stop()
     this.#schedule = schedule
+  }
+
+  start(): void {
+    this.#started = true
     this.#environment.addEventListener("visibilitychange", this.#onVisibilityChange)
 
-    if (schedule.checkOnVisible) {
+    if (this.#schedule.checkOnVisible) {
       this.#environment.addEventListener("pageshow", this.#onPageShow)
     }
 
-    if (schedule.checkOnReconnect) {
+    if (this.#schedule.checkOnReconnect) {
       this.#environment.addEventListener("online", this.#onOnline)
     }
 
     this.#startInterval()
+  }
+
+  stop(): void {
+    this.#started = false
+    this.#clearInterval()
+    this.#removeListener("visibilitychange", this.#onVisibilityChange)
+    this.#removeListener("pageshow", this.#onPageShow)
+    this.#removeListener("online", this.#onOnline)
   }
 
   readonly #onOnline = (): void => {
@@ -73,7 +70,7 @@ export class DeploymentScheduler {
       return
     }
 
-    if (this.#schedule?.checkOnVisible === true) {
+    if (this.#schedule.checkOnVisible) {
       this.#check()
     }
 
@@ -92,23 +89,10 @@ export class DeploymentScheduler {
   }
 
   #startInterval(): void {
-    if (this.#schedule === undefined || !this.#environment.isVisible()) {
+    if (!this.#started || !this.#environment.isVisible()) {
       return
     }
 
     this.#interval = this.#environment.setInterval(this.#check, this.#schedule.checkInterval)
   }
-}
-
-// The type requires every field of DeploymentSchedule, so a new field fails to compile until the
-// scheduler compares it.
-const SCHEDULE_FIELDS: { readonly [K in keyof DeploymentSchedule]-?: K } = {
-  checkInterval: "checkInterval",
-  checkOnReconnect: "checkOnReconnect",
-  checkOnSubscribe: "checkOnSubscribe",
-  checkOnVisible: "checkOnVisible",
-}
-
-function schedulesMatch(left: DeploymentSchedule, right: DeploymentSchedule): boolean {
-  return Object.values(SCHEDULE_FIELDS).every((field) => left[field] === right[field])
 }

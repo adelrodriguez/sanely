@@ -1,6 +1,9 @@
 import type { ValidateTimeExpression } from "@sanely/duration"
 import { MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
-import type { Deployment, DeploymentSource, IsDeploymentCurrent } from "#lib/protocol/types.ts"
+import type { Deployment, IsDeploymentCurrent, TargetResolver } from "#lib/protocol/types.ts"
+import { readEmbed } from "#lib/protocol/embed.ts"
+import { TargetResolutionError } from "#lib/protocol/errors.ts"
+import { DEFAULT_DESCRIPTOR_ENDPOINT, fetchDescriptor } from "#lib/protocol/fetch-descriptor.ts"
 import type { RuntimeEnvironment, TimerHandle } from "./environment"
 import type { DeploymentSchedule } from "./scheduler"
 import { createBrowserEnvironment } from "./environment"
@@ -10,10 +13,9 @@ import {
   DeploymentScheduler,
   MINIMUM_CHECK_INTERVAL,
 } from "./scheduler"
-import { Subscribable } from "./subscribable"
 
-export type CheckStatus = "checking" | "idle"
-export type ReloadStatus = "blocked" | "ready" | "unprotected"
+type CheckStatus = "checking" | "idle"
+type ReloadStatus = "blocked" | "ready" | "unprotected"
 
 interface DeploymentStatusBase {
   readonly check: () => Promise<DeploymentStatus>
@@ -49,74 +51,68 @@ interface ReloadMarker {
   readonly to: string
 }
 
-export const DEFAULT_CHECK_TIMEOUT = 30 * MS_PER_SECOND
+const DEFAULT_CHECK_TIMEOUT = 30 * MS_PER_SECOND
 
 const RELOAD_MARKER_KEY = "deployment-check:reload"
 const RELOAD_COOLDOWN = 10 * MS_PER_MINUTE
 
 export interface DeploymentMonitorOptions<T extends string = never> {
-  readonly checkTimeout?: number | ValidateTimeExpression<T>
-  readonly environment?: RuntimeEnvironment
+  /**
+   * The descriptor URL, or a function that resolves the target deployment. Defaults to the endpoint
+   * in the embed.
+   */
+  readonly target?: string | TargetResolver
+  /**
+   * The deployment that produced this page. Defaults to the embed. Set it for a preview or a test.
+   */
+  readonly running?: Deployment
+  /**
+   * Whether the running deployment is current for the target. Defaults to equal IDs.
+   */
   readonly isCurrent?: IsDeploymentCurrent
-}
-
-interface InternalMonitorOptions extends Omit<DeploymentMonitorOptions, "checkTimeout"> {
-  readonly checkTimeout?: number | string
-  readonly onDestroy?: () => void
-}
-
-export interface DeploymentSubscriberOptions<T extends string = never> {
   readonly checkInterval?: number | ValidateTimeExpression<T>
+  readonly checkTimeout?: number | ValidateTimeExpression<T>
   readonly checkOnReconnect?: boolean
   readonly checkOnSubscribe?: boolean
   readonly checkOnVisible?: boolean
-  readonly isCurrent?: IsDeploymentCurrent
+  readonly environment?: RuntimeEnvironment
 }
 
 export interface DeploymentMonitor {
   check(): Promise<DeploymentStatus>
-  destroy(): void
   getState(): DeploymentStatus
   reload(): void
-  subscribe<const T extends string = never>(
-    listener: (state: DeploymentStatus) => void,
-    options?: DeploymentSubscriberOptions<T>
-  ): () => void
+  /**
+   * The first subscriber starts the schedule, and the last unsubscribe stops it and cancels a check
+   * in progress.
+   */
+  subscribe(listener: (state: DeploymentStatus) => void): () => void
 }
 
-class DeploymentMonitorImplementation
-  extends Subscribable<(state: DeploymentStatus) => void, DeploymentSubscriberOptions>
-  implements DeploymentMonitor
-{
-  readonly #checkTimeout: number
-  readonly #defaultIsCurrent: IsDeploymentCurrent
-  #isCurrent: IsDeploymentCurrent
-  readonly #source: DeploymentSource | undefined
-  readonly #environment: RuntimeEnvironment
+// The options after parsing. A monitor without a running deployment is inert.
+interface MonitorConfiguration {
+  readonly checkTimeout: number
+  readonly environment: RuntimeEnvironment
+  readonly isCurrent: IsDeploymentCurrent
+  readonly running: Deployment | undefined
+  readonly schedule: DeploymentSchedule
+  readonly target: TargetResolver
+}
+
+class DeploymentMonitorImplementation implements DeploymentMonitor {
+  readonly #settings: MonitorConfiguration
+  readonly #listeners = new Set<{ readonly listener: (state: DeploymentStatus) => void }>()
   readonly #reloadGuard: ReloadGuard
-  #abortController: AbortController | undefined
-  #destroyed = false
-  readonly #onDestroy: (() => void) | undefined
-  #inFlight: Promise<DeploymentStatus> | undefined
   readonly #scheduler: DeploymentScheduler
+  #abortController: AbortController | undefined
+  #inFlight: Promise<DeploymentStatus> | undefined
   #state: DeploymentStatus
 
-  constructor(source: DeploymentSource | undefined, options: InternalMonitorOptions) {
-    super()
-    this.#checkTimeout = milliseconds(options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT)
-    this.#environment = options.environment ?? createBrowserEnvironment()
-    this.#defaultIsCurrent = options.isCurrent ?? ((running, target) => running.id === target.id)
-    this.#isCurrent = this.#defaultIsCurrent
-    this.#onDestroy = options.onDestroy
-    this.#source = source
-    const running = source?.running ?? { id: "" }
-    this.#reloadGuard = new ReloadGuard(running, this.#environment)
-    if (source === undefined && process.env.NODE_ENV !== "production" && "document" in globalThis) {
-      console.warn(
-        "[deployment-check] The monitor is inert because no adapter registered a deployment embed."
-      )
-    }
-    this.#scheduler = new DeploymentScheduler(this.#environment, () => {
+  constructor(settings: MonitorConfiguration) {
+    this.#settings = settings
+    const running = settings.running ?? { id: "" }
+    this.#reloadGuard = new ReloadGuard(running, settings.environment)
+    this.#scheduler = new DeploymentScheduler(settings.environment, settings.schedule, () => {
       void this.check()
     })
     this.#state = {
@@ -133,8 +129,8 @@ class DeploymentMonitorImplementation
   }
 
   check(): Promise<DeploymentStatus> {
-    const source = this.#source
-    if (this.#destroyed || source === undefined) {
+    const { running } = this.#settings
+    if (running === undefined) {
       return Promise.resolve(this.#state)
     }
 
@@ -146,7 +142,7 @@ class DeploymentMonitorImplementation
 
     const abortController = new AbortController()
     this.#abortController = abortController
-    this.#inFlight = this.#performCheck(source, abortController).finally(() => {
+    this.#inFlight = this.#performCheck(running, abortController).finally(() => {
       if (this.#abortController === abortController) {
         this.#abortController = undefined
       }
@@ -156,23 +152,72 @@ class DeploymentMonitorImplementation
     return this.#inFlight
   }
 
+  getState(): DeploymentStatus {
+    return this.#state
+  }
+
+  reload(): void {
+    const reloadStatus = this.#reloadGuard.request(this.#state.target)
+    if (reloadStatus !== this.#state.reloadStatus) {
+      this.#updateState({ reloadStatus })
+    }
+  }
+
+  subscribe(listener: (state: DeploymentStatus) => void): () => void {
+    const subscription = { listener }
+    this.#listeners.add(subscription)
+    if (this.#listeners.size === 1) {
+      this.#start()
+    }
+
+    return () => {
+      if (this.#listeners.delete(subscription) && this.#listeners.size === 0) {
+        this.#stop()
+      }
+    }
+  }
+
+  #start(): void {
+    if (this.#settings.running === undefined) {
+      return
+    }
+
+    this.#scheduler.start()
+    if (this.#settings.schedule.checkOnSubscribe) {
+      void this.check()
+    }
+  }
+
+  #stop(): void {
+    this.#scheduler.stop()
+    // A subscriber that leaves and comes back in the same task, as in React Strict Mode, keeps the
+    // check in progress.
+    const abortController = this.#abortController
+    void Promise.resolve().then(() => {
+      if (this.#listeners.size === 0 && this.#abortController === abortController) {
+        abortController?.abort()
+      }
+      return false
+    })
+  }
+
   async #performCheck(
-    source: DeploymentSource,
+    running: Deployment,
     abortController: AbortController
   ): Promise<DeploymentStatus> {
     this.#updateState({ checkStatus: "checking" })
     try {
-      const target = await this.#resolveTarget(source, abortController)
+      const target = await this.#resolveTarget(abortController)
       if (target === null) {
         this.#updateState({ checkStatus: "idle" })
       } else {
         this.#setState({
           ...this.#state,
           checkStatus: "idle",
-          checkedAt: new Date(this.#environment.now()),
+          checkedAt: new Date(this.#settings.environment.now()),
           error: null,
           reloadStatus: this.#reloadGuard.reconcile(this.#state.target?.id === target.id),
-          status: this.#isCurrent(source.running, target) ? "current" : "stale",
+          status: this.#settings.isCurrent(running, target) ? "current" : "stale",
           target,
         })
       }
@@ -186,10 +231,8 @@ class DeploymentMonitorImplementation
     return this.#state
   }
 
-  async #resolveTarget(
-    source: DeploymentSource,
-    abortController: AbortController
-  ): Promise<Deployment | null> {
+  async #resolveTarget(abortController: AbortController): Promise<Deployment | null> {
+    const { checkTimeout, environment, target } = this.#settings
     let timeoutHandle: TimerHandle | undefined
     const cancelled = new Promise<null>((resolve) => {
       abortController.signal.addEventListener(
@@ -202,18 +245,14 @@ class DeploymentMonitorImplementation
       )
     })
     const timeout = new Promise<never>((_resolve, reject) => {
-      timeoutHandle = this.#environment.setTimeout(() => {
-        reject(
-          new Error(
-            `[deployment-check] The deployment check timed out after ${this.#checkTimeout}ms.`
-          )
-        )
+      timeoutHandle = environment.setTimeout(() => {
+        reject(new TargetResolutionError("timeout", { checkTimeout }))
         abortController.abort()
-      }, this.#checkTimeout)
+      }, checkTimeout)
     })
 
     try {
-      return await Promise.race([cancelled, source.resolveTarget(abortController.signal), timeout])
+      return await Promise.race([cancelled, target(abortController.signal), timeout])
     } finally {
       this.#clearTimeout(timeoutHandle)
     }
@@ -221,111 +260,7 @@ class DeploymentMonitorImplementation
 
   #clearTimeout(handle: TimerHandle | undefined): void {
     if (handle !== undefined) {
-      this.#environment.clearTimeout(handle)
-    }
-  }
-
-  destroy(): void {
-    if (this.#destroyed) {
-      return
-    }
-
-    this.#destroyed = true
-    this.#abortController?.abort()
-    this.#scheduler.stop()
-    this.listeners.clear()
-    this.#onDestroy?.()
-  }
-
-  getState(): DeploymentStatus {
-    return this.#state
-  }
-
-  reload(): void {
-    if (this.#destroyed) {
-      return
-    }
-
-    const reloadStatus = this.#reloadGuard.request(this.#state.target)
-    if (reloadStatus !== this.#state.reloadStatus) {
-      this.#updateState({ reloadStatus })
-    }
-  }
-
-  override subscribe<const T extends string = never>(
-    listener: (state: DeploymentStatus) => void,
-    { checkInterval, ...options }: DeploymentSubscriberOptions<T> = {}
-  ): () => void {
-    const interval =
-      checkInterval === undefined ? {} : { checkInterval: milliseconds(checkInterval) }
-
-    if (this.#destroyed) {
-      return () => {
-        // A destroyed monitor has no subscription to remove.
-      }
-    }
-
-    return super.subscribe(listener, { ...options, ...interval })
-  }
-
-  protected override onSubscribe(): void {
-    if (this.#source === undefined) {
-      return
-    }
-
-    const schedule = this.#reconcile()
-    this.#scheduler.update(schedule)
-
-    if (this.listeners.size === 1 && schedule.checkOnSubscribe) {
-      void this.check()
-    }
-  }
-
-  protected override onUnsubscribe(): void {
-    const schedule = this.#reconcile()
-    if (this.listeners.size === 0) {
-      const abortController = this.#abortController
-      void Promise.resolve().then(() => {
-        if (this.listeners.size === 0 && this.#abortController === abortController) {
-          abortController?.abort()
-        }
-        return false
-      })
-      this.#scheduler.stop()
-      return
-    }
-
-    this.#scheduler.update(schedule)
-  }
-
-  #reconcile(): DeploymentSchedule {
-    let checkInterval = Number.POSITIVE_INFINITY
-    let checkOnReconnect = false
-    let checkOnSubscribe = false
-    let checkOnVisible = false
-    let isCurrent: IsDeploymentCurrent | undefined
-
-    for (const { options } of this.listeners) {
-      checkInterval = Math.min(
-        checkInterval,
-        options.checkInterval ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkInterval
-      )
-      checkOnReconnect ||= options.checkOnReconnect ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnReconnect
-      checkOnSubscribe ||= options.checkOnSubscribe ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnSubscribe
-      checkOnVisible ||= options.checkOnVisible ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnVisible
-      isCurrent ??= options.isCurrent
-    }
-
-    this.#isCurrent = isCurrent ?? this.#defaultIsCurrent
-    if (checkInterval < MINIMUM_CHECK_INTERVAL) {
-      console.warn(`[deployment-check] Increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
-    }
-
-    return {
-      checkInterval: Math.max(checkInterval, MINIMUM_CHECK_INTERVAL),
-      checkOnReconnect,
-      checkOnSubscribe,
-      checkOnVisible,
+      this.#settings.environment.clearTimeout(handle)
     }
   }
 
@@ -335,7 +270,7 @@ class DeploymentMonitorImplementation
 
   #setState(state: DeploymentStatus): void {
     this.#state = state
-    for (const { listener } of this.listeners) {
+    for (const { listener } of this.#listeners) {
       listener(state)
     }
   }
@@ -445,17 +380,46 @@ class ReloadGuard {
 }
 
 export function createDeploymentMonitor<const T extends string = never>(
-  source?: DeploymentSource,
   options: DeploymentMonitorOptions<T> = {}
 ): DeploymentMonitor {
-  return new DeploymentMonitorImplementation(source, options)
+  const embed = readEmbed()
+  const running = options.running ?? readRunningDeployment(embed)
+  const checkInterval = milliseconds(
+    options.checkInterval ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkInterval
+  )
+  if (checkInterval < MINIMUM_CHECK_INTERVAL) {
+    console.warn(`[deployment-check] Increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
+  }
+  if (running === undefined && process.env.NODE_ENV !== "production" && "document" in globalThis) {
+    console.warn(
+      "[deployment-check] The monitor is inert because no adapter registered a deployment embed."
+    )
+  }
+
+  const target = options.target ?? embed?.endpoint ?? DEFAULT_DESCRIPTOR_ENDPOINT
+
+  return new DeploymentMonitorImplementation({
+    checkTimeout: milliseconds(options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT),
+    environment: options.environment ?? createBrowserEnvironment(),
+    isCurrent: options.isCurrent ?? ((left, right) => left.id === right.id),
+    running,
+    schedule: {
+      checkInterval: Math.max(checkInterval, MINIMUM_CHECK_INTERVAL),
+      checkOnReconnect: options.checkOnReconnect ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnReconnect,
+      checkOnSubscribe: options.checkOnSubscribe ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnSubscribe,
+      checkOnVisible: options.checkOnVisible ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkOnVisible,
+    },
+    target: typeof target === "string" ? fetchDescriptor(target) : target,
+  })
 }
 
-export function createRegisteredDeploymentMonitor(
-  source: DeploymentSource | undefined,
-  onDestroy: () => void
-): DeploymentMonitor {
-  return new DeploymentMonitorImplementation(source, { onDestroy })
+function readRunningDeployment(embed: ReturnType<typeof readEmbed>): Deployment | undefined {
+  if (embed === undefined) {
+    return undefined
+  }
+
+  const { builtAt, id } = embed.running
+  return builtAt === undefined ? { id } : { builtAt: new Date(builtAt), id }
 }
 
 function checkIsReloadMarker(value: unknown): value is ReloadMarker {

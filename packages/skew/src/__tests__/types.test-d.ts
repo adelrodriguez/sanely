@@ -3,23 +3,25 @@ import type { Plugin } from "vite"
 import { describe, expectTypeOf, it } from "vitest"
 import type { NextConfigExport } from "#adapters/next/index.ts"
 import type {
-  CheckStatus,
   Deployment,
   DeploymentMonitor,
+  DeploymentMonitorOptions,
   DeploymentStatus,
-  IsDeploymentCurrent,
-  ReloadStatus,
+  TargetResolutionErrorReason,
+  TargetResolver,
 } from "#index.ts"
 import { withDeploymentCheck } from "#adapters/next/index.ts"
 import { deploymentCheck } from "#adapters/vite/index.ts"
-import { createDeploymentMonitor, createStaticSource } from "#index.ts"
+import { createDeploymentMonitor, fetchDescriptor } from "#index.ts"
 import { useDeploymentStatus } from "#integrations/react/index.ts"
 
 describe("DeploymentStatus", () => {
   it("has the three durable status values", () => {
     expectTypeOf<DeploymentStatus["status"]>().toEqualTypeOf<"current" | "stale" | "unknown">()
-    expectTypeOf<CheckStatus>().toEqualTypeOf<"checking" | "idle">()
-    expectTypeOf<ReloadStatus>().toEqualTypeOf<"blocked" | "ready" | "unprotected">()
+    expectTypeOf<DeploymentStatus["checkStatus"]>().toEqualTypeOf<"checking" | "idle">()
+    expectTypeOf<DeploymentStatus["reloadStatus"]>().toEqualTypeOf<
+      "blocked" | "ready" | "unprotected"
+    >()
   })
 
   it("has a target and a check time after a successful check", () => {
@@ -35,45 +37,86 @@ describe("DeploymentStatus", () => {
 })
 
 describe("createDeploymentMonitor", () => {
-  it("returns a monitor for a deployment source", () => {
-    const deployment: Deployment = { id: "A" }
-    const monitor = createDeploymentMonitor(createStaticSource(deployment, deployment))
+  it("reads the embed without options", () => {
+    const monitor = createDeploymentMonitor()
     expectTypeOf(monitor).toEqualTypeOf<DeploymentMonitor>()
     expectTypeOf(monitor.getState()).toEqualTypeOf<DeploymentStatus>()
   })
 
-  it("accepts an isCurrent comparison", () => {
-    expectTypeOf<IsDeploymentCurrent>().toEqualTypeOf<
-      (running: Deployment, target: Deployment) => boolean
+  it("takes a descriptor URL or a target resolver", () => {
+    createDeploymentMonitor({ target: "https://deployments.example.com/current.json" })
+    createDeploymentMonitor({
+      target: fetchDescriptor("/current.json", { credentials: "include" }),
+    })
+    createDeploymentMonitor({
+      running: { id: "running" },
+      target: () => Promise.resolve({ id: "target" }),
+    })
+    expectTypeOf(fetchDescriptor("/current.json")).toEqualTypeOf<TargetResolver>()
+    expectTypeOf<TargetResolver>().toEqualTypeOf<(signal: AbortSignal) => Promise<Deployment>>()
+  })
+
+  it("takes the comparison and the schedule", () => {
+    createDeploymentMonitor({
+      checkOnReconnect: false,
+      checkOnSubscribe: false,
+      checkOnVisible: false,
+      isCurrent: (running, target) => running.id === target.id,
+    })
+    expectTypeOf<DeploymentMonitorOptions["isCurrent"]>().toEqualTypeOf<
+      ((running: Deployment, target: Deployment) => boolean) | undefined
     >()
+  })
+
+  it("has no lifecycle method and takes no subscriber options", () => {
+    const monitor = createDeploymentMonitor()
+    // The last unsubscribe stops a monitor, so it has no destroy().
+    expectTypeOf<DeploymentMonitor>().not.toHaveProperty("destroy")
+    // @ts-expect-error -- the schedule belongs to the monitor, not to each subscriber.
+    monitor.subscribe(() => null, { checkInterval: "5m" })
+    // @ts-expect-error -- subscribers share the monitor's comparison.
+    monitor.subscribe(() => null, { isCurrent: () => false })
+  })
+
+  it("rejects a source object", () => {
+    // @ts-expect-error -- the running deployment comes from the embed or from options.running.
+    createDeploymentMonitor({ resolveTarget: () => Promise.resolve({ id: "target" }) })
+  })
+})
+
+describe("TargetResolutionError", () => {
+  it("names a timeout", () => {
+    expectTypeOf<"timeout">().toExtend<TargetResolutionErrorReason>()
   })
 })
 
 describe("useDeploymentStatus", () => {
-  it("returns the deployment status", () => {
+  it("takes an optional monitor and returns the deployment status", () => {
+    useDeploymentStatus()
+    useDeploymentStatus(createDeploymentMonitor())
     expectTypeOf(useDeploymentStatus).returns.toEqualTypeOf<DeploymentStatus>()
+  })
+
+  it("takes no options", () => {
+    // @ts-expect-error -- options belong to createDeploymentMonitor.
+    useDeploymentStatus({ checkInterval: "5m" })
   })
 })
 
 describe("durations", () => {
-  const deployment: Deployment = { id: "A" }
-  const source = createStaticSource(deployment, deployment)
-
   it("take milliseconds or a time expression", () => {
-    const monitor = createDeploymentMonitor(source, { checkTimeout: "10s" })
-    createDeploymentMonitor(source, { checkTimeout: 10_000 })
-    monitor.subscribe(() => null, { checkInterval: "5m" })
-    monitor.subscribe(() => null, { checkInterval: 300_000 })
-    useDeploymentStatus({ checkInterval: "1 minute" })
+    createDeploymentMonitor({ checkInterval: "5m", checkTimeout: "10s" })
+    createDeploymentMonitor({ checkInterval: 300_000, checkTimeout: 10_000 })
+    createDeploymentMonitor({ checkInterval: "1 minute" })
   })
 
   it("reject an invalid time expression literal", () => {
     // @ts-expect-error -- "M" is ambiguous between minutes and months.
-    createDeploymentMonitor(source, { checkTimeout: "1M" })
+    createDeploymentMonitor({ checkTimeout: "1M" })
     // @ts-expect-error -- a time expression starts with a number.
-    createDeploymentMonitor(source).subscribe(() => null, { checkInterval: "soon" })
+    createDeploymentMonitor({ checkInterval: "soon" })
     // @ts-expect-error -- a compound expression needs parse from @sanely/duration.
-    useDeploymentStatus({ checkInterval: "1m 30s" })
+    createDeploymentMonitor({ checkInterval: "1m 30s" })
   })
 })
 
