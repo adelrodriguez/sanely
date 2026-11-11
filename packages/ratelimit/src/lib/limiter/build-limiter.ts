@@ -171,7 +171,9 @@ export function buildLimiter<Supported extends Algorithm, const T extends string
     const { algorithm } = options
     const timeout = milliseconds("timeout", options.timeout ?? defaults.timeout ?? DEFAULT_TIMEOUT)
     const mode = options.mode ?? defaults.mode ?? "enforce"
-    const blocks = (options.cache ?? defaults.cache ?? true) ? blockedCache() : undefined
+    // A dry-run limiter never stores a denial, so only an enforced limiter remembers them.
+    const blocks =
+      mode === "enforce" && (options.cache ?? defaults.cache ?? true) ? blockedCache() : undefined
     const limit = capacityOf(algorithm)
     const window = windowOf(algorithm)
     const watch = storeTimer(timeout)
@@ -195,7 +197,7 @@ export function buildLimiter<Supported extends Algorithm, const T extends string
     return {
       [internal]: {
         blocked: (key, cost) => {
-          const blocked = mode === "enforce" ? blocks?.lookup(key, cost) : undefined
+          const blocked = blocks?.lookup(key, cost)
 
           if (blocked === undefined) return
 
