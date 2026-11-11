@@ -1296,6 +1296,42 @@ describe("identity keys", () => {
     expect(decideOne).toHaveBeenCalledTimes(3)
   })
 
+  it("invalidates a flag in every cached list of the identity that holds it", async () => {
+    // The key function keys only `theme` by plan, so `beta` is the same decision in both plans.
+    const { flags, state } = makeKeyedFlags(["theme"])
+    const { capture, controls } = captureCache()
+    const view = (identity: Identity) =>
+      callerTree(
+        flags,
+        identity,
+        <>
+          {capture}
+          <BetaAndTheme />
+        </>
+      )
+    const { rerender } = await renderAsync(view(dated("u1", { plan: "free" })))
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    await act(() => {
+      rerender(view(dated("u1", { plan: "pro" })))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+
+    state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    // The free plan's list holds the same `beta`, so it reads the new value too.
+    await act(() => {
+      rerender(view(dated("u1", { plan: "free" })))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
   it("reads fresh after invalidate for an identity with key fields when the reader has a store", async () => {
     const provider = makeProvider()
     const flags = createFlags({

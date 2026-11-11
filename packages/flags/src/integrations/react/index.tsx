@@ -180,11 +180,15 @@ export function useFlagCache(): FlagCacheControls {
     // a layout effect can drop its entry before the subscription. Bumping it too makes React's
     // subscription check see the change.
     const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
+    // An entry's key holds the key fields of every flag in its list, so the same decision of an
+    // invalidated flag can sit in entries for other key fields of this subject. Dropping all of
+    // them can cost a read, never a stale value.
     const drop = (bucket: Bucket) => {
-      const key = entryKey(keys, bucket.flags)
-      bucket.entries.delete(key)
+      for (const [key, entry] of bucket.entries) {
+        if (entry.subject === keys.subject) bucket.entries.delete(key)
+      }
       for (const store of storesOf(bucket)) {
-        if (store.key === key) store.bump()
+        if (store.subject === keys.subject) store.bump()
       }
     }
     return {
