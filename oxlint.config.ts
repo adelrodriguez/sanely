@@ -298,6 +298,8 @@ export default defineConfig({
           "error",
           {
             patterns: [
+              // This override replaces the package rule, so it repeats the package's imports.
+              ...packageImports("flags"),
               {
                 group: [...publicEntries, `!#${unit}/**`],
                 message: `${unit} imports only its own modules and library domains.`,
