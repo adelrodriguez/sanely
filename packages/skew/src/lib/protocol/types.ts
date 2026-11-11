@@ -3,13 +3,10 @@ export interface Deployment {
   readonly builtAt?: Date
 }
 
-export interface DeploymentSource {
-  readonly running: Deployment
-
-  /**
-   * Resolve the target deployment independently of the running deployment.
-   */
-  resolveTarget(signal: AbortSignal): Promise<Deployment>
-}
+/**
+ * Resolves the target deployment. It must reach a service that the running deployment does not
+ * control.
+ */
+export type TargetResolver = (signal: AbortSignal) => Promise<Deployment>
 
 export type IsDeploymentCurrent = (running: Deployment, target: Deployment) => boolean

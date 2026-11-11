@@ -1,7 +1,7 @@
 import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import { EMBED_GLOBAL } from "#lib/protocol/embed.ts"
 
-export { DEFAULT_DESCRIPTOR_ENDPOINT } from "#lib/protocol/http-source.ts"
+export { DEFAULT_DESCRIPTOR_ENDPOINT } from "#lib/protocol/fetch-descriptor.ts"
 
 export type DeploymentPlatform = "cloudflare-pages" | "github-actions" | "netlify" | "vercel"
 

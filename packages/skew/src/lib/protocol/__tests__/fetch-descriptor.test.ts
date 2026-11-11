@@ -1,7 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest"
-import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import { TargetResolutionError } from "#lib/protocol/errors.ts"
-import { createEmbeddedSource, createHttpSource } from "#lib/protocol/http-source.ts"
+import { fetchDescriptor } from "#lib/protocol/fetch-descriptor.ts"
 
 const originalFetch = globalThis.fetch
 
@@ -15,14 +14,7 @@ function mockGlobalFetch() {
   return fetch
 }
 
-function setEmbed(embed: DeploymentEmbed): void {
-  globalThis.__DEPLOYMENT_CHECK__ = embed
-  onTestFinished(() => {
-    globalThis.__DEPLOYMENT_CHECK__ = undefined
-  })
-}
-
-describe("deployment source over HTTP", () => {
+describe("fetchDescriptor", () => {
   it("resolves the target descriptor without using a browser cache", async () => {
     expect.assertions(2)
 
@@ -31,10 +23,10 @@ describe("deployment source over HTTP", () => {
         headers: { "content-type": "application/json; charset=utf-8" },
       })
     )
-    const source = createHttpSource({ id: "running" }, "/_deployment-check/deployment.json")
+    const resolve = fetchDescriptor("/_deployment-check/deployment.json")
     const controller = new AbortController()
 
-    await expect(source.resolveTarget(controller.signal)).resolves.toStrictEqual({ id: "target" })
+    await expect(resolve(controller.signal)).resolves.toStrictEqual({ id: "target" })
     expect(fetch).toHaveBeenCalledWith("/_deployment-check/deployment.json", {
       cache: "no-store",
       signal: controller.signal,
@@ -49,14 +41,14 @@ describe("deployment source over HTTP", () => {
         headers: { "content-type": "application/json" },
       })
     )
-    const source = createHttpSource({ id: "running" }, "/deployment.json", {
+    const resolve = fetchDescriptor("/deployment.json", {
       credentials: "include",
       fetch: customFetch,
       headers: { authorization: "Bearer token" },
     })
     const controller = new AbortController()
 
-    await source.resolveTarget(controller.signal)
+    await resolve(controller.signal)
 
     expect(customFetch).toHaveBeenCalledWith("/deployment.json", {
       cache: "no-store",
@@ -71,9 +63,9 @@ describe("deployment source over HTTP", () => {
 
     const cause = new TypeError("offline")
     mockGlobalFetch().mockRejectedValue(cause)
-    const source = createHttpSource({ id: "running" }, "/deployment.json")
+    const resolve = fetchDescriptor("/deployment.json")
 
-    await expect(source.resolveTarget(new AbortController().signal)).rejects.toStrictEqual(
+    await expect(resolve(new AbortController().signal)).rejects.toStrictEqual(
       new TargetResolutionError("network", cause)
     )
   })
@@ -86,9 +78,9 @@ describe("deployment source over HTTP", () => {
       status: 503,
     })
     mockGlobalFetch().mockResolvedValue(response)
-    const source = createHttpSource({ id: "running" }, "/deployment.json")
+    const resolve = fetchDescriptor("/deployment.json")
 
-    await expect(source.resolveTarget(new AbortController().signal)).rejects.toStrictEqual(
+    await expect(resolve(new AbortController().signal)).rejects.toStrictEqual(
       new TargetResolutionError("http-status", response)
     )
   })
@@ -100,9 +92,9 @@ describe("deployment source over HTTP", () => {
       headers: { "content-type": "text/html" },
     })
     mockGlobalFetch().mockResolvedValue(response)
-    const source = createHttpSource({ id: "running" }, "/deployment.json")
+    const resolve = fetchDescriptor("/deployment.json")
 
-    await expect(source.resolveTarget(new AbortController().signal)).rejects.toStrictEqual(
+    await expect(resolve(new AbortController().signal)).rejects.toStrictEqual(
       new TargetResolutionError("not-json", response)
     )
   })
@@ -112,25 +104,8 @@ describe("deployment source over HTTP", () => {
 
     const abortError = new DOMException("The operation was aborted", "AbortError")
     mockGlobalFetch().mockRejectedValue(abortError)
-    const source = createHttpSource({ id: "running" }, "/deployment.json")
+    const resolve = fetchDescriptor("/deployment.json")
 
-    await expect(source.resolveTarget(new AbortController().signal)).rejects.toBe(abortError)
-  })
-
-  it("creates the default source from the deployment embed", () => {
-    expect.assertions(1)
-
-    setEmbed({
-      running: {
-        builtAt: "2026-08-09T12:00:00.000Z",
-        id: "running",
-      },
-      v: 1,
-    })
-
-    expect(createEmbeddedSource()?.running).toStrictEqual({
-      builtAt: new Date("2026-08-09T12:00:00.000Z"),
-      id: "running",
-    })
+    await expect(resolve(new AbortController().signal)).rejects.toBe(abortError)
   })
 })

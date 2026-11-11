@@ -5,6 +5,7 @@ export type TargetResolutionErrorReason =
   | "invalid-json"
   | "unsupported-version"
   | "invalid-shape"
+  | "timeout"
 
 export class TargetResolutionError extends Error {
   override readonly name = "TargetResolutionError"
