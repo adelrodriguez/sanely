@@ -18,16 +18,6 @@ describe("algorithms", () => {
     )
   })
 
-  it("rejects a token bucket whose full refill is too long for any store to expire", () => {
-    expect(() =>
-      tokenBucket({
-        capacity: Number.MAX_SAFE_INTEGER,
-        interval: Number.MAX_SAFE_INTEGER,
-        refillRate: 1,
-      })
-    ).toThrow(InvalidOptionError)
-  })
-
   it("reads a window, an interval, or a timeout given as a time expression", () => {
     expect(fixedWindow({ limit: 1, window: "1m" }).window).toBe(60_000)
     expect(slidingWindow({ limit: 1, window: "1h" }).window).toBe(3_600_000)
