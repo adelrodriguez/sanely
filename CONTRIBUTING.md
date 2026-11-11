@@ -37,6 +37,7 @@ See the [core architecture](packages/core/docs/architecture.md) for ownership an
 - To change compiler options, edit the [shared TypeScript configurations](tooling/tsconfig/README.md). A package's `tsconfig.json` only extends `@tooling/tsconfig/library.json`.
 - To change a tool version shared by packages, edit the catalog in `pnpm-workspace.yaml`. Use `catalog:` in each package that uses the shared version.
 - To add package-specific build or compatibility checks, put them in `packages/<name>/scripts/` and select them with `build:verify` or `test:compat`.
+- Make `build:verify` check the packed tarball in a temporary consumer. Use `scripts/verify-build.ts`, or follow `packages/flags/scripts/verify-package.ts` when an entry point needs optional peers.
 - To add a package-level Oxlint configuration, explicitly extend the shared rules. Keep `options.typeAware` and `options.typeCheck` in the root configuration.
 
 ## Run the checks
