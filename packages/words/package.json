@@ -1,6 +1,6 @@
 {
   "name": "@sanely/words",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Generate friendly, safe-for-work names from curated word lists",
   "keywords": [
     "friendly",
