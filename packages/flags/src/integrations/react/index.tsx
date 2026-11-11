@@ -81,6 +81,8 @@ export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never
   : { identity: IdentityOf<TFlags> })
 
 type VersionStore = {
+  // The identity key whose entry the store's readers read.
+  readonly key: string
   bump: () => void
   getSnapshot: () => number
   subscribe: (listener: () => void) => () => void
@@ -119,8 +121,12 @@ type CacheEntry = {
  * The cache entries of one list of flags, one for each identity.
  */
 type Bucket = {
+  // Every version store that has a listener. `invalidate` and `clear` bump these, so they reach a
+  // reader that holds a store that is no longer the identity's current one.
+  active: Set<VersionStore>
   entries: Map<string, CacheEntry>
   flags: readonly Flag[]
+  // The store that a render reuses for each identity, while it has a listener.
   stores: Map<string, VersionStore>
 }
 
@@ -202,7 +208,7 @@ function getBucket(cache: FlagCache, flags: readonly Flag[]): Bucket {
   const key = flags.map((flag) => flagId(flag)).join(",")
   let bucket = cache.buckets.get(key)
   if (!bucket) {
-    bucket = { entries: new Map(), flags, stores: new Map() }
+    bucket = { active: new Set(), entries: new Map(), flags, stores: new Map() }
     cache.buckets.set(key, bucket)
   }
   return bucket
@@ -349,9 +355,14 @@ function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionSto
       for (const listener of listeners) listener()
     },
     getSnapshot: () => version,
+    key,
     subscribe: (listener) => {
       listeners.add(listener)
       if (listeners.size === 1) {
+        bucket.active.add(store)
+        // A store that React subscribes again becomes the identity's current store again, unless
+        // a render already made a newer one.
+        if (!bucket.stores.has(key)) bucket.stores.set(key, store)
         detach = context.flags.subscribe((changed) => {
           if (changed === undefined || changed.some((changedKey) => keys.has(changedKey))) {
             store.bump()
@@ -360,11 +371,14 @@ function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionSto
       }
       return () => {
         listeners.delete(listener)
-        // The store stays registered, so `invalidate` and `clear` still reach a reader that React
-        // subscribes again, as in strict mode or when one reader replaces another.
+        // A store without listeners leaves both maps, so an identity that no reader reads keeps
+        // nothing. React can subscribe the same store again, as in strict mode or when one reader
+        // replaces another, and `active` then reaches it again.
         if (listeners.size === 0) {
           detach?.()
           detach = undefined
+          bucket.active.delete(store)
+          if (bucket.stores.get(key) === store) bucket.stores.delete(key)
         }
       }
     },
@@ -582,14 +596,16 @@ export function useFlagCache(): FlagCacheControls {
     const { cache, identityKey: key } = context
     const drop = (bucket: Bucket) => {
       bucket.entries.delete(key)
-      bucket.stores.get(key)?.bump()
+      for (const store of bucket.active) {
+        if (store.key === key) store.bump()
+      }
     }
     return {
       clear() {
         cache.snapshot?.entries.clear()
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
-          for (const store of bucket.stores.values()) store.bump()
+          for (const store of bucket.active) store.bump()
         }
       },
       invalidate(flags) {
