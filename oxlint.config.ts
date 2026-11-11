@@ -43,7 +43,7 @@ const dependencies: Record<string, Record<string, string[]>> = {
   },
   flags: {
     changes: [],
-    definition: ["errors"],
+    definition: ["errors", "shared"],
     errors: [],
     evaluation: ["definition", "errors", "identity", "provider", "shared", "sharing"],
     flags: [

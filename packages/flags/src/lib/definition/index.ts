@@ -1,4 +1,6 @@
+import type { ValidateTimeExpression } from "@sanely/duration"
 import { FlagDefinitionError } from "#lib/errors/index.ts"
+import { milliseconds } from "#lib/shared/utils.ts"
 
 /**
  * A flag that evaluates to `true` or `false`.
@@ -7,7 +9,10 @@ export type BooleanFlag = {
   readonly kind: "boolean"
   readonly key: string
   readonly defaultValue: boolean
-  readonly timeoutMs: number | undefined
+  /**
+   * The flag's deadline in milliseconds, or `undefined` to use the reader's.
+   */
+  readonly timeout: number | undefined
 }
 
 /**
@@ -20,7 +25,10 @@ export type VariantFlag<TVariant extends string = string, TPayload = unknown> = 
   readonly defaultValue: TVariant
   readonly variants: readonly TVariant[]
   readonly payload: ((payload: unknown) => TPayload) | undefined
-  readonly timeoutMs: number | undefined
+  /**
+   * The flag's deadline in milliseconds, or `undefined` to use the reader's.
+   */
+  readonly timeout: number | undefined
 }
 
 /**
@@ -41,14 +49,15 @@ export type FlagValues<TFlags extends readonly Flag[]> = {
   -readonly [K in keyof TFlags]: FlagValue<TFlags[K]>
 }
 
-type FlagOptions = {
+type FlagOptions<T extends string> = {
   /**
-   * Overrides the reader's `timeoutMs` for this flag.
+   * Overrides the reader's `timeout` for this flag, in milliseconds or as a time expression such as
+   * `"500ms"`.
    */
-  timeoutMs?: number
+  timeout?: number | ValidateTimeExpression<T>
 }
 
-type VariantFlagOptions<TPayload> = FlagOptions & {
+type VariantFlagOptions<TPayload, T extends string> = FlagOptions<T> & {
   /**
    * Parses the variant payload that the provider returns. A throw makes the evaluation return the
    * default with an `InvalidDecisionError`.
@@ -58,18 +67,24 @@ type VariantFlagOptions<TPayload> = FlagOptions & {
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
-export function assertTimeoutMs(timeoutMs: unknown): asserts timeoutMs is number | undefined {
-  if (
-    timeoutMs !== undefined
-    && (typeof timeoutMs !== "number"
-      || !Number.isFinite(timeoutMs)
-      || timeoutMs <= 0
-      || timeoutMs > MAX_TIMER_DELAY_MS)
-  ) {
+function describe(value: unknown): string {
+  if (typeof value === "number") return String(value)
+  return typeof value === "string" ? JSON.stringify(value) : typeof value
+}
+
+/**
+ * Reads a deadline given in milliseconds or as a time expression. Throws `FlagDefinitionError` for
+ * a value that is not a positive length of time that a timer can wait.
+ */
+export function parseTimeout(timeout: unknown): number | undefined {
+  if (timeout === undefined) return undefined
+  const parsed = milliseconds(timeout)
+  if (parsed === null || !Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_TIMER_DELAY_MS) {
     throw new FlagDefinitionError(
-      `timeoutMs must be a positive finite number no greater than ${MAX_TIMER_DELAY_MS}; received ${typeof timeoutMs === "number" ? String(timeoutMs) : typeof timeoutMs}`
+      `timeout must be a time expression or a number of milliseconds, greater than 0 and no greater than ${MAX_TIMER_DELAY_MS}; received ${describe(timeout)}`
     )
   }
+  return parsed
 }
 
 function assertKey(key: unknown): asserts key is string {
@@ -107,15 +122,19 @@ export const flag = {
    * @example
    *   export const betaAccess = flag.boolean("beta-access", false)
    */
-  boolean(key: string, defaultValue: boolean, options: FlagOptions = {}): BooleanFlag {
+  boolean<const T extends string = never>(
+    key: string,
+    defaultValue: boolean,
+    options: FlagOptions<T> = {}
+  ): BooleanFlag {
     assertKey(key)
     if (typeof defaultValue !== "boolean") {
       throw new FlagDefinitionError(
         `defaultValue must be a boolean; received ${String(defaultValue)}`
       )
     }
-    assertTimeoutMs(options.timeoutMs)
-    return Object.freeze({ defaultValue, key, kind: "boolean", timeoutMs: options.timeoutMs })
+    const timeout = parseTimeout(options.timeout)
+    return Object.freeze({ defaultValue, key, kind: "boolean", timeout })
   },
 
   /**
@@ -127,15 +146,19 @@ export const flag = {
    *     payload: parseTheme,
    *   })
    */
-  variant<const TVariants extends readonly [string, ...string[]], TPayload = unknown>(
+  variant<
+    const TVariants extends readonly [string, ...string[]],
+    TPayload = unknown,
+    const T extends string = never,
+  >(
     key: string,
     variants: TVariants,
     defaultValue: NoInfer<TVariants[number]>,
-    options: VariantFlagOptions<TPayload> = {}
+    options: VariantFlagOptions<TPayload, T> = {}
   ): VariantFlag<TVariants[number], TPayload> {
     assertKey(key)
     assertVariants(variants, defaultValue)
-    assertTimeoutMs(options.timeoutMs)
+    const timeout = parseTimeout(options.timeout)
     if (options.payload !== undefined && typeof options.payload !== "function") {
       throw new FlagDefinitionError("payload must be a function")
     }
@@ -144,7 +167,7 @@ export const flag = {
       key,
       kind: "variant",
       payload: options.payload,
-      timeoutMs: options.timeoutMs,
+      timeout,
       variants: Object.freeze([...variants]),
     })
   },

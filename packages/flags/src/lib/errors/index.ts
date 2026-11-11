@@ -55,12 +55,15 @@ export class ProviderFailedError extends Error {
 export class EvaluationTimeoutError extends Error {
   static readonly _tag = "EvaluationTimeoutError"
   readonly _tag = EvaluationTimeoutError._tag
-  readonly timeoutMs: number
+  /**
+   * The deadline that passed, in milliseconds.
+   */
+  readonly timeout: number
 
-  constructor(timeoutMs: number) {
-    super(`Flag evaluation timed out after ${timeoutMs}ms`)
+  constructor(timeout: number) {
+    super(`Flag evaluation timed out after ${timeout}ms`)
     this.name = "EvaluationTimeoutError"
-    this.timeoutMs = timeoutMs
+    this.timeout = timeout
   }
 }
 

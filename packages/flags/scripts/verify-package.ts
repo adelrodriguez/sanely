@@ -91,7 +91,14 @@ try {
   writeFileSync(
     join(temporaryDirectory, "core.mjs"),
     `import assert from "node:assert/strict"
-import { anonymous, createFlags, decision, defineProvider, flag } from "@sanely/flags"
+import {
+  anonymous,
+  createFlags,
+  decision,
+  defineProvider,
+  flag,
+  FlagDefinitionError,
+} from "@sanely/flags"
 import { fakeProvider, memoryStore } from "@sanely/flags/testing"
 
 const beta = flag.boolean("beta", false)
@@ -105,6 +112,8 @@ const provider = defineProvider({
 const flags = createFlags({ identify: () => ({ distinctId: "consumer" }), provider })
 assert.deepEqual(await flags.getMany([beta, theme]), [true, "dark"])
 assert.equal(await createFlags({ provider }).for({ distinctId: "caller" }).get(beta), true)
+assert.equal(flag.boolean("timed", false, { timeout: "1.5s" }).timeout, 1500)
+assert.throws(() => flag.boolean("timed", false, { timeout: "soon" }), FlagDefinitionError)
 
 const fake = createFlags({
   cache: { store: memoryStore() },
@@ -175,13 +184,16 @@ const provider = defineProvider({
   decideOne: (_flag, identity: User) => decision.boolean(identity.plan === "pro"),
   name: "consumer",
 })
-const beta = flag.boolean("beta", false)
+const beta = flag.boolean("beta", false, { timeout: "300ms" })
 const theme = flag.variant("theme", ["light", "dark"], "light")
 
 const flags: Flags<User> = createFlags({
   identify: () => ({ distinctId: "consumer", plan: "pro" }),
   provider,
+  timeout: "1s",
 })
+// @ts-expect-error -- "M" is ambiguous between minutes and months.
+flag.boolean("slow", false, { timeout: "1M" })
 const details: Promise<EvaluationDetails<typeof theme>> = flags.details(theme)
 const values: Promise<[boolean, "light" | "dark"]> = flags.getMany([beta, theme])
 const snapshot: Promise<FlagSnapshot> = flags.snapshot([beta, theme])

@@ -16,6 +16,7 @@ import type { FlagReader, FlagSnapshot, FlagSnapshotEntry } from "#lib/flags/ind
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import { evictOnRejection, type FlagCacheOptions } from "#lib/promise-cache/index.ts"
 import { serializeKey } from "#lib/promise-cache/key.ts"
+import { milliseconds } from "#lib/shared/utils.ts"
 
 /**
  * A hook or `FeatureFlag` rendered outside a `FlagsProvider`.
@@ -44,7 +45,7 @@ type IdentityOf<TFlags extends AnyFlags> = TFlags extends {
   ? TIdentity
   : never
 
-export type FlagsProviderProps<TFlags extends AnyFlags> = {
+export type FlagsProviderProps<TFlags extends AnyFlags, T extends string = never> = {
   /**
    * The reader from `createFlags`.
    */
@@ -54,7 +55,7 @@ export type FlagsProviderProps<TFlags extends AnyFlags> = {
    * identity, and it reads the snapshot only when it mounts.
    */
   snapshot?: FlagSnapshot
-  cache?: FlagCacheOptions
+  cache?: FlagCacheOptions<T>
   children: ReactNode
 } & (TFlags extends FlagReader
   ? {
@@ -118,9 +119,9 @@ type SnapshotState = {
 type FlagCache = {
   buckets: Map<string, Bucket>
   maxEntries: number
-  pendingTtlMs: number | undefined
+  pendingTtl: number | undefined
   snapshot: SnapshotState | undefined
-  ttlMs: number
+  ttl: number
 }
 
 type FlagsContextValue = {
@@ -133,16 +134,35 @@ type FlagsContextValue = {
 const DEFAULT_MAX_ENTRIES = 100
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 
-function assertCacheOptions(options: FlagCacheOptions): void {
-  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtlMs, ttlMs = DEFAULT_TTL_MS } = options
+/**
+ * The cache options before parsing. A time option is a number or any string, which `lengthOfTime`
+ * parses.
+ */
+type CacheInput = {
+  maxEntries?: number
+  pendingTtl?: number | string
+  ttl?: number | string
+}
+
+function lengthOfTime(option: string, value: unknown): number {
+  const parsed = milliseconds(value)
+  if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
+    throw new RangeError(
+      `${option} must be a time expression or a positive finite number of milliseconds`
+    )
+  }
+  return parsed
+}
+
+function readCacheOptions(options: CacheInput) {
+  const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL_MS } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
     throw new RangeError("maxEntries must be a positive finite integer")
   }
-  if (pendingTtlMs !== undefined && (!Number.isFinite(pendingTtlMs) || pendingTtlMs <= 0)) {
-    throw new RangeError("pendingTtlMs must be a positive finite number")
-  }
-  if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
-    throw new RangeError("ttlMs must be a positive finite number")
+  return {
+    maxEntries,
+    pendingTtl: pendingTtl === undefined ? undefined : lengthOfTime("pendingTtl", pendingTtl),
+    ttl: lengthOfTime("ttl", ttl),
   }
 }
 
@@ -270,8 +290,7 @@ function storeEntry(
     since: clock.count,
   }
   const entry: CacheEntry = {
-    pendingExpiresAt:
-      cache.pendingTtlMs === undefined ? undefined : Date.now() + cache.pendingTtlMs,
+    pendingExpiresAt: cache.pendingTtl === undefined ? undefined : Date.now() + cache.pendingTtl,
     promise: Promise.resolve([]),
     settled: false,
     watch,
@@ -279,7 +298,7 @@ function storeEntry(
   const settle = () => {
     entry.settled = true
     entry.pendingExpiresAt = undefined
-    entry.expiresAt = Date.now() + cache.ttlMs
+    entry.expiresAt = Date.now() + cache.ttl
     setTimeout(() => {
       prune(cache, bucket)
     }, 0)
@@ -396,22 +415,21 @@ function snapshotApplies(context: FlagsContextValue): boolean {
 
 function createFlagCache(
   flags: AnyFlags,
-  cacheOptions: FlagCacheOptions | undefined,
+  cacheOptions: CacheInput | undefined,
   snapshot?: FlagSnapshot
 ): FlagCache {
-  const options = cacheOptions ?? {}
-  assertCacheOptions(options)
+  const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
   const clock = getChangeClock(flags)
   return {
     buckets: new Map(),
-    maxEntries: options.maxEntries ?? DEFAULT_MAX_ENTRIES,
-    pendingTtlMs: options.pendingTtlMs,
+    maxEntries,
+    pendingTtl,
     snapshot: snapshot && {
       distinctId: snapshot.distinctId,
       entries: new Map(Object.entries(snapshot.flags)),
       watch: { clock, since: clock.count },
     },
-    ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
+    ttl,
   }
 }
 
@@ -424,8 +442,8 @@ function createFlagCache(
  *     <App />
  *   </FlagsProvider>
  */
-export function FlagsProvider<TFlags extends AnyFlags>(
-  props: FlagsProviderProps<TFlags>
+export function FlagsProvider<TFlags extends AnyFlags, const T extends string = never>(
+  props: FlagsProviderProps<TFlags, T>
 ): ReactNode {
   const { cache: cacheOptions, children, flags, snapshot } = props
   const identity: Subject | undefined = props.identity

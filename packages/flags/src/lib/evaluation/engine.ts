@@ -49,7 +49,7 @@ export type Evaluator<TIdentity extends Subject> = {
   onError: ((report: HookFailedReport<TIdentity>) => MaybePromise<void>) | undefined
   provider: ProviderCalls<TIdentity>
   sharing: Sharing<TIdentity>
-  timeoutMs: number | undefined
+  timeout: number | undefined
 }
 
 /**
@@ -88,7 +88,7 @@ export function timeoutOf<TIdentity extends Subject>(
   evaluator: Evaluator<TIdentity>,
   flag: Flag
 ): number | undefined {
-  return flag.timeoutMs ?? evaluator.timeoutMs
+  return flag.timeout ?? evaluator.timeout
 }
 
 export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(

@@ -1,18 +1,22 @@
+import type { ValidateTimeExpression } from "@sanely/duration"
+
 export * from "./key"
 
-export type FlagCacheOptions = {
+export type FlagCacheOptions<T extends string = never> = {
   /**
    * Maximum number of identities retained by the cache. Defaults to 100.
    */
   maxEntries?: number
   /**
-   * Time in milliseconds before a pending evaluation can be evicted. Disabled by default.
+   * How long a pending evaluation lasts before it can be evicted, in milliseconds or as a time
+   * expression such as `"30s"`. Disabled by default.
    */
-  pendingTtlMs?: number
+  pendingTtl?: number | ValidateTimeExpression<T>
   /**
-   * Time in milliseconds that an evaluation remains cached. Defaults to five minutes.
+   * How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.
+   * Defaults to five minutes.
    */
-  ttlMs?: number
+  ttl?: number | ValidateTimeExpression<T>
 }
 
 export async function evictOnRejection<T>(

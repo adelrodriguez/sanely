@@ -1,3 +1,15 @@
+import { safeParse } from "@sanely/duration"
+
+/**
+ * Reads a length of time given in milliseconds or as a time expression, such as `"5s"`. Returns
+ * `null` for a string that is not a time expression and for a value that is neither. The caller
+ * checks the range.
+ */
+export function milliseconds(value: unknown): number | null {
+  if (typeof value === "number") return value
+  return typeof value === "string" ? safeParse(value) : null
+}
+
 export function normalizeError(error: unknown): Error {
   try {
     if (error instanceof Error) {
