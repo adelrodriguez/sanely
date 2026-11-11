@@ -23,11 +23,8 @@ export type SyncRunInput<T, E, Ctx extends BaseTryCtx = BaseTryCtx> =
   | SyncRunTryFn<T, Ctx>
   | SyncRunOptions<T, E, Ctx>
 
-function assertNotPromiseLike(value: unknown, code: PanicCode, message?: string): void {
-  invariant(
-    !checkIsPromiseLike(value),
-    new Panic(code, message === undefined ? undefined : { message })
-  )
+function assertNotPromiseLike(value: unknown, code: PanicCode): void {
+  invariant(!checkIsPromiseLike(value), new Panic(code))
 }
 
 class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E | RunnerError> {
