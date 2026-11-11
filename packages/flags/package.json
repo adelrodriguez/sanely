@@ -62,6 +62,9 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "@sanely/duration": "workspace:^"
+  },
   "devDependencies": {
     "@testing-library/react": "16.3.3",
     "@tooling/tsconfig": "workspace:*",

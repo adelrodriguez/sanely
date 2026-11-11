@@ -1,12 +1,8 @@
+import type { ValidateTimeExpression } from "@sanely/duration"
 import type { DecisionSource } from "#lib/definition/decision.ts"
 import type { Hook, HookFailedReport } from "#lib/evaluation/hooks.ts"
 import { type ChangeListener, createChangeBroadcaster } from "#lib/changes/index.ts"
-import {
-  assertTimeoutMs,
-  type Flag,
-  type FlagValue,
-  type FlagValues,
-} from "#lib/definition/index.ts"
+import { type Flag, type FlagValue, type FlagValues, parseTimeout } from "#lib/definition/index.ts"
 import { type EvaluationError, FlagDefinitionError } from "#lib/errors/index.ts"
 import { evaluateMany } from "#lib/evaluation/batch.ts"
 import { evaluate, type EvaluationDetails, type Evaluator } from "#lib/evaluation/engine.ts"
@@ -109,12 +105,13 @@ export type Flags<TIdentity extends Subject> = FlagReader & FlagScope<TIdentity>
  */
 export type CallerFlags<TIdentity extends Subject> = FlagScope<TIdentity>
 
-export type FlagsOptions<TIdentity extends Subject> = {
+export type FlagsOptions<TIdentity extends Subject, T extends string = never> = {
   provider: Provider<TIdentity>
   /**
-   * The default deadline for each evaluation. A flag's own `timeoutMs` replaces it.
+   * The default deadline for each evaluation, in milliseconds or as a time expression such as
+   * `"1s"`. A flag's own `timeout` replaces it.
    */
-  timeoutMs?: number
+  timeout?: number | ValidateTimeExpression<T>
   cache?: CacheOptions<NoInfer<TIdentity>>
   hooks?: ReadonlyArray<Hook<NoInfer<TIdentity>>>
   onError?: (report: ErrorReport<NoInfer<TIdentity>>) => MaybePromise<void>
@@ -172,21 +169,21 @@ function createReader<TIdentity extends Subject>(
  *   const theme = await flags.get(themeFlag)
  *   const [beta, look] = await flags.getMany([betaAccess, themeFlag])
  */
-export function createFlags<TIdentity extends Subject>(
-  options: FlagsOptions<TIdentity> & {
+export function createFlags<TIdentity extends Subject, const T extends string = never>(
+  options: FlagsOptions<TIdentity, T> & {
     identify: () => MaybePromise<NoInfer<TIdentity> | null | undefined>
   }
 ): Flags<TIdentity>
-export function createFlags<TIdentity extends Subject>(
-  options: FlagsOptions<TIdentity> & { identify?: undefined }
+export function createFlags<TIdentity extends Subject, const T extends string = never>(
+  options: FlagsOptions<TIdentity, T> & { identify?: undefined }
 ): CallerFlags<TIdentity>
-export function createFlags<TIdentity extends Subject>(
-  options: FlagsOptions<TIdentity> & {
+export function createFlags<TIdentity extends Subject, const T extends string = never>(
+  options: FlagsOptions<TIdentity, T> & {
     identify?: () => MaybePromise<TIdentity | null | undefined>
   }
 ): Flags<TIdentity> | CallerFlags<TIdentity> {
   assertProvider(options.provider)
-  assertTimeoutMs(options.timeoutMs)
+  const timeout = parseTimeout(options.timeout)
   if (options.identify !== undefined && typeof options.identify !== "function") {
     throw new FlagDefinitionError("identify must be a function")
   }
@@ -203,7 +200,7 @@ export function createFlags<TIdentity extends Subject>(
     onError,
     provider,
     sharing: createSharing(options.cache, changes, onError),
-    timeoutMs: options.timeoutMs,
+    timeout,
   }
 
   const scope: FlagScope<TIdentity> = {

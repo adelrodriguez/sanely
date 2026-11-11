@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
@@ -55,16 +64,41 @@ try {
     join(temporaryDirectory, "package.json"),
     `${JSON.stringify({ name: "flags-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
+  // npm may not have the workspace dependency versions that the tarball names, so install each
+  // from its own tarball.
+  const dependencyDirectory = join(temporaryDirectory, "dependencies")
+  mkdirSync(dependencyDirectory)
+  for (const dependency of Object.keys(packageJson.dependencies)) {
+    const dependencyRoot = realpathSync(join(packageRoot, "node_modules", dependency))
+    run("pnpm", ["pack", "--pack-destination", dependencyDirectory], dependencyRoot)
+  }
+  const dependencyTarballs = readdirSync(dependencyDirectory).map((file) =>
+    join(dependencyDirectory, file)
+  )
   run(
     "npm",
-    ["install", "--ignore-scripts", "--no-package-lock", "--omit=peer", tarballPath],
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--omit=peer",
+      tarballPath,
+      ...dependencyTarballs,
+    ],
     temporaryDirectory
   )
 
   writeFileSync(
     join(temporaryDirectory, "core.mjs"),
     `import assert from "node:assert/strict"
-import { anonymous, createFlags, decision, defineProvider, flag } from "@sanely/flags"
+import {
+  anonymous,
+  createFlags,
+  decision,
+  defineProvider,
+  flag,
+  FlagDefinitionError,
+} from "@sanely/flags"
 import { fakeProvider, memoryStore } from "@sanely/flags/testing"
 
 const beta = flag.boolean("beta", false)
@@ -78,6 +112,8 @@ const provider = defineProvider({
 const flags = createFlags({ identify: () => ({ distinctId: "consumer" }), provider })
 assert.deepEqual(await flags.getMany([beta, theme]), [true, "dark"])
 assert.equal(await createFlags({ provider }).for({ distinctId: "caller" }).get(beta), true)
+assert.equal(flag.boolean("timed", false, { timeout: "1.5s" }).timeout, 1500)
+assert.throws(() => flag.boolean("timed", false, { timeout: "soon" }), FlagDefinitionError)
 
 const fake = createFlags({
   cache: { store: memoryStore() },
@@ -148,13 +184,16 @@ const provider = defineProvider({
   decideOne: (_flag, identity: User) => decision.boolean(identity.plan === "pro"),
   name: "consumer",
 })
-const beta = flag.boolean("beta", false)
+const beta = flag.boolean("beta", false, { timeout: "300ms" })
 const theme = flag.variant("theme", ["light", "dark"], "light")
 
 const flags: Flags<User> = createFlags({
   identify: () => ({ distinctId: "consumer", plan: "pro" }),
   provider,
+  timeout: "1s",
 })
+// @ts-expect-error -- "M" is ambiguous between minutes and months.
+flag.boolean("slow", false, { timeout: "1M" })
 const details: Promise<EvaluationDetails<typeof theme>> = flags.details(theme)
 const values: Promise<[boolean, "light" | "dark"]> = flags.getMany([beta, theme])
 const snapshot: Promise<FlagSnapshot> = flags.snapshot([beta, theme])

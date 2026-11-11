@@ -82,7 +82,7 @@ A boolean flag matches `true`. A variant flag needs `match`, which TypeScript ty
 Each `FlagsProvider` mount keeps its own bounded cache, with a five-minute lifetime by default. To set other limits, pass `cache`:
 
 ```tsx
-<FlagsProvider flags={flags} cache={{ maxEntries: 250, pendingTtlMs: 30_000, ttlMs: 60_000 }}>
+<FlagsProvider flags={flags} cache={{ maxEntries: 250, pendingTtl: "30s", ttl: "1m" }}>
 ```
 
 To prefetch or invalidate, call `useFlagCache` inside the provider:

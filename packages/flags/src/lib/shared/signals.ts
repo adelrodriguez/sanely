@@ -9,9 +9,9 @@ function abortReason(signal: AbortSignal): Error {
 
 export function createEvaluationSignal(
   callerSignal: AbortSignal | undefined,
-  timeoutMs?: number
+  timeout?: number
 ): { cleanup: () => void; signal: AbortSignal } {
-  if (timeoutMs === undefined) {
+  if (timeout === undefined) {
     const signal = callerSignal ?? new AbortController().signal
     return { cleanup: noop, signal }
   }
@@ -35,8 +35,8 @@ export function createEvaluationSignal(
   }
 
   const timer = setTimeout(() => {
-    controller.abort(new EvaluationTimeoutError(timeoutMs))
-  }, timeoutMs)
+    controller.abort(new EvaluationTimeoutError(timeout))
+  }, timeout)
 
   return {
     cleanup() {

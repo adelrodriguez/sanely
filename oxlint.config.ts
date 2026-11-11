@@ -43,7 +43,7 @@ const dependencies: Record<string, Record<string, string[]>> = {
   },
   flags: {
     changes: [],
-    definition: ["errors"],
+    definition: ["errors", "shared"],
     errors: [],
     evaluation: ["definition", "errors", "identity", "provider", "shared", "sharing"],
     flags: [
@@ -107,7 +107,7 @@ const timeImports = {
   message: "Import shared time definitions through @sanely/core/time.",
 }
 
-// Ratelimit and skew read lengths of time with @sanely/duration, which they depend on at run time.
+// Flags, ratelimit, and skew read lengths of time with @sanely/duration, which they depend on at run time.
 const durationImports = {
   group: [...timeImports.group, "!@sanely/duration"],
   message:
@@ -121,6 +121,7 @@ const workspaceImports: Record<string, { group: string[]; message: string }> = {
   },
   cron: timeImports,
   duration: timeImports,
+  flags: durationImports,
   ratelimit: durationImports,
   skew: durationImports,
 }
@@ -297,6 +298,8 @@ export default defineConfig({
           "error",
           {
             patterns: [
+              // This override replaces the package rule, so it repeats the package's imports.
+              ...packageImports("flags"),
               {
                 group: [...publicEntries, `!#${unit}/**`],
                 message: `${unit} imports only its own modules and library domains.`,

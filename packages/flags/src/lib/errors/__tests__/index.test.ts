@@ -44,7 +44,7 @@ describe("tagged errors", () => {
     })
     expect(new EvaluationTimeoutError(50)).toMatchObject({
       message: "Flag evaluation timed out after 50ms",
-      timeoutMs: 50,
+      timeout: 50,
     })
     expect(new EvaluationAbortedError(cause).cause).toBe(cause)
     expect(new FlagDefinitionError("bad key")).toMatchObject({

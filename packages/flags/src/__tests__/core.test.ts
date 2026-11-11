@@ -33,9 +33,9 @@ const alwaysTrue = provideOne(() => decision.boolean(true))
 describe("flag definitions", () => {
   test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
     "rejects an invalid flag timeout of %p",
-    (timeoutMs) => {
-      expect(() => flag.boolean("beta-access", false, { timeoutMs })).toThrow(FlagDefinitionError)
-      expect(() => flag.variant("theme", ["light"], "light", { timeoutMs })).toThrow(
+    (timeout) => {
+      expect(() => flag.boolean("beta-access", false, { timeout })).toThrow(FlagDefinitionError)
+      expect(() => flag.variant("theme", ["light"], "light", { timeout })).toThrow(
         FlagDefinitionError
       )
     }
@@ -76,7 +76,7 @@ describe("flag definitions", () => {
       defaultValue: false,
       key: "beta-access",
       kind: "boolean",
-      timeoutMs: undefined,
+      timeout: undefined,
     })
     expect(Object.isFrozen(betaAccess)).toBe(true)
     expect(Object.isFrozen(theme)).toBe(true)
@@ -122,8 +122,8 @@ describe("defineProvider", () => {
 describe("createFlags", () => {
   test.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 2_147_483_648])(
     "rejects an invalid reader timeout of %p",
-    (timeoutMs) => {
-      expect(() => createFlags({ identify: () => user, provider: alwaysTrue, timeoutMs })).toThrow(
+    (timeout) => {
+      expect(() => createFlags({ identify: () => user, provider: alwaysTrue, timeout })).toThrow(
         FlagDefinitionError
       )
     }
@@ -645,13 +645,37 @@ describe("evaluation errors", () => {
           }),
         name: "slow",
       }),
-      timeoutMs: 10,
+      timeout: 10,
     })
 
     const details = await flags.details(betaAccess)
     expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
-    expect(details.error).toHaveProperty("timeoutMs", 10)
+    expect(details.error).toHaveProperty("timeout", 10)
     expect(details.error?._tag).toBe("EvaluationTimeoutError")
+  })
+
+  test("reads a reader timeout given as a time expression", async () => {
+    const flags = createFlags({
+      identify: () => user,
+      provider: defineProvider({
+        decideOne: () =>
+          new Promise<Decision>(() => {
+            // Never settles.
+          }),
+        name: "slow",
+      }),
+      timeout: "10ms",
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
+    expect(details.error).toHaveProperty("timeout", 10)
+  })
+
+  test("rejects a reader timeout that is not a time expression", () => {
+    expect(() =>
+      createFlags({ identify: () => user, provider: alwaysTrue, timeout: "soon" as "1s" })
+    ).toThrow(FlagDefinitionError)
   })
 
   test("a flag timeout replaces the reader timeout", async () => {
@@ -664,10 +688,10 @@ describe("evaluation errors", () => {
         },
         name: "slow",
       }),
-      timeoutMs: 5,
+      timeout: 5,
     })
 
-    expect(await flags.get(flag.boolean("patient", false, { timeoutMs: 500 }))).toBe(true)
+    expect(await flags.get(flag.boolean("patient", false, { timeout: 500 }))).toBe(true)
     const eager = await flags.details(flag.boolean("eager", false))
     expect(eager.error).toBeInstanceOf(EvaluationTimeoutError)
   })

@@ -4,13 +4,15 @@ This guide shows you how to limit how long an evaluation can take, and how to ca
 
 ## Set a timeout
 
-Set `timeoutMs` on the reader for every flag, or on one flag to replace it:
+Set `timeout` on the reader for every flag, or on one flag to replace it. A timeout is a number of milliseconds or a time expression from [`@sanely/duration`](../../../duration/README.md), such as `"500ms"`:
 
 ```typescript
-const flags = createFlags({ provider, identify, timeoutMs: 500 })
+const flags = createFlags({ provider, identify, timeout: "500ms" })
 
-export const checkout = flag.boolean("checkout", false, { timeoutMs: 100 })
+export const checkout = flag.boolean("checkout", false, { timeout: 100 })
 ```
+
+The type checker checks a literal expression, so `"1M"` fails to compile with the reason. A string from config needs `isTimeExpression` from `@sanely/duration` first. A string that is not a time expression throws `FlagDefinitionError`.
 
 When the deadline passes before the decision is valid, the read returns the default, and `details` reports an `EvaluationTimeoutError`.
 
