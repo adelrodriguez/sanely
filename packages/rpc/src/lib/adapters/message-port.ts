@@ -115,14 +115,32 @@ export function nodePort(port: NodePortLike): Wire {
 // page's IPC channel (sendPort), the preload relays it into the window (relayPort), and the
 // renderer awaits it (receivePort). Keep the channel string in shared code so all three agree.
 //
-// A window message is not buffered: one posted before the page listens is lost. So the relay holds
-// each port until the page asks for one, and `receivePort` asks when it starts listening. Either
-// may start first. Each request carries its own id, and the relay answers with it, so receivers
-// waiting at the same time each get their own port.
+// A window message is not buffered: one posted before its listener exists is lost. So the
+// receiver asks the relay for a port, the relay holds each port until a receiver asks, and either
+// may start first. The messages, all on `type`:
+//
+// - `want` (page to relay): the receiver with this `id` is listening for a port.
+// - `ready` (relay to page): a relay started. Every waiting receiver asks again, because a request
+//   posted before the relay listened is lost. The relay takes one request from each `id`.
+// - `port` (relay to page): the port for the receiver with this `id`, transferred with it.
+// - `withdraw` (page to relay): the receiver gave up. It keeps listening until `withdrawn`.
+// - `withdrawn` (relay to page): the relay holds no request for this `id`. A port it already sent
+//   arrives first, because a window delivers its messages in order.
+// - `return` (page to relay): a port that reached its receiver after it gave up, sent back for the
+//   next receiver.
 // ---------------------------------------------------------------------------------------------
 
-// The page's request for one port on `type`, or its withdrawal of the request with that `id`.
-type PortRequest = { id: string; type: string; want: boolean }
+type HandOffMessage =
+  | { id: string; kind: "port" | "return" | "want" | "withdraw" | "withdrawn"; type: string }
+  | { kind: "ready"; type: string }
+
+const ADDRESSED_KINDS: ReadonlySet<unknown> = new Set([
+  "port",
+  "return",
+  "want",
+  "withdraw",
+  "withdrawn",
+])
 
 type PortMessageEvent = { data: unknown; ports: readonly DomPortLike[]; source: unknown }
 
@@ -175,46 +193,66 @@ export function receivePort(
   const { signal } = options
   const win = options.target ?? defaultWindow("receivePort")
   const id = randomId()
+  const send = (kind: "return" | "want" | "withdraw", ports?: readonly unknown[]): void => {
+    win.postMessage({ id, kind, type } satisfies HandOffMessage, originOf(win), ports)
+  }
 
   return new Promise((resolve, reject) => {
     // Throwing in the executor rejects with the raw reason, as fetch does.
     signal?.throwIfAborted()
 
-    const detach = (): void => {
+    // Listening until the port arrives, or draining after an abort until the relay confirms the
+    // withdrawal, so a port already on its way is returned instead of lost.
+    let state: "draining" | "listening" = "listening"
+
+    const stop = (): void => {
       win.removeEventListener("message", handle)
       signal?.removeEventListener("abort", onAbort)
     }
     const onAbort = (): void => {
-      detach()
-      // Withdraw the request, so the relay keeps the next port for the next receiver.
-      win.postMessage({ id, type, want: false } satisfies PortRequest, originOf(win))
+      state = "draining"
+      send("withdraw")
       // oxlint-disable-next-line prefer-promise-reject-errors -- an abort rejects with the caller's own reason, as fetch does
       reject(signal?.reason)
     }
     const handle = (event: PortMessageEvent): void => {
-      const { data } = event
-      const port = event.ports[0]
+      const message = event.source === win ? parseHandOff(event.data, type) : undefined
 
-      if (
-        event.source !== win
-        || !isRecord(data)
-        || data.type !== type
-        || data.id !== id
-        || !port
-      ) {
+      if (message?.kind === "ready") {
+        // A relay that started late missed what this receiver posted, so post it again.
+        send(state === "listening" ? "want" : "withdraw")
         return
       }
 
-      // Removal is the guard's job, not {once}'s: an unrelated message must not consume the
-      // listener before the port arrives.
-      detach()
-      resolve(port)
+      if (message?.id !== id) {
+        return
+      }
+
+      const port = event.ports[0]
+
+      if (message.kind === "port" && port) {
+        // Removal is the guard's job, not {once}'s: an unrelated message must not consume the
+        // listener before the port arrives.
+        stop()
+
+        if (state === "listening") {
+          resolve(port)
+        } else {
+          send("return", [port])
+        }
+
+        return
+      }
+
+      if (message.kind === "withdrawn" && state === "draining") {
+        stop()
+      }
     }
 
     win.addEventListener("message", handle)
     signal?.addEventListener("abort", onAbort, { once: true })
     // Listening first, so the port the request releases cannot arrive unheard.
-    win.postMessage({ id, type, want: true } satisfies PortRequest, originOf(win))
+    send("want")
   })
 }
 
@@ -250,67 +288,92 @@ export function relayPort(
     return
   }
 
-  // Ports nobody asked for yet, and the ids of requests no port has answered yet, oldest first.
+  // Ports no receiver asked for yet, and requests no port has answered yet, oldest first. `seen`
+  // holds every id this relay took a request from, so a repeated `want` reserves nothing more.
   const held: Array<readonly unknown[]> = []
   const waiting: string[] = []
+  const seen = new Set<string>()
 
-  const post = (id: string, ports: readonly unknown[]): void => {
-    win.postMessage({ id, type }, options.targetOrigin ?? originOf(win), ports)
+  const post = (message: HandOffMessage, ports?: readonly unknown[]): void => {
+    win.postMessage(message, options.targetOrigin ?? originOf(win), ports)
   }
-  const relay = (event: { ports: readonly unknown[] }): void => {
+  const give = (ports: readonly unknown[]): void => {
     const id = waiting.shift()
 
     if (id === undefined) {
-      held.push(event.ports)
+      held.push(ports)
     } else {
-      post(id, event.ports)
+      post({ id, kind: "port", type }, ports)
     }
   }
-  const onRequest = (event: PortMessageEvent): void => {
-    const request = event.source === win ? parseRequest(event.data, type) : undefined
+  const relay = (event: { ports: readonly unknown[] }): void => {
+    give(event.ports)
+  }
+  // What the relay does with each message a receiver sends. The relay's own kinds need nothing.
+  const handlers: Partial<
+    Record<HandOffMessage["kind"], (id: string, ports: readonly unknown[]) => void>
+  > = {
+    return: (_id, ports) => {
+      give(ports)
+    },
+    want: (id) => {
+      if (seen.has(id)) {
+        return
+      }
 
-    if (!request) {
-      return
-    }
+      seen.add(id)
+      const ports = held.shift()
 
-    if (!request.want) {
-      const index = waiting.indexOf(request.id)
+      if (ports) {
+        post({ id, kind: "port", type }, ports)
+      } else {
+        waiting.push(id)
+      }
+    },
+    withdraw: (id) => {
+      const index = waiting.indexOf(id)
 
       if (index !== -1) {
         waiting.splice(index, 1)
       }
 
-      return
-    }
+      post({ id, kind: "withdrawn", type })
+    },
+  }
+  const onMessage = (event: PortMessageEvent): void => {
+    const message = event.source === win ? parseHandOff(event.data, type) : undefined
 
-    const ports = held.shift()
-
-    if (ports) {
-      post(request.id, ports)
-    } else {
-      waiting.push(request.id)
+    if (message && "id" in message) {
+      handlers[message.kind]?.(message.id, event.ports)
     }
   }
 
   ipcRenderer.on(type, relay)
-  win.addEventListener("message", onRequest)
+  win.addEventListener("message", onMessage)
   signal?.addEventListener(
     "abort",
     () => {
       ipcRenderer.removeListener(type, relay)
-      win.removeEventListener("message", onRequest)
+      win.removeEventListener("message", onMessage)
       held.splice(0)
     },
     { once: true }
   )
+  post({ kind: "ready", type })
 }
 
-function parseRequest(data: unknown, type: string): PortRequest | undefined {
-  return isRecord(data)
-    && data.type === type
-    && typeof data.id === "string"
-    && typeof data.want === "boolean"
-    ? { id: data.id, type, want: data.want }
+// Only the hand-off's own messages on `type` pass: anything else on the window is another script's.
+function parseHandOff(data: unknown, type: string): HandOffMessage | undefined {
+  if (!isRecord(data) || data.type !== type) {
+    return undefined
+  }
+
+  if (data.kind === "ready") {
+    return { kind: "ready", type }
+  }
+
+  return ADDRESSED_KINDS.has(data.kind) && typeof data.id === "string"
+    ? { id: data.id, kind: data.kind as Exclude<HandOffMessage["kind"], "ready">, type }
     : undefined
 }
 

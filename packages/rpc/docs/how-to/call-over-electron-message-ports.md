@@ -41,6 +41,8 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    relayPort(ipcRenderer, "rpc:port")
    ```
 
+   Call `relayPort` before the preload awaits anything. Electron drops an IPC message that arrives before its listener exists, so a port that main sends during the wait is lost.
+
 3. In the renderer, pass `connect` the port that `receivePort` will deliver. `api` works as soon as the module loads. Calls made before the port arrives wait for it. Give `receivePort` a `signal` so the wait ends if the port never comes. Its rejection closes the connection.
 
    ```typescript

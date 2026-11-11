@@ -349,7 +349,9 @@ Every parameter is typed by shape. You don't need Electron or DOM types installe
 
 `sendPort` posts immediately if the page has stopped loading, and otherwise waits for `did-stop-loading`. `loadURL` resolves before the page stops loading, so you can call `sendPort` right after it.
 
-`relayPort` and `receivePort` can start in either order. `receivePort` asks for a port when it starts listening, and `relayPort` posts each port it holds to one receiver, in the order the receivers asked. A `receivePort` that aborts withdraws its request.
+`relayPort` and `receivePort` can start in either order. `receivePort` asks for a port when it starts listening, and asks again when a relay starts. `relayPort` posts each port it holds to one receiver, in the order the receivers asked. A `receivePort` that aborts withdraws its request, and a port already on its way to it goes back to the relay for the next receiver.
+
+Call `relayPort` before the preload awaits anything. Electron drops an IPC message that arrives before its listener exists, so a port that main sends during the wait is lost.
 
 `relayPort` takes these options:
 

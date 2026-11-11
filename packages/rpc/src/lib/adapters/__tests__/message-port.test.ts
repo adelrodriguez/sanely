@@ -226,13 +226,14 @@ function pump(fake: ReturnType<typeof createFakeWindow>): WindowMessage[] {
 // The messages that carried a port to the page, leaving out the page's own requests.
 function portPosts(messages: readonly WindowMessage[]): WindowMessage[] {
   return messages.filter(
-    ({ message }) => !(typeof message === "object" && message !== null && "want" in message)
+    ({ message }) =>
+      typeof message === "object" && message !== null && Reflect.get(message, "kind") === "port"
   )
 }
 
 // What `receivePort` posts when it starts listening, and the reply the relay sends for it.
-const REQUEST = { data: { id: "r1", type: "app:port", want: true }, ports: [] }
-const REPLY = { id: "r1", type: "app:port" }
+const REQUEST = { data: { id: "r1", kind: "want", type: "app:port" }, ports: [] }
+const REPLY = { id: "r1", kind: "port", type: "app:port" }
 
 // The id of the request a `receivePort` just posted.
 function requestId(fake: ReturnType<typeof createFakeWindow>): unknown {
@@ -249,17 +250,25 @@ describe("receivePort", () => {
     const id = requestId(fake)
 
     // An injected script posting from elsewhere must not be able to substitute a port.
-    fake.emit({ data: { id, type: "app:port" }, ports: [dom], source: { not: "the window" } })
+    fake.emit({
+      data: { id, kind: "port", type: "app:port" },
+      ports: [dom],
+      source: { not: "the window" },
+    })
     // Same window, wrong type: not ours.
-    fake.emit({ data: { id, type: "other" }, ports: [dom], source: fake.window })
+    fake.emit({ data: { id, kind: "port", type: "other" }, ports: [dom], source: fake.window })
     // Same window, right type, no port: not consumed.
-    fake.emit({ data: { id, type: "app:port" }, ports: [], source: fake.window })
+    fake.emit({ data: { id, kind: "port", type: "app:port" }, ports: [], source: fake.window })
     // Same window, right type, a port for another receiver's request.
-    fake.emit({ data: { id: "someone else", type: "app:port" }, ports: [dom], source: fake.window })
+    fake.emit({
+      data: { id: "someone else", kind: "port", type: "app:port" },
+      ports: [dom],
+      source: fake.window,
+    })
 
     expect(fake.listenerCount()).toBe(1)
 
-    fake.emit({ data: { id, type: "app:port" }, ports: [dom], source: fake.window })
+    fake.emit({ data: { id, kind: "port", type: "app:port" }, ports: [dom], source: fake.window })
 
     await expect(received).resolves.toBe(dom)
     // The guard controls removal; once resolved the listener is gone.
@@ -281,7 +290,7 @@ describe("the hand-off with the global window", () => {
 
       expect(portPosts(pump(fake))).toEqual([
         {
-          message: { id: expect.any(String), type: "app:port" },
+          message: { id: expect.any(String), kind: "port", type: "app:port" },
           targetOrigin: "https://app.local",
           transfer: [dom],
         },
@@ -380,6 +389,96 @@ describe("the relay and the receiver in either order", () => {
     await expect(received).resolves.toBe(dom)
   })
 
+  test("a receiver that starts before the relay still gets a port", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const { dom } = createPortPair()
+    const { deliver, ipc } = createFakeIpc()
+
+    const received = receivePort("app:port", { target: fake.window })
+    // The request is delivered while no relay listens, as when a preload awaits before relaying.
+    pump(fake)
+    relayPort(ipc, "app:port", { target: fake.window })
+    pump(fake)
+    deliver([dom])
+    pump(fake)
+
+    await expect(received).resolves.toBe(dom)
+  })
+
+  test("a port held when a receiver gives up goes to the next receiver", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const { dom } = createPortPair()
+    const { deliver, ipc } = createFakeIpc()
+    const controller = new AbortController()
+
+    relayPort(ipc, "app:port", { target: fake.window })
+    pump(fake)
+    deliver([dom])
+    const abandoned = receivePort("app:port", { signal: controller.signal, target: fake.window })
+    controller.abort("gave up")
+    const received = receivePort("app:port", { target: fake.window })
+    pump(fake)
+
+    await expect(abandoned).rejects.toBe("gave up")
+    await expect(received).resolves.toBe(dom)
+  })
+
+  test("a port already on its way to a receiver that gives up goes to the next receiver", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const { dom } = createPortPair()
+    const { deliver, ipc } = createFakeIpc()
+    const controller = new AbortController()
+
+    relayPort(ipc, "app:port", { target: fake.window })
+    const abandoned = receivePort("app:port", { signal: controller.signal, target: fake.window })
+    pump(fake)
+    // The relay posts the port for the first receiver, and it is still in flight when that
+    // receiver gives up.
+    deliver([dom])
+    controller.abort("gave up")
+    const received = receivePort("app:port", { target: fake.window })
+    pump(fake)
+
+    await expect(abandoned).rejects.toBe("gave up")
+    await expect(received).resolves.toBe(dom)
+  })
+
+  test("a receiver that asks twice still reserves only one port", async () => {
+    const fake = createFakeWindow("https://app.local")
+    const first = createPortPair().dom
+    const second = createPortPair().dom
+    const { deliver, ipc } = createFakeIpc()
+
+    // The relay starts after the request was posted but before it was delivered, so the relay
+    // sees the request and the receiver also asks again when the relay announces itself.
+    const one = receivePort("app:port", { target: fake.window })
+    relayPort(ipc, "app:port", { target: fake.window })
+    pump(fake)
+    deliver([first])
+    deliver([second])
+    pump(fake)
+    const two = receivePort("app:port", { target: fake.window })
+    pump(fake)
+
+    await expect(Promise.all([one, two])).resolves.toEqual([first, second])
+  })
+
+  test("a receiver that gave up stops listening once the relay confirms", () => {
+    const fake = createFakeWindow("https://app.local")
+    const { ipc } = createFakeIpc()
+    const controller = new AbortController()
+
+    relayPort(ipc, "app:port", { target: fake.window })
+    pump(fake)
+    const listening = fake.listenerCount()
+    const abandoned = receivePort("app:port", { signal: controller.signal, target: fake.window })
+    abandoned.catch(() => null)
+    controller.abort("gave up")
+    pump(fake)
+
+    expect(fake.listenerCount()).toBe(listening)
+  })
+
   test("receivers waiting at the same time each get their own port", async () => {
     const fake = createFakeWindow("https://app.local")
     const first = createPortPair().dom
@@ -428,7 +527,13 @@ describe("receivePort with a signal", () => {
     controller.abort(reason)
 
     await expect(received).rejects.toBe(reason)
-    expect(fake.listenerCount()).toBe(0)
+
+    // It listens until a relay confirms the withdrawal, so a port already on its way is not lost.
+    expect(fake.listenerCount()).toBe(1)
+    relayPort(createFakeIpc().ipc, "app:port", { target: fake.window })
+    pump(fake)
+    // Only the relay's own listener remains.
+    expect(fake.listenerCount()).toBe(1)
   })
 
   test("rejects immediately for an already-aborted signal", async () => {
@@ -472,7 +577,7 @@ describe("relayPort", () => {
     fake.emit({ ...REQUEST, source: fake.window })
     deliver([dom])
 
-    expect(fake.posted).toEqual([
+    expect(portPosts(fake.posted)).toEqual([
       { message: REPLY, targetOrigin: "https://app.local", transfer: [dom] },
     ])
   })
@@ -485,13 +590,13 @@ describe("relayPort", () => {
     relayPort(ipc, "app:port", { target: fake.window })
     deliver([dom])
     fake.emit({ ...REQUEST, source: { not: "the window" } })
-    fake.emit({ data: { id: "r2", type: "other", want: true }, ports: [], source: fake.window })
+    fake.emit({ data: { id: "r2", kind: "want", type: "other" }, ports: [], source: fake.window })
 
-    expect(fake.posted).toEqual([])
+    expect(portPosts(fake.posted)).toEqual([])
 
     fake.emit({ ...REQUEST, source: fake.window })
 
-    expect(fake.posted).toEqual([
+    expect(portPosts(fake.posted)).toEqual([
       { message: REPLY, targetOrigin: "https://app.local", transfer: [dom] },
     ])
   })
@@ -504,7 +609,7 @@ describe("relayPort", () => {
     fake.emit({ ...REQUEST, source: fake.window })
     deliver([])
 
-    expect(fake.posted[0]?.targetOrigin).toBe("*")
+    expect(portPosts(fake.posted)[0]?.targetOrigin).toBe("*")
   })
 
   test("lets targetOrigin override the default", () => {
@@ -515,7 +620,7 @@ describe("relayPort", () => {
     fake.emit({ ...REQUEST, source: fake.window })
     deliver([])
 
-    expect(fake.posted[0]?.targetOrigin).toBe("https://other.local")
+    expect(portPosts(fake.posted)[0]?.targetOrigin).toBe("https://other.local")
   })
 
   test("relays nothing for an already-aborted signal", () => {
@@ -542,7 +647,7 @@ describe("relayPort", () => {
     deliver([])
     fake.emit({ ...REQUEST, source: fake.window })
 
-    expect(fake.posted).toEqual([])
+    expect(portPosts(fake.posted)).toEqual([])
     expect(fake.listenerCount()).toBe(0)
   })
 })
