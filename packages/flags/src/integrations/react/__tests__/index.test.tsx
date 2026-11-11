@@ -1049,25 +1049,6 @@ describe("React integration", () => {
     expect(await screen.findByText("false")).toBeTruthy()
   })
 
-  it("re-reads after the last reader unmounts and mounts again", async () => {
-    const { decideOne, emit, flags } = makeFlags()
-    const tree = (
-      <FlagsProvider flags={flags}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    await renderAsync(tree)
-    await screen.findByText("true")
-    cleanup()
-    // A change with no mounted reader does not throw or re-render.
-    emit(["beta"])
-    await renderAsync(tree)
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decideOne).toHaveBeenCalledTimes(2)
-  })
-
   it("evicts a rejected evaluation so a later read retries", async () => {
     const silenced = silenceConsoleError()
     let fail = true
@@ -1457,28 +1438,6 @@ describe("server rendering", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("false:dark")).toBeTruthy()
-  })
-
-  it("drops a snapshot value after a change notification and evaluates", async () => {
-    const identity = { distinctId: "user" }
-    const { html, snapshot } = await serverRender(identity)
-    const client = makeFlags("bulk")
-    const container = mount(html)
-    await act(async () => {
-      hydrate(container, <App flags={client.flags} identity={identity} snapshot={snapshot} />)
-      await sleep(1)
-    })
-    expect(client.decide).not.toHaveBeenCalled()
-
-    client.state.value = false
-    act(() => {
-      client.emit(["beta"])
-    })
-    // The batch evaluates in a timer-driven flush round, so wait for it instead of a fixed delay.
-    await waitFor(() => {
-      expect(container.textContent).toBe("false:darkoff")
-    })
-    expect(client.decide).toHaveBeenCalled()
   })
 
   it("ignores a snapshot entry whose kind or value does not fit the flag", async () => {

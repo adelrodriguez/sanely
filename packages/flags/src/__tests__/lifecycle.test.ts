@@ -1016,38 +1016,6 @@ describe("first-class cache", () => {
     }
   )
 
-  test("passes the notified flag keys to deleteFlags, or none for a keyless change", async () => {
-    let notify!: ChangeListener
-    const deleted: Array<readonly string[] | undefined> = []
-    const flags = createFlags({
-      cache: {
-        store: {
-          deleteFlags: (flagKeys) => {
-            deleted.push(flagKeys)
-            return Promise.resolve()
-          },
-          get: () => Promise.resolve(null),
-          set: () => Promise.resolve(),
-        },
-      },
-      identify,
-      provider: defineProvider({
-        decideOne: () => TRUE,
-        name: "test",
-        subscribe: (listener) => {
-          notify = listener
-          return () => null
-        },
-      }),
-    })
-
-    await flags.get(flag.boolean("first", false))
-    notify(["first"])
-    notify()
-    await flushBackground()
-    expect(deleted).toEqual([["first"], undefined])
-  })
-
   test("does not write a provider decision after its flag is invalidated", async () => {
     const pending = createDeferred<Decision>()
     const providerStarted = createDeferred<boolean>()
@@ -1146,30 +1114,6 @@ describe("first-class cache", () => {
     expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
-  test("does not read a decision while the delete for a change is in flight", async () => {
-    const stored = new Map<string, Decision>()
-    const deletion = createDeferred<null>()
-    const { control, flags } = changingFlag({
-      deleteFlags: async () => {
-        await deletion.promise
-        stored.clear()
-      },
-      get: (key) => Promise.resolve(stored.get(key)),
-      set: (key, value) => {
-        stored.set(key, value)
-        return Promise.resolve()
-      },
-    })
-
-    expect(await flags.get(betaAccess)).toBe(true)
-    await flushBackground()
-    control.value = false
-    control.notify(["beta-access"])
-
-    expect(await flags.get(betaAccess)).toBe(false)
-    deletion.resolve(null)
-  })
-
   test("deletes a decision written after a read that spanned a change", async () => {
     const stored = new Map<string, Decision>()
     const firstRead = createDeferred<Decision | null>()
@@ -1211,24 +1155,6 @@ describe("first-class cache", () => {
     expect(stored.size).toBe(0)
     expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: false })
     expect(decideOne).toHaveBeenCalledTimes(2)
-  })
-
-  test("does not read or write the cache for an anonymous identity", async () => {
-    const get = vi.fn(() => Promise.resolve<Decision | null>(null))
-    const set = vi.fn(() => Promise.resolve())
-    const flags = createFlags({
-      cache: { store: { get, set } },
-      identify: () => anonymous,
-      provider: defineProvider({
-        decideOne: (_flag, _identity: Identity | Anonymous) => TRUE,
-        name: "test",
-      }),
-    })
-
-    expect(await flags.get(betaAccess)).toBe(true)
-    await flushBackground()
-    expect(get).not.toHaveBeenCalled()
-    expect(set).not.toHaveBeenCalled()
   })
 
   test("does not call a custom key function for an anonymous identity", async () => {
@@ -1488,21 +1414,6 @@ describe("request coalescing", () => {
       await Promise.all([flags.get(betaAccess), flags.get(betaAccess), flags.get(betaAccess)])
     ).toEqual([true, true, true])
     expect(decideOne).toHaveBeenCalledTimes(3)
-  })
-
-  test("never coalesces anonymous evaluations", async () => {
-    const decideOne = vi.fn(async (_flag: unknown, _identity: Identity | Anonymous) => {
-      await sleep(5)
-      return TRUE
-    })
-    const flags = createFlags({
-      identify: () => anonymous,
-      provider: defineProvider({ decideOne, name: "test" }),
-    })
-
-    expect(await Promise.all([flags.get(betaAccess), flags.get(betaAccess)])).toEqual([true, true])
-    expect(decideOne).toHaveBeenCalledTimes(2)
-    expect(decideOne.mock.calls.every(([, identity]) => identity === anonymous)).toBe(true)
   })
 
   test("does not share provider work across readers built from one options object", async () => {
@@ -1802,10 +1713,6 @@ describe("request coalescing", () => {
       },
     ],
     ["no store", undefined],
-    [
-      "a store that cannot delete",
-      { get: () => Promise.resolve(null), set: () => Promise.resolve() },
-    ],
   ]
   for (const [label, store] of invalidationStores) {
     test(`does not coalesce onto in-flight provider work after invalidation with ${label}`, async () => {

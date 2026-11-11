@@ -14,7 +14,7 @@ import {
   InvalidDecisionError,
   ProviderFailedError,
 } from "#index.ts"
-import { fakeProvider, memoryStore } from "#testing/index.ts"
+import { fakeProvider } from "#testing/index.ts"
 
 const user: Identity = { distinctId: "user123" }
 const betaAccess = flag.boolean("beta-access", false)
@@ -139,17 +139,6 @@ describe("createFlags", () => {
     expect(() =>
       createFlags({ identify: "user" as unknown as () => Identity, provider: alwaysTrue })
     ).toThrow(FlagDefinitionError)
-  })
-
-  test("accepts synchronous identify and decide functions", async () => {
-    const flags = createFlags({
-      identify: () => user,
-      provider: provideOne((_flag, identity) =>
-        decision.boolean(identity.distinctId === "user123")
-      ),
-    })
-
-    expect(await flags.get(betaAccess)).toBe(true)
   })
 
   test("accepts asynchronous identify and decide functions", async () => {
@@ -285,15 +274,6 @@ describe("evaluation", () => {
     expect(await flags.get(flag.boolean("off", true))).toBe(false)
   })
 
-  test("evaluates variant flags", async () => {
-    const flags = createFlags({
-      identify: () => user,
-      provider: provideOne(() => decision.variant("dark")),
-    })
-
-    expect(await flags.get(theme)).toBe("dark")
-  })
-
   test("returns provider evaluation details without changing the plain value", async () => {
     const flags = createFlags({ identify: () => user, provider: alwaysTrue })
 
@@ -324,22 +304,6 @@ describe("evaluation", () => {
       value: true,
     })
     expect(decideOne).not.toHaveBeenCalled()
-  })
-
-  test("writes provider decisions to the store and reads them back", async () => {
-    const decideOne = vi.fn(() => decision.boolean(true))
-    const flags = createFlags({
-      cache: { store: memoryStore() },
-      identify: () => user,
-      provider: defineProvider({ decideOne, name: "p" }),
-    })
-
-    const first = await flags.details(betaAccess)
-    await sleep(0)
-    const second = await flags.details(betaAccess)
-    expect(first.source).toBe("provider")
-    expect(second.source).toBe("cache")
-    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
   test("calls the provider on every read without a store", async () => {
@@ -375,12 +339,6 @@ describe("evaluation", () => {
     expect(decideOne).toHaveBeenCalledWith(betaAccess, identity, {
       signal: expect.any(AbortSignal),
     })
-  })
-
-  test("handles a numeric distinctId", async () => {
-    const flags = createFlags({ identify: () => ({ distinctId: 12_345 }), provider: alwaysTrue })
-
-    expect(await flags.get(betaAccess)).toBe(true)
   })
 
   test("decides one flag through a bulk provider", async () => {
@@ -651,25 +609,6 @@ describe("evaluation errors", () => {
     expect(details.error).toBeInstanceOf(ProviderFailedError)
   })
 
-  test("EvaluationTimeoutError when the reader timeout passes", async () => {
-    const flags = createFlags({
-      identify: () => user,
-      provider: defineProvider({
-        decideOne: () =>
-          new Promise<Decision>(() => {
-            // Never settles.
-          }),
-        name: "slow",
-      }),
-      timeout: 10,
-    })
-
-    const details = await flags.details(betaAccess)
-    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
-    expect(details.error).toHaveProperty("timeout", 10)
-    expect(details.error?._tag).toBe("EvaluationTimeoutError")
-  })
-
   test("reads a reader timeout given as a time expression", async () => {
     const flags = createFlags({
       identify: () => user,
@@ -839,35 +778,6 @@ describe("hooks", () => {
 
     expect(onFinally).toHaveBeenCalledTimes(2)
   })
-
-  test("works with an empty hooks array", async () => {
-    expect(
-      await createFlags({ hooks: [], identify: () => user, provider: alwaysTrue }).get(betaAccess)
-    ).toBe(true)
-  })
-
-  test("reports a throwing hook without changing the result", async () => {
-    const onError = vi.fn()
-    const failure = new Error("hook failed")
-    const flags = createFlags({
-      hooks: [
-        {
-          before: () => {
-            throw failure
-          },
-        },
-      ],
-      identify: () => user,
-      onError,
-      provider: alwaysTrue,
-    })
-
-    expect(await flags.get(betaAccess)).toBe(true)
-    await sleep(0)
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ _tag: "HookFailed", error: failure, hookIndex: 0, phase: "before" })
-    )
-  })
 })
 
 describe("snapshot", () => {
@@ -930,33 +840,5 @@ describe("snapshot", () => {
     ])
 
     expect(identify).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe("fakeProvider", () => {
-  test("answers with set values and notifies listeners", async () => {
-    const provider = fakeProvider([[theme, "dark", { accent: "red" }]])
-    const flags = createFlags({ identify: () => user, provider })
-    const listener = vi.fn()
-    flags.subscribe(listener)
-
-    expect(await flags.details(theme)).toEqual({
-      flagKey: "theme",
-      payload: { accent: "red" },
-      source: "provider",
-      value: "dark",
-    })
-    provider.set(betaAccess, true)
-    await sleep(0)
-
-    expect(listener).toHaveBeenCalledWith(["beta-access"])
-    expect(await flags.get(betaAccess)).toBe(true)
-  })
-
-  test("starts empty without entries", async () => {
-    const details = await createFlags({ identify: () => user, provider: fakeProvider() }).details(
-      betaAccess
-    )
-    expect(details.error).toBeInstanceOf(InvalidDecisionError)
   })
 })

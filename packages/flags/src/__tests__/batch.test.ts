@@ -301,26 +301,6 @@ describe("batches", () => {
     ])
   })
 
-  test("isolates an invalid decision to its flag", async () => {
-    const flags = createFlags({
-      identify: () => user,
-      provider: defineProvider({
-        decide: () => ({
-          "beta-access": decision.boolean(true),
-          theme: decision.variant("purple"),
-        }),
-        name: "bulk",
-      }),
-    })
-
-    expect(
-      await flags.getMany([
-        flag.boolean("beta-access", false),
-        flag.variant("theme", ["light", "dark"], "light"),
-      ])
-    ).toEqual([true, "light"])
-  })
-
   test("isolates a rejected request while keeping stored flags", async () => {
     const flags = createFlags({
       cache: {

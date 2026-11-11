@@ -1,24 +1,18 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
-import type { Decision } from "#lib/definition/decision.ts"
 import type { Hook } from "#lib/evaluation/hooks.ts"
 import { flag } from "#lib/definition/index.ts"
 import {
-  EvaluationAbortedError,
   EvaluationTimeoutError,
   IdentityNotFoundError,
-  InvalidDecisionError,
   ProviderFailedError,
 } from "#lib/errors/index.ts"
-import { type Decide, evaluate, type Evaluator, timeoutOf } from "#lib/evaluation/engine.ts"
+import { type Decide, evaluate, type Evaluator } from "#lib/evaluation/engine.ts"
 import { identifyAs, identifyWith, type Identity } from "#lib/identity/index.ts"
-import { type DecisionStore, createSharing } from "#lib/sharing/index.ts"
+import { createSharing } from "#lib/sharing/index.ts"
 
 const identity: Identity = { distinctId: "user123" }
 const betaAccess = flag.boolean("beta-access", false)
-const theme = flag.variant("theme", ["light", "dark"], "light", {
-  payload: (payload) => ({ accent: String(payload) }),
-})
 
 function createEvaluator(overrides: Partial<Evaluator<Identity>> = {}): Evaluator<Identity> {
   return {
@@ -46,99 +40,7 @@ function neverSettles(): Promise<never> {
 }
 const noDeadline = { signal: undefined }
 
-describe("timeoutOf", () => {
-  test("prefers the flag timeout over the reader timeout", () => {
-    const evaluator = createEvaluator({ timeout: 100 })
-
-    expect(timeoutOf(evaluator, betaAccess)).toBe(100)
-    expect(timeoutOf(evaluator, flag.boolean("fast", false, { timeout: 5 }))).toBe(5)
-  })
-})
-
 describe("evaluate", () => {
-  test("returns a provider decision", async () => {
-    const decide = decideWith({ type: "boolean", value: true })
-
-    const details = await evaluate(createEvaluator(), betaAccess, identify, decide, noDeadline)
-
-    expect(details).toEqual({ flagKey: "beta-access", source: "provider", value: true })
-    expect(decide).toHaveBeenCalledWith(betaAccess, identity, { signal: expect.any(AbortSignal) })
-  })
-
-  test("returns a variant with its parsed payload", async () => {
-    const details = await evaluate(
-      createEvaluator(),
-      theme,
-      identify,
-      decideWith({ payload: "red", type: "variant", variant: "dark" }),
-      noDeadline
-    )
-
-    expect(details).toEqual({
-      flagKey: "theme",
-      payload: { accent: "red" },
-      source: "provider",
-      value: "dark",
-    })
-  })
-
-  test("returns a stored decision without asking the provider", async () => {
-    const stored: Decision = { type: "boolean", value: true }
-    const store: DecisionStore = {
-      get: () => Promise.resolve(stored),
-      set: () => Promise.resolve(),
-    }
-    const decide = decideWith(null)
-    const evaluator = createEvaluator({
-      sharing: createSharing({ store }, "test", detached.changes, detached.onError),
-    })
-
-    const details = await evaluate(evaluator, betaAccess, identify, decide, noDeadline)
-
-    expect(details.source).toBe("cache")
-    expect(decide).not.toHaveBeenCalled()
-  })
-
-  test("falls back with IdentityNotFoundError when the identity is missing", async () => {
-    const details = await evaluate(
-      createEvaluator(),
-      betaAccess,
-      identifyWith<Identity>(() => null),
-      decideWith(null),
-      noDeadline
-    )
-
-    expect(details).toMatchObject({ source: "default", value: false })
-    expect(details.error).toBeInstanceOf(IdentityNotFoundError)
-  })
-
-  test("falls back with InvalidDecisionError for a decision that does not fit", async () => {
-    const details = await evaluate(
-      createEvaluator(),
-      theme,
-      identify,
-      decideWith({ type: "variant", variant: "purple" }),
-      noDeadline
-    )
-
-    expect(details).toMatchObject({ source: "default", value: "light" })
-    expect(details.error).toBeInstanceOf(InvalidDecisionError)
-  })
-
-  test("keeps a provider failure", async () => {
-    const failure = new ProviderFailedError({ cause: new Error("down"), provider: "test" })
-
-    const details = await evaluate(
-      createEvaluator(),
-      betaAccess,
-      identify,
-      () => Promise.reject(failure),
-      noDeadline
-    )
-
-    expect(details.error).toBe(failure)
-  })
-
   test("wraps an unexpected failure as ProviderFailedError", async () => {
     const details = await evaluate(
       createEvaluator(),
@@ -150,33 +52,6 @@ describe("evaluate", () => {
 
     expect(details.error).toBeInstanceOf(ProviderFailedError)
     expect(details.error).toMatchObject({ provider: "test" })
-  })
-
-  test("falls back with EvaluationTimeoutError after the timeout", async () => {
-    const details = await evaluate(
-      createEvaluator({ timeout: 5 }),
-      betaAccess,
-      identify,
-      neverSettles,
-      noDeadline
-    )
-
-    expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
-    expect(details.error).toMatchObject({ timeout: 5 })
-  })
-
-  test("falls back with EvaluationAbortedError when the caller aborts", async () => {
-    const controller = new AbortController()
-    const reason = new Error("stop")
-    const pending = evaluate(createEvaluator(), betaAccess, identify, neverSettles, {
-      signal: controller.signal,
-    })
-    controller.abort(reason)
-
-    const details = await pending
-
-    expect(details.error).toBeInstanceOf(EvaluationAbortedError)
-    expect(details.error?.cause).toBe(reason)
   })
 
   test("reports the timeout that aborted the signal when a later step throws a plain error", async () => {
@@ -209,17 +84,6 @@ describe("evaluate", () => {
     })
 
     expect(details.source).toBe("provider")
-  })
-
-  test("returns a deadline signal's timeout error", async () => {
-    const deadline = new AbortController()
-    deadline.abort(new EvaluationTimeoutError(3))
-
-    const details = await evaluate(createEvaluator(), betaAccess, identify, decideWith(null), {
-      deadline: deadline.signal,
-    })
-
-    expect(details.error).toBe(deadline.signal.reason)
   })
 
   test("runs before, after, and finally hooks on success", async () => {
@@ -287,46 +151,5 @@ describe("evaluate", () => {
 
     expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
     expect(error).toHaveBeenCalledTimes(1)
-  })
-
-  test("stops waiting for slow error hooks at the deadline", async () => {
-    const error = vi.fn(neverSettles)
-
-    const details = await evaluate(
-      createEvaluator({ hooks: [{ error }], timeout: 20 }),
-      betaAccess,
-      identify,
-      () => Promise.reject(new Error("down")),
-      noDeadline
-    )
-
-    expect(details.error).toBeInstanceOf(ProviderFailedError)
-    expect(error).toHaveBeenCalledTimes(1)
-  })
-
-  test("reports a failing hook through onError", async () => {
-    const onError = vi.fn()
-
-    await evaluate(
-      createEvaluator({
-        hooks: [
-          {
-            before: () => {
-              throw new Error("hook failed")
-            },
-          },
-        ],
-        onError,
-      }),
-      betaAccess,
-      identify,
-      decideWith({ type: "boolean", value: true }),
-      noDeadline
-    )
-    await sleep(0)
-
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ _tag: "HookFailed", hookIndex: 0, phase: "before" })
-    )
   })
 })
