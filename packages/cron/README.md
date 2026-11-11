@@ -13,7 +13,7 @@
 - **Input at runtime**: a cron phrase in any case and spelling, or a schedule object from JSON. `parse` checks it and throws an error with the reason.
 - **A phrase for display**: `describe` writes a schedule back as a cron phrase in the strict form.
 
-Each schedule maps to exactly one cron expression, and the package rejects every schedule that one cron expression cannot express exactly. It has no runtime dependencies and no side effects. It is ESM only, for Node 20 and later.
+Each schedule maps to exactly one cron expression, and the package rejects every schedule that one cron expression cannot express exactly. It has no external dependencies and no side effects. It is ESM only, for Node 20 and later.
 
 ```ts
 import { cron, describe, parse } from "@sanely/cron"

@@ -11,7 +11,7 @@
   </p>
 </div>
 
-`@sanely/duration` is a TypeScript package for time expressions, with no runtime dependencies. It converts `"1h"` to seconds, parses `"1h 30m"` to milliseconds, and formats `5_400_000` as `"1h 30m"`.
+`@sanely/duration` is a TypeScript package for time expressions, with no external dependencies. It converts `"1h"` to seconds, parses `"1h 30m"` to milliseconds, and formats `5_400_000` as `"1h 30m"`.
 
 ## Features
 

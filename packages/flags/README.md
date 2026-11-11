@@ -1,9 +1,10 @@
-<p align="center">
+<div align="center">
   <h1 align="center">🏰 <code>@sanely/flags</code></h1>
+
   <p align="center">
     <strong>Type-safe feature flags for TypeScript applications.</strong>
   </p>
-</p>
+</div>
 
 <p align="center">
   Declare flags as values in code, and read them through a provider that you write for LaunchDarkly, PostHog, or any other feature flag service.
@@ -23,7 +24,7 @@ The package works in browsers and servers. React support is an optional entry po
 - **Server rendering.** Render with a server snapshot and hydrate with no mismatch.
 - **React support.** Use flags with React 19 and Suspense.
 - **Test helpers.** Set flag values in tests with a fake provider.
-- **One small runtime dependency.** `@sanely/duration` reads time expressions such as `"500ms"`. Install React only when your application needs it.
+- **No external dependencies.** The only runtime dependency is [`@sanely/duration`](../duration), which reads time expressions such as `"500ms"`. Install React only when your application needs it.
 
 ## Install
 

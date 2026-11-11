@@ -20,7 +20,7 @@ You define limiters once and run them with plain functions. The package has no f
 - **One clock.** Windows follow the store's clock, so instances with clocks that drift agree.
 - **Composable.** Limiters are definitions that plain functions run, so you can build middleware for any platform.
 - **Typed.** The input type of each limiter comes from how it identifies the caller.
-- **No runtime dependencies.**
+- **No external dependencies.** The only runtime dependency is [`@sanely/duration`](../duration).
 
 ## Install
 

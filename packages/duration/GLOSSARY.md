@@ -1,6 +1,6 @@
 # Duration
 
-`@sanely/duration` is a zero-dependency TypeScript package that converts human-readable time expressions to numeric durations and formats numeric durations as human-readable expressions.
+`@sanely/duration` is a TypeScript package with no external dependencies. It converts human-readable time expressions to numeric durations and formats numeric durations as human-readable expressions.
 
 ## Language
 

@@ -1,9 +1,10 @@
-<p align="center">
+<div align="center">
   <h1 align="center">🚌 <code>@sanely/rpc</code></h1>
+
   <p align="center">
     <strong>Type-safe RPC over any transport</strong>
   </p>
-</p>
+</div>
 
 > [!WARNING]
 > `@sanely/rpc` is pre-1.0. Expect breaking changes in minor releases.
