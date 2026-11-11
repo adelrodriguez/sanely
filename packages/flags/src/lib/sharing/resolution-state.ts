@@ -14,6 +14,10 @@ export type PendingResolution = {
    */
   accepted: Promise<{ decision: Decision; payload: unknown }>
   flag: Flag
+  /**
+   * Settles when the call's store write has finished or was skipped. It never rejects.
+   */
+  stored: Promise<unknown>
   flagKey: string
   promise: Promise<unknown>
   shared: SharedSignal

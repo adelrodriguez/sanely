@@ -10,6 +10,7 @@ import {
   anonymous,
   type CallerFlags,
   createFlags,
+  type DecisionStore,
   decision,
   defineProvider,
   type Flag,
@@ -752,6 +753,46 @@ describe("React integration", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("dark:false")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh until its refreshed decision is stored", async () => {
+    const provider = makeProvider()
+    const store = memoryStore()
+    // A slow store write: the refreshed decision lands after the refresh's evaluation ends.
+    const slowStore: DecisionStore = {
+      ...store,
+      set: async (key, value, entry) => {
+        await sleep(20)
+        await store.set(key, value, entry)
+      },
+    }
+    const flags = createFlags({
+      cache: { store: slowStore },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    await flags.get(beta)
+    await sleep(30)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    provider.state.value = false
+    controls().invalidate([beta])
+    await controls().prefetch([beta])
+    await controls().prefetch([beta, theme])
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <BetaAndTheme />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
   })
 
   it("reads fresh when it prefetches a snapshot flag after clear", async () => {

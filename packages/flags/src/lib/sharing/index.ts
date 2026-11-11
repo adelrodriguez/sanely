@@ -177,7 +177,7 @@ function mutateStore<TIdentity extends Subject>(
   key: string,
   operation: "delete" | "set",
   mutation: () => Promise<unknown> | undefined
-): void {
+): Promise<unknown> {
   const { mutations } = config.state
   const queue = mutations.get(key) ?? {
     deletes: 0,
@@ -203,6 +203,7 @@ function mutateStore<TIdentity extends Subject>(
     })
   queue.tail = tail
   mutations.set(key, queue)
+  return tail
 }
 
 function deleteCacheEntry<TIdentity extends Subject>(
@@ -214,7 +215,7 @@ function deleteCacheEntry<TIdentity extends Subject>(
   if (!store.delete) {
     return
   }
-  mutateStore(config, context, key, "delete", () => store.delete?.(key))
+  void mutateStore(config, context, key, "delete", () => store.delete?.(key))
 }
 
 function indexCacheKey<TIdentity extends Subject>(
@@ -429,11 +430,11 @@ function writeThrough<TIdentity extends Subject>(
   context: EvaluationContext<TIdentity>,
   ticket: WriteTicket,
   decision: Decision
-): void {
+): Promise<unknown> {
   const { key, store } = ticket
   // The checks run when the write starts, after the earlier operations for this key. A change
   // during the write queues its delete after the write.
-  mutateStore(config, storeContext(context), key, "set", () => {
+  return mutateStore(config, storeContext(context), key, "set", () => {
     const epoch = config.state.tickets.get(key)?.epoch
     closeTicket(config, ticket)
     if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
@@ -471,12 +472,23 @@ function startSharedCall<TIdentity extends Subject>(
   )
   const accepted = promise.then((decision) => accept(decision, context.flag))
   void accepted.catch(() => null)
+  // Each evaluation reports its own invalid decision. The call only skips storing it.
+  const stored = write
+    ? accepted.then(
+        ({ decision }) => writeThrough(config, context, write, decision),
+        () => {
+          closeTicket(config, write)
+          return null
+        }
+      )
+    : Promise.resolve(null)
   const call: PendingResolution = {
     accepted,
     flag: context.flag,
     flagKey: context.flag.key,
     promise,
     shared,
+    stored,
   }
   state.pending.set(key, call)
   const settle = () => {
@@ -486,19 +498,6 @@ function startSharedCall<TIdentity extends Subject>(
     }
   }
   void promise.then(settle, settle)
-  if (write) {
-    // Each evaluation reports its own invalid decision. The call only skips storing it.
-    void accepted.then(
-      ({ decision }) => {
-        writeThrough(config, context, write, decision)
-        return null
-      },
-      () => {
-        closeTicket(config, write)
-        return null
-      }
-    )
-  }
   return call
 }
 
@@ -558,7 +557,11 @@ export async function resolveDecision<TIdentity extends Subject>(
       if (write) closeTicket(config, write)
       throw error
     }
-    if (write) writeThrough(config, context, write, accepted.decision)
+    if (write) {
+      const stored = writeThrough(config, context, write, accepted.decision)
+      // A fresh read returns once its decision is stored, so a later read of the store sees it.
+      if (fresh) await raceWithSignal(() => stored, signal)
+    }
     return { ...accepted, source: "provider" }
   }
 
@@ -582,5 +585,7 @@ export async function resolveDecision<TIdentity extends Subject>(
     flag === call.flag
       ? await raceWithSignal(() => call.accepted, signal)
       : accept(await raceWithSignal(() => call.promise, signal), flag)
+  // A fresh read always starts its own call, so it returns once that call stored its decision.
+  if (fresh) await raceWithSignal(() => call.stored, signal)
   return { ...resolution, source: "provider" }
 }
