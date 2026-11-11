@@ -204,13 +204,9 @@ describe("evaluate", () => {
       return { type: "boolean", value: true }
     })
 
-    const details = await evaluate(
-      createEvaluator({ timeout: 1 }),
-      betaAccess,
-      identify,
-      decide,
-      { deadline: new AbortController().signal }
-    )
+    const details = await evaluate(createEvaluator({ timeout: 1 }), betaAccess, identify, decide, {
+      deadline: new AbortController().signal,
+    })
 
     expect(details.source).toBe("provider")
   })
