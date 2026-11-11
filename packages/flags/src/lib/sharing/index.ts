@@ -285,6 +285,7 @@ export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdent
   const { state } = config
   state.disposed = true
   state.pending.clear()
+  state.stale.clear()
   state.tickets.clear()
   state.keysByFlag.clear()
   state.writes.generation += 1
@@ -369,6 +370,7 @@ async function consultStore<TIdentity extends Subject>(
   // A fresh write of this key has not completed, so the store can hold the decision it replaces.
   if (
     (state.tickets.get(key)?.fresh ?? 0) > 0
+    || state.stale.has(key)
     || state.mutations.get(key)?.deletes
     || flagDeletes.all > 0
     || (flagDeletes.byFlag.get(flag.key) ?? 0) > 0
@@ -470,6 +472,16 @@ function writeThrough<TIdentity extends Subject>(
     // The fresh hold ends when the write completes, failed or not.
     return Promise.resolve()
       .then(() => store.set(key, decision, { flagKey: context.flag.key }))
+      .then(
+        () => {
+          config.state.stale.delete(key)
+          return null
+        },
+        (error: unknown) => {
+          if (ticket.fresh) config.state.stale.add(key)
+          throw error
+        }
+      )
       .finally(() => {
         updateTicket(config, ticket, { fresh: true, open: false })
       })

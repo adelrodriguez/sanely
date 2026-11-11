@@ -60,6 +60,9 @@ export type ResolutionState<TIdentity extends Subject> = {
   // voids only that key's older tickets, and counts in `fresh` until its store write completes.
   // A key leaves the map once neither count holds, so the map holds only keys with work in flight.
   tickets: Map<string, { epoch: number; fresh: number; open: number }>
+  // Keys whose fresh write failed, so the store can still hold the decision it replaced. Reads of
+  // them skip the store until a write of the key succeeds, which the next read makes.
+  stale: Set<string>
 }
 
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
@@ -69,6 +72,7 @@ export function createResolutionState<TIdentity extends Subject>(): ResolutionSt
     keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),
+    stale: new Set(),
     subscription: { registered: false },
     tickets: new Map(),
     writes: { generation: 0 },

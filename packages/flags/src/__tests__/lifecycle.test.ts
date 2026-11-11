@@ -432,6 +432,43 @@ describe("first-class cache", () => {
     }
   )
 
+  test.each([true, false])(
+    "keeps reading past an old stored decision after a fresh write fails, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const writes = { fail: false }
+      const { control, decideOne, provider } = controlledProvider()
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              if (writes.fail) return Promise.reject(new Error("store down"))
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider,
+      })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      control.value = false
+      writes.fail = true
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      await flushBackground()
+      // The store still holds true, so the next read asks the provider and stores again.
+      writes.fail = false
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: false })
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+      expect(decideOne).toHaveBeenCalledTimes(3)
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {
