@@ -1,6 +1,7 @@
 import type { ValidateTimeExpression } from "@sanely/duration"
 import type { DecisionSource } from "#lib/definition/decision.ts"
 import type { Hook, HookFailedReport } from "#lib/evaluation/hooks.ts"
+import type { KeyFields } from "#lib/sharing/evaluation-key.ts"
 import { type ChangeListener, createChangeBroadcaster } from "#lib/changes/index.ts"
 import { type Flag, type FlagValue, type FlagValues, parseTimeout } from "#lib/definition/index.ts"
 import { type EvaluationError, FlagDefinitionError } from "#lib/errors/index.ts"
@@ -131,6 +132,19 @@ export type FlagsOptions<TIdentity extends Subject, T extends string = never> = 
   onError?: (report: ErrorReport<NoInfer<TIdentity>>) => MaybePromise<void>
 }
 
+/**
+ * The `cache.key` function of each reader from `createFlags` that has one.
+ */
+const readerKeys = new WeakMap<object, KeyFields<Subject>>()
+
+/**
+ * Returns the `cache.key` function of a reader from `createFlags`, so the React flag cache keys an
+ * identity the way the reader's store does.
+ */
+export function keyFieldsOf(flags: object): KeyFields<Subject> | undefined {
+  return readerKeys.get(flags)
+}
+
 function createReader<TIdentity extends Subject>(
   evaluator: Evaluator<TIdentity>,
   identify: IdentitySource<TIdentity>
@@ -244,7 +258,14 @@ export function createFlags<TIdentity extends Subject, const T extends string = 
     },
   }
 
-  return options.identify
+  const flags = options.identify
     ? disposable({ ...createReader(evaluator, identifyWith(options.identify)), ...scope }, dispose)
     : disposable(scope, dispose)
+  const { key } = evaluator.sharing
+  if (key) {
+    // Only an identity of this reader's type reaches the function: the flag cache passes the
+    // identity prop, whose type is the reader's identity type.
+    readerKeys.set(flags, key as KeyFields<Subject>)
+  }
+  return flags
 }

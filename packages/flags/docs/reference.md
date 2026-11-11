@@ -135,11 +135,11 @@ The package calls `onError` on a later microtask. A throw or rejection from `onE
 
 ### `CacheOptions`
 
-| Option     | Type                                                                 | Default   | Description                                                                                                                                 |
-| ---------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `store`    | `DecisionStore`                                                      | None      | Stores decisions between evaluations.                                                                                                       |
-| `coalesce` | `boolean`                                                            | `true`    | Lets concurrent evaluations with one evaluation key share one provider call.                                                                |
-| `key`      | `(context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]` | See below | Returns the identity fields that also change the decision. The package adds them to the evaluation key, which the store and coalescing use. |
+| Option     | Type                                                                 | Default   | Description                                                                                                                                                                         |
+| ---------- | -------------------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store`    | `DecisionStore`                                                      | None      | Stores decisions between evaluations.                                                                                                                                               |
+| `coalesce` | `boolean`                                                            | `true`    | Lets concurrent evaluations with one evaluation key share one provider call.                                                                                                        |
+| `key`      | `(context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]` | See below | Returns the identity fields that also change the decision. The package adds them to the evaluation key, which the store and coalescing use, and to the key of the React flag cache. |
 
 The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
 
@@ -316,17 +316,17 @@ Every export is client-only. The module has a `"use client"` directive. A compon
 
 Each mount creates its own flag cache, so a server never shares one between requests. A `FlagsProvider` without `identity` accepts any snapshot, because its reader resolves the identity itself.
 
-The flag cache keys its entries by the content of the `identity` prop. A new object with the same fields reuses the entries, and a change to any field makes new ones. Without the prop, every result of `identify` shares one key, so the cache does not see a change of user. `FlagsProvider` reads `cache` when it mounts and when the `flags` prop changes. A new `flags` reader gets a new flag cache without the snapshot.
+The flag cache keys an `identity` prop the way the reader's store keys a decision: by the type and value of `distinctId`, and by what the reader's [cache `key` function](#cacheoptions) returns for each flag. Two identities with the same `distinctId` and the same `key` output share their entries, even when other fields differ. A change to another field, such as a plan that the `key` function does not return, keeps the cached values. To make a field start new entries, return it from the `key` function. The cache reads no other identity field, so an identity can hold any value that `Identity` allows, such as a `Date` or a `bigint`. When the `key` function throws, the entries of that identity object are shared with no other identity, and the reader reports the failure when it evaluates.
 
-An `identity` prop can hold strings, numbers, booleans, `null`, `undefined`, arrays, and plain records with string keys. Its type rejects a named field of another type, such as a `Date`. A value that reaches the cache without that check makes `FlagsProvider` throw a `TypeError` while it renders.
+Without the prop, every result of `identify` shares one key, so the cache does not see a change of user. `FlagsProvider` reads `cache` when it mounts and when the `flags` prop changes. A new `flags` reader gets a new flag cache without the snapshot.
 
 ### `FlagCacheOptions`
 
-| Option       | Type                                  | Default  | Description                                                                                                                       |
-| ------------ | ------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `maxEntries` | `number`                              | `100`    | The most settled entries, one for each identity, that each list of flags keeps. Pending entries do not count. A positive integer. |
-| `ttl`        | `number \| ValidateTimeExpression<T>` | `300000` | How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.                                      |
-| `pendingTtl` | `number \| ValidateTimeExpression<T>` | None     | How long a pending evaluation stays before the cache can remove it, such as `"30s"`. Removal does not cancel the evaluation.      |
+| Option       | Type                                  | Default  | Description                                                                                                                           |
+| ------------ | ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxEntries` | `number`                              | `100`    | The most settled entries, one for each identity key, that each list of flags keeps. Pending entries do not count. A positive integer. |
+| `ttl`        | `number \| ValidateTimeExpression<T>` | `300000` | How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.                                          |
+| `pendingTtl` | `number \| ValidateTimeExpression<T>` | None     | How long a pending evaluation stays before the cache can remove it, such as `"30s"`. Removal does not cancel the evaluation.          |
 
 An invalid option throws `FlagDefinitionError`. `ttl` and `pendingTtl` must be positive. An expired entry does not re-render its readers. The next render evaluates again.
 
@@ -354,11 +354,11 @@ A provider change for one of the flags drops its cached value and its snapshot e
 
 Returns `FlagCacheControls` for the nearest `FlagsProvider`. `prefetch` and `invalidate` act on its current identity, and `clear` acts on every identity:
 
-| Method              | Description                                                                                                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. It evaluates even when the snapshot has the flags, and the hooks still read the snapshot first. |
-| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. The next evaluation reads fresh, so it skips the reader's store too.                                                   |
-| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                                                                    |
+| Method              | Description                                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. It evaluates even when the snapshot has the flags, and the hooks still read the snapshot first.                                                        |
+| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. It covers every set of key fields that the flag cache holds for the identity's `distinctId`, and the next evaluation of each reads fresh, so it skips the reader's store too. |
+| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                                                                                                                           |
 
 ### React types
 

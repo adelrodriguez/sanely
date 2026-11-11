@@ -100,6 +100,24 @@ function RefreshButton() {
 
 `invalidate` and `clear()` make the next evaluation of those flags read fresh, so they also skip a store that the reader has. `prefetch(flags)` helps a later `useFlag` or `useFlags` with the same flags in the same order. When the provider has a [`subscribe` function](./write-a-provider.md#report-flag-changes), a change drops the cached values of the changed flags, and the components that read them evaluate again.
 
+## Choose what starts new cached values
+
+The flag cache keys the `identity` prop by its `distinctId`, the same way the reader's store keys a decision. A new identity object with the same `distinctId` reuses the cached values, even when its other fields changed. This lets the prop hold any value that `Identity` allows, such as a `Date`.
+
+If another field changes the decision, such as a plan, return it from the reader's [cache `key` function](./cache-provider-decisions.md#include-more-identity-fields-in-the-key):
+
+```tsx
+const flags = createFlags({
+  provider,
+  cache: { key: ({ identity }) => [identity?.plan] },
+})
+
+// A change of plan now reads new values for the same user.
+<FlagsProvider flags={flags} identity={{ distinctId: user.id, plan: user.plan }}>
+```
+
+To read new values after a change that the key leaves out, call `invalidate` or `clear()`.
+
 To render flags on the server without a loading state, see [How to render flags on the server](./render-flags-on-the-server.md).
 
 Refer to the [React reference](../reference.md#sanelyflagsreact) for every export.

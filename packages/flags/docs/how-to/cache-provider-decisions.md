@@ -97,4 +97,6 @@ const flags = createFlags({
 
 The package adds the returned values to the default key, so two flags or two `distinctId` values never share a decision. Return strings, numbers, booleans, `null`, `undefined`, arrays, or plain records. Another value fails the key, which `onError` reports as a `StoreFailed` report with `operation: "key"`, and the evaluation then calls the provider without sharing. The package never calls the function for an anonymous evaluation.
 
+A [`FlagsProvider`](./use-flags-in-react.md#choose-what-starts-new-cached-values) keys its flag cache with the same function, so a field that the function returns also starts new cached values in React.
+
 [About flag evaluation](../explanation/about-flag-evaluation.md#concurrent-evaluations-share-provider-work) explains the store and coalescing model.
