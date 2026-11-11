@@ -7,13 +7,18 @@ import type {
   DeploymentStatus,
   DeploymentSubscriberOptions,
 } from "#lib/runtime/monitor.ts"
+import { milliseconds } from "#lib/runtime/milliseconds.ts"
 import { getDefaultMonitor, getMonitor } from "#lib/runtime/registry.ts"
 
-export interface DeploymentStatusOptions extends DeploymentSubscriberOptions {
+export interface DeploymentStatusOptions<
+  T extends string = never,
+> extends DeploymentSubscriberOptions<T> {
   readonly source?: DeploymentSource
 }
 
-export function useDeploymentStatus(options: DeploymentStatusOptions = {}): DeploymentStatus {
+export function useDeploymentStatus<const T extends string = never>(
+  options: DeploymentStatusOptions<T> = {}
+): DeploymentStatus {
   const stableOptions = useShallowStableOptions(options)
   const monitor = stableOptions.source ? getMonitor(stableOptions.source) : getDefaultMonitor()
   const subscribe = useCallback(
@@ -28,10 +33,13 @@ export function useDeploymentStatus(options: DeploymentStatusOptions = {}): Depl
   )
 }
 
-function useShallowStableOptions(options: DeploymentStatusOptions): DeploymentStatusOptions {
+function useShallowStableOptions<T extends string>(
+  options: DeploymentStatusOptions<T>
+): DeploymentStatusOptions {
   return useMemo(
     () => ({
-      checkInterval: options.checkInterval,
+      checkInterval:
+        options.checkInterval === undefined ? undefined : milliseconds(options.checkInterval),
       checkOnReconnect: options.checkOnReconnect,
       checkOnSubscribe: options.checkOnSubscribe,
       checkOnVisible: options.checkOnVisible,
