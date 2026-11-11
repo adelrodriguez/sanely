@@ -47,7 +47,12 @@ function fitter(pools: readonly WordList[], maxLength: number | undefined): Fits
   }
 
   const groups = groupWords(pools)
-  return (start, used, budget) => shortestFill(groups, start, pools.length, used) <= budget
+  return (start, used, budget) => {
+    // shortestFill returns Infinity when no distinct words fill the rest. That never fits, even
+    // when there is no length limit and the budget is Infinity too.
+    const length = shortestFill(groups, start, pools.length, used)
+    return Number.isFinite(length) && length <= budget
+  }
 }
 
 /**

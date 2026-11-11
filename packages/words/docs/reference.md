@@ -71,6 +71,8 @@ count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] }) // 0n
 
 `count` throws `InvalidOptionError` for the same options as `generate`.
 
+`count` counts distinct combinations of words. Each combination is a distinct name unless a custom word contains the separator. For example, `"a"` with `"b-c"` and `"a-b"` with `"c"` both make `"a-b-c"`. Built-in words hold only the letters `a` to `z`.
+
 ### Use a count
 
 Compare and format a count directly. JavaScript compares a `bigint` with a `number`.

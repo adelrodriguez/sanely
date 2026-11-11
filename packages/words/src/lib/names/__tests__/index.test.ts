@@ -95,19 +95,19 @@ describe("generate", () => {
       expect(() => generate({ maxLength: 4 })).toThrow(new NotEnoughWordsError("maxLength"))
     })
 
-    it("returns a name exactly when one fits, for small lists", () => {
+    it("returns a name exactly when one fits, for small lists, with or without a limit", () => {
       const pool = fc.uniqueArray(fc.stringMatching(/^[a-d]{1,4}$/u), { maxLength: 4 })
 
       fc.assert(
         fc.property(
           fc.tuple(pool, pool, pool),
-          fc.integer({ max: 16, min: 1 }),
+          fc.option(fc.integer({ max: 16, min: 1 }), { nil: undefined }),
           (words, maxLength) => {
             const [a, b, c] = words
             const options = { lists: { a, b, c }, maxLength, pattern: ["a", "b", "c"] } as const
             const fitting = allNames([a, b, c])
               .map((name) => name.join("-"))
-              .filter((name) => name.length <= maxLength)
+              .filter((name) => name.length <= (maxLength ?? Number.POSITIVE_INFINITY))
 
             if (fitting.length === 0) {
               expect(() => generate(options)).toThrow(NotEnoughWordsError)
@@ -139,6 +139,27 @@ describe("generate", () => {
   it("rejects more than 16 words before searching", () => {
     expect(() => generate({ segments: 17 })).toThrow(InvalidOptionError)
     expect(() => generate({ segments: 5000 })).toThrow(InvalidOptionError)
+  })
+
+  it("avoids a word that leaves a later list with no unused word", () => {
+    // Drawing "a" first would leave nothing for the second position.
+    const options = {
+      lists: { first: ["a", "b"], second: ["a"] },
+      pattern: ["first", "second"],
+      random: () => 0,
+    } as const
+
+    expect(generate(options)).toBe("b-a")
+  })
+
+  it("reports unique, not maxLength, when no distinct words fit at any length", () => {
+    const options = {
+      lists: { x: ["a"], y: ["a"], z: ["b", "c"] },
+      maxLength: 100,
+      pattern: ["x", "y", "z"],
+    } as const
+
+    expect(() => generate(options)).toThrow(new NotEnoughWordsError("unique"))
   })
 
   it("throws NotEnoughWordsError when the lists hold too few distinct words", () => {
