@@ -235,13 +235,13 @@ Hooks and the cache `key` function receive this context.
 
 Evaluations return these errors in `details().error` and never throw them. Each class has a literal `_tag` equal to its name.
 
-| Error                    | Fields               | When                                                                                                                                                                                                                 |
-| ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, `for` received no identity, or the identity has no non-empty string or finite number `distinctId`. `cause` holds what `identify` threw, or a `TypeError` for the `distinctId`. |
-| `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result.                                            |
-| `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                                                                      |
-| `EvaluationTimeoutError` | `timeout`            | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                                                                   |
-| `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                                                                      |
+| Error                    | Fields                          | When                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IdentityNotFoundError`  | `cause`                         | `identify` returned nothing or threw, `for` received no identity, or the identity has no non-empty string or finite number `distinctId`. `cause` holds what `identify` threw, or a `TypeError` for the `distinctId`.                                                                                  |
+| `InvalidDecisionError`   | `decision`, `problem`, `reason` | The decision does not fit the flag. `problem` is `"malformed"`, `"kind"` for the other kind, `"variant"` for a variant that the flag does not allow, `"payload"` for a payload that the parser rejects, or `"missing"` for a key that a `decide` result leaves out. `reason` describes it for people. |
+| `ProviderFailedError`    | `provider`, `cause`             | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                                                                                                                                                       |
+| `EvaluationTimeoutError` | `timeout`                       | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                                                                                                                                                    |
+| `EvaluationAbortedError` | `cause`                         | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                                                                                                                                                       |
 
 `EvaluationError` is the union of these classes.
 
@@ -296,7 +296,7 @@ An identity in a cache key can hold strings, numbers, booleans, `null`, `undefin
 
 | Option       | Type                                  | Default  | Description                                                                                                                  |
 | ------------ | ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `maxEntries` | `number`                              | `100`    | The most settled entries for each list of flags. A positive integer.                                                         |
+| `maxEntries` | `number`                              | `100`    | The most settled entries for each list of flags. A positive integer. An invalid option throws `FlagDefinitionError`.         |
 | `ttl`        | `number \| ValidateTimeExpression<T>` | `300000` | How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.                                 |
 | `pendingTtl` | `number \| ValidateTimeExpression<T>` | None     | How long a pending evaluation stays before the cache can remove it, such as `"30s"`. Removal does not cancel the evaluation. |
 

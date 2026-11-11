@@ -21,7 +21,7 @@ import {
   isFlagKind,
   type VariantFlag,
 } from "#lib/definition/index.ts"
-import { IdentityNotFoundError } from "#lib/errors/index.ts"
+import { FlagDefinitionError, IdentityNotFoundError } from "#lib/errors/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import {
   DEFAULT_MAX_ENTRIES,
@@ -164,7 +164,7 @@ type CacheInput = {
 function lengthOfTime(option: string, value: unknown): number {
   const parsed = milliseconds(value)
   if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
-    throw new RangeError(
+    throw new FlagDefinitionError(
       `${option} must be a time expression or a positive finite number of milliseconds`
     )
   }
@@ -174,7 +174,7 @@ function lengthOfTime(option: string, value: unknown): number {
 function readCacheOptions(options: CacheInput) {
   const { maxEntries = DEFAULT_MAX_ENTRIES, pendingTtl, ttl = DEFAULT_TTL } = options
   if (!Number.isFinite(maxEntries) || maxEntries <= 0 || !Number.isInteger(maxEntries)) {
-    throw new RangeError("maxEntries must be a positive finite integer")
+    throw new FlagDefinitionError("maxEntries must be a positive finite integer")
   }
   return {
     maxEntries,

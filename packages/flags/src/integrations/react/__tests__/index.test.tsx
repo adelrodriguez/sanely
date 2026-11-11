@@ -15,6 +15,7 @@ import {
   type Flag,
   flag,
   type FlagReader,
+  FlagDefinitionError,
   type FlagSnapshot,
   type Identity,
 } from "#index.ts"
@@ -775,7 +776,7 @@ describe("React integration", () => {
               child
             </FlagsProvider>
           )
-        ).toThrow(RangeError)
+        ).toThrow(FlagDefinitionError)
       }
     } finally {
       silenced.restore()

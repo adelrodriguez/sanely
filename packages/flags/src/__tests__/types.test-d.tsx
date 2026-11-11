@@ -9,6 +9,8 @@ import type {
   Flags,
   FlagSnapshot,
   Identity,
+  InvalidDecisionError,
+  InvalidDecisionProblem,
   Provider,
 } from "#index.ts"
 import { anonymous, createFlags, decision, defineProvider, flag } from "#index.ts"
@@ -195,4 +197,13 @@ export function Components() {
       </FlagsProvider>
     </>
   )
+}
+
+// ── Errors ──────────────────────────────────────────────────────────────────
+{
+  // A caller tells the causes of an invalid decision apart by `problem`, not by `reason` text.
+  expectTypeOf<InvalidDecisionError["problem"]>().toEqualTypeOf<InvalidDecisionProblem>()
+  expectTypeOf<InvalidDecisionProblem>().toEqualTypeOf<
+    "kind" | "malformed" | "missing" | "payload" | "variant"
+  >()
 }

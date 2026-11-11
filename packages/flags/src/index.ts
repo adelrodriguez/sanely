@@ -17,7 +17,7 @@ export {
   InvalidDecisionError,
   ProviderFailedError,
 } from "#lib/errors/index.ts"
-export type { EvaluationError } from "#lib/errors/index.ts"
+export type { EvaluationError, InvalidDecisionProblem } from "#lib/errors/index.ts"
 export type { EvaluationDetails } from "#lib/evaluation/engine.ts"
 export type { Hook, HookFailedReport } from "#lib/evaluation/hooks.ts"
 export { createFlags } from "#lib/flags/index.ts"

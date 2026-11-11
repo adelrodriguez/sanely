@@ -16,7 +16,7 @@ describe("tagged errors", () => {
     const cause = new Error("cause")
     const errors = [
       new IdentityNotFoundError({ cause }),
-      new InvalidDecisionError({ decision: 1, reason: "bad" }),
+      new InvalidDecisionError({ decision: 1, problem: "malformed", reason: "bad" }),
       new ProviderFailedError({ cause, provider: "fake" }),
       new EvaluationTimeoutError(50),
       new EvaluationAbortedError(cause),
@@ -34,7 +34,9 @@ describe("tagged errors", () => {
     const cause = new Error("cause")
 
     expect(new IdentityNotFoundError({ cause }).cause).toBe(cause)
-    expect(new InvalidDecisionError({ decision: 1, reason: "bad" })).toMatchObject({
+    expect(
+      new InvalidDecisionError({ decision: 1, problem: "malformed", reason: "bad" })
+    ).toMatchObject({
       decision: 1,
       message: "Invalid decision: bad",
       reason: "bad",
@@ -57,7 +59,11 @@ describe("tagged errors", () => {
 
   test("recognizes only evaluation errors", () => {
     expect(isEvaluationError(new IdentityNotFoundError())).toBe(true)
-    expect(isEvaluationError(new InvalidDecisionError({ decision: 1, reason: "bad" }))).toBe(true)
+    expect(
+      isEvaluationError(
+        new InvalidDecisionError({ decision: 1, problem: "malformed", reason: "bad" })
+      )
+    ).toBe(true)
     expect(isEvaluationError(new ProviderFailedError({ cause: 1, provider: "p" }))).toBe(true)
     expect(isEvaluationError(new EvaluationTimeoutError(1))).toBe(true)
     expect(isEvaluationError(new EvaluationAbortedError(1))).toBe(true)

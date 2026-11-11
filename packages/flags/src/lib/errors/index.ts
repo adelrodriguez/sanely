@@ -16,20 +16,35 @@ export class IdentityNotFoundError extends Error {
 }
 
 /**
- * The provider's decision does not fit the flag: it is malformed, has the other kind, names a
- * variant that the flag does not allow, carries a payload that the flag's parser rejects, or is
- * missing from a bulk provider's result.
+ * What is wrong with an invalid decision:
+ *
+ * - `malformed`: it is not a decision.
+ * - `kind`: it is a decision of the other kind.
+ * - `variant`: it names a variant that the flag does not allow.
+ * - `payload`: the flag's payload parser rejected its payload.
+ * - `missing`: a bulk provider's result has no decision for the flag.
+ */
+export type InvalidDecisionProblem = "kind" | "malformed" | "missing" | "payload" | "variant"
+
+/**
+ * The provider's decision does not fit the flag. `problem` says why, and `reason` describes it for
+ * people.
  */
 export class InvalidDecisionError extends Error {
   static readonly _tag = "InvalidDecisionError"
   readonly _tag = InvalidDecisionError._tag
   readonly decision: unknown
+  readonly problem: InvalidDecisionProblem
   readonly reason: string
 
-  constructor(args: { decision: unknown; reason: string }, options?: ErrorOptions) {
+  constructor(
+    args: { decision: unknown; problem: InvalidDecisionProblem; reason: string },
+    options?: ErrorOptions
+  ) {
     super(`Invalid decision: ${args.reason}`, options)
     this.name = "InvalidDecisionError"
     this.decision = args.decision
+    this.problem = args.problem
     this.reason = args.reason
   }
 }

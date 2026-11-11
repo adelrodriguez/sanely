@@ -495,26 +495,39 @@ describe("evaluation errors", () => {
   })
 
   test.each([
-    { case: "a non-object", flagToRead: betaAccess, value: null },
-    { case: "a missing type", flagToRead: betaAccess, value: {} },
+    { case: "a non-object", flagToRead: betaAccess, problem: "malformed", value: null },
+    { case: "a missing type", flagToRead: betaAccess, problem: "malformed", value: {} },
     {
       case: "a string boolean value",
       flagToRead: betaAccess,
+      problem: "malformed",
       value: { type: "boolean", value: "true" },
     },
-    { case: "a non-string variant", flagToRead: theme, value: { type: "variant", variant: 1 } },
+    {
+      case: "a non-string variant",
+      flagToRead: theme,
+      problem: "malformed",
+      value: { type: "variant", variant: 1 },
+    },
     {
       case: "a variant decision for a boolean flag",
       flagToRead: betaAccess,
+      problem: "kind",
       value: decision.variant("dark"),
     },
     {
       case: "a boolean decision for a variant flag",
       flagToRead: theme,
+      problem: "kind",
       value: decision.boolean(true),
     },
-    { case: "an unknown variant", flagToRead: theme, value: decision.variant("purple") },
-  ])("InvalidDecisionError for $case", async ({ value, flagToRead }) => {
+    {
+      case: "an unknown variant",
+      flagToRead: theme,
+      problem: "variant",
+      value: decision.variant("purple"),
+    },
+  ])("InvalidDecisionError for $case", async ({ value, flagToRead, problem }) => {
     const flags = createFlags({ identify: () => user, provider: provideOne(() => value) })
     const details = await flags.details(flagToRead)
 
@@ -524,6 +537,7 @@ describe("evaluation errors", () => {
     expect(details.error?._tag).toBe("InvalidDecisionError")
     if (details.error instanceof InvalidDecisionError) {
       expect(details.error.decision).toBe(value)
+      expect(details.error.problem).toBe(problem)
       expect(details.error.reason).toBeTypeOf("string")
     }
   })
@@ -543,6 +557,7 @@ describe("evaluation errors", () => {
     const details = await flags.details(parsed)
     expect(details.value).toBe("light")
     expect(details.error).toBeInstanceOf(InvalidDecisionError)
+    expect(details.error).toHaveProperty("problem", "payload")
     expect(details.error?.cause).toBe(failure)
   })
 
@@ -554,6 +569,7 @@ describe("evaluation errors", () => {
 
     const details = await flags.details(betaAccess)
     expect(details.error).toBeInstanceOf(InvalidDecisionError)
+    expect(details.error).toHaveProperty("problem", "missing")
     expect(details.error).toHaveProperty(
       "reason",
       "the provider returned no decision for this flag"
