@@ -33,7 +33,7 @@ Each domain imports only itself and the domains that the root `oxlint.config.ts`
 | `definition/`    | `errors`, `shared`.                                                  |
 | `identity/`      | `definition`, `errors`, `shared`.                                    |
 | `provider/`      | `changes`, `definition`, `errors`, `identity`, `shared`.             |
-| `sharing/`       | `changes`, `definition`, `identity`, `shared`.                       |
+| `sharing/`       | `changes`, `definition`, `identity`, `promise-cache`, `shared`.      |
 | `evaluation/`    | `definition`, `errors`, `identity`, `provider`, `shared`, `sharing`. |
 | `flags/`         | Every domain above except `promise-cache`.                           |
 

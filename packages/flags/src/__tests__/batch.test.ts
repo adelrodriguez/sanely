@@ -674,7 +674,7 @@ describe("batches", () => {
                 lateReady.resolve(null)
               }, 0)
             }
-            return context.flag.key
+            return []
           },
         },
         hooks: [

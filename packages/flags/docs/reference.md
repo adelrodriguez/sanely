@@ -118,11 +118,11 @@ An invalid `provider`, `timeout`, or `identify` throws `FlagDefinitionError`.
 
 ### `CacheOptions`
 
-| Option     | Type                                                | Default   | Description                                                                  |
-| ---------- | --------------------------------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `store`    | `DecisionStore`                                     | None      | Stores decisions between evaluations.                                        |
-| `coalesce` | `boolean`                                           | `true`    | Lets concurrent evaluations with one evaluation key share one provider call. |
-| `key`      | `(context: EvaluationContext<TIdentity>) => string` | See below | Replaces the evaluation key, which the store and coalescing use.             |
+| Option     | Type                                                                 | Default   | Description                                                                                                                                 |
+| ---------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store`    | `DecisionStore`                                                      | None      | Stores decisions between evaluations.                                                                                                       |
+| `coalesce` | `boolean`                                                            | `true`    | Lets concurrent evaluations with one evaluation key share one provider call.                                                                |
+| `key`      | `(context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]` | See below | Returns the identity fields that also change the decision. The package adds them to the evaluation key, which the store and coalescing use. |
 
 The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `identity.distinctId`. The package never caches or coalesces an evaluation for `anonymous`.
 

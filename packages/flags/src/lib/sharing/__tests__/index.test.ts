@@ -29,8 +29,8 @@ function createContext(identity: Subject | null = user): EvaluationContext {
   return { flag: betaAccess, identity, signal: new AbortController().signal }
 }
 
-function customKey(): string {
-  return "k"
+function customKey(): readonly string[] {
+  return ["k"]
 }
 
 function createProvider() {

@@ -341,13 +341,12 @@ describe("first-class cache", () => {
     expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
-  test("supports a custom identity-sensitive key", async () => {
+  test("adds the identity parts of a custom key to the evaluation key", async () => {
     type TenantIdentity = Identity & { tenant: string }
     const keys: string[] = []
     const flags = createFlags({
       cache: {
-        key: (context) =>
-          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+        key: ({ identity }) => [identity?.tenant],
         store: {
           get: (key) => {
             keys.push(key)
@@ -364,7 +363,41 @@ describe("first-class cache", () => {
     })
 
     await flags.get(betaAccess)
-    expect(keys).toEqual(["acme:beta-access"])
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toContain('"beta-access"')
+    expect(keys[0]).toContain("acme")
+  })
+
+  test("never shares a decision between flags under a custom key", async () => {
+    type PlanIdentity = Identity & { plan: string }
+    const stored = new Map<string, Decision>()
+    const flags = createFlags({
+      cache: {
+        // The parts name only what the identity adds, as the docs recommend.
+        key: ({ identity }) => [identity?.plan],
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify: () => ({ distinctId: "user123", plan: "pro" }),
+      provider: defineProvider({
+        decideOne: (item, _identity: PlanIdentity): Decision => ({
+          type: "boolean",
+          value: item.key === "a",
+        }),
+        name: "test",
+      }),
+    })
+    const a = flag.boolean("a", false)
+    const b = flag.boolean("b", false)
+
+    expect(await Promise.all([flags.get(a), flags.get(b)])).toEqual([true, false])
+    await flushBackground()
+    expect(await flags.get(b)).toBe(false)
   })
 
   test("reports custom cache key failures without reading the store", async () => {
@@ -960,7 +993,7 @@ describe("first-class cache", () => {
   })
 
   test("does not call a custom key function for an anonymous identity", async () => {
-    const key = vi.fn(() => "shared")
+    const key = vi.fn(() => ["shared"])
     const get = vi.fn(() => Promise.resolve<Decision | null>(null))
     const flags = createFlags({
       cache: { key, store: { get, set: () => Promise.resolve() } },
@@ -1101,8 +1134,7 @@ describe("request coalescing", () => {
     const flags = createFlags({
       cache: {
         coalesce: true,
-        key: (context) =>
-          `${context.identity === null ? "" : context.identity.tenant}:${context.flag.key}`,
+        key: ({ identity }) => [identity?.tenant],
       },
       provider: defineProvider({ decideOne, name: "test" }),
     })
@@ -1152,10 +1184,10 @@ describe("request coalescing", () => {
     const flags = createFlags({
       cache: {
         // The second key read is the follower's, in the same synchronous step as its join.
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,
@@ -1237,10 +1269,10 @@ describe("request coalescing", () => {
       let keyReads = 0
       const flags = createFlags({
         cache: {
-          key: (context) => {
+          key: () => {
             keyReads += 1
             if (keyReads === 2) followerJoined.resolve(null)
-            return context.flag.key
+            return []
           },
         },
         identify,
@@ -1285,10 +1317,10 @@ describe("request coalescing", () => {
     let keyReads = 0
     const flags = createFlags({
       cache: {
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,
@@ -1327,10 +1359,10 @@ describe("request coalescing", () => {
     let keyReads = 0
     const flags = createFlags({
       cache: {
-        key: (context) => {
+        key: () => {
           keyReads += 1
           if (keyReads === 2) followerJoined.resolve(null)
-          return context.flag.key
+          return []
         },
       },
       identify,

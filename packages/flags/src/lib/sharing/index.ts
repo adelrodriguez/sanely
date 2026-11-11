@@ -1,6 +1,7 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Flag } from "#lib/definition/index.ts"
 import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
+import type { FlagCacheKey } from "#lib/promise-cache/key.ts"
 import {
   type Decision,
   type DecisionSource,
@@ -57,10 +58,12 @@ export type CacheOptions<TIdentity extends Subject> = {
    */
   coalesce?: boolean
   /**
-   * Replaces the evaluation key, which the store and coalescing use to identify interchangeable
-   * evaluations.
+   * Returns the identity fields, beyond `distinctId`, that change the decision, such as a plan or a
+   * tenant. The package adds them to the evaluation key, which the store and coalescing use to
+   * identify interchangeable evaluations. It keeps the provider, the flag, and `distinctId` in the
+   * key, so two flags never share a decision.
    */
-  key?: (context: EvaluationContext<TIdentity>) => string
+  key?: (context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]
   store?: DecisionStore
 }
 
@@ -70,7 +73,7 @@ export type CacheOptions<TIdentity extends Subject> = {
 export type Sharing<TIdentity extends Subject> = {
   changes: ChangeBroadcaster | undefined
   coalesce: boolean
-  key: ((context: EvaluationContext<TIdentity>) => string) | undefined
+  key: ((context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]) | undefined
   onError:
     | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
     | undefined
