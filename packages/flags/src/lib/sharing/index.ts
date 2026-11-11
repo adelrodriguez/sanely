@@ -364,6 +364,8 @@ async function consultStore<TIdentity extends Subject>(
 ): Promise<StoreConsultation> {
   const { state } = config
   const generationBeforeRead = state.writes.generation
+  // A refresh that starts while the get is in flight deletes the decision that the get can return.
+  const refreshesBeforeRead = state.writes.refreshes
   // The delete for an earlier change has not completed, so the store can hold a stale decision.
   const { flagDeletes } = state
   if (
@@ -382,7 +384,12 @@ async function consultStore<TIdentity extends Subject>(
     return { generation: state.writes.generation }
   }
   const generation = state.writes.generation
-  if (generation !== generationBeforeRead || cached === null || cached === undefined) {
+  if (
+    generation !== generationBeforeRead
+    || state.writes.refreshes !== refreshesBeforeRead
+    || cached === null
+    || cached === undefined
+  ) {
     return { generation }
   }
 
@@ -549,7 +556,10 @@ export async function resolveDecision<TIdentity extends Subject>(
     // A fresh read deletes the decision it replaces before it asks the provider. Reads of the key
     // skip the store while the delete is pending and miss it afterward, so none of them returns
     // the old decision, even when this read's own write later fails or stalls.
-    if (fresh) deleteCacheEntry(config, storeContext(context), store, key)
+    if (fresh) {
+      state.writes.refreshes += 1
+      deleteCacheEntry(config, storeContext(context), store, key)
+    }
   }
 
   if (!coalesce) {

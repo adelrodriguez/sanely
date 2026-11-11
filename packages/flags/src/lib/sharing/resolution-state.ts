@@ -55,7 +55,7 @@ export type ResolutionState<TIdentity extends Subject> = {
   // One counter for the reader: any flag-change notification invalidates every open write ticket.
   // A pending write lives for milliseconds and the next evaluation re-establishes it, so dropping
   // one is always safe. It is cheaper than tracking which flags a notification covers.
-  writes: { generation: number }
+  writes: { generation: number; refreshes: number }
   // The open write tickets of each evaluation key. A fresh read advances its key's epoch, which
   // voids only that key's older tickets. A key leaves the map when its last ticket closes, so the
   // map holds only keys with a read in flight.
@@ -71,6 +71,6 @@ export function createResolutionState<TIdentity extends Subject>(): ResolutionSt
     pending: new Map(),
     subscription: { registered: false },
     tickets: new Map(),
-    writes: { generation: 0 },
+    writes: { generation: 0, refreshes: 0 },
   }
 }

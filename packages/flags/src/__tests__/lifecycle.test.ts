@@ -547,6 +547,42 @@ describe("first-class cache", () => {
     }
   )
 
+  test.each([true, false])(
+    "does not return a stored decision that a refresh replaced during the read, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const reading: { hold?: Promise<null> } = {}
+      const store: DecisionStore = {
+        delete: (key) => Promise.resolve(stored.delete(key)),
+        get: async (key) => {
+          // The value is read when the get starts, as a store round trip would.
+          const value = stored.get(key)
+          await reading.hold
+          return value
+        },
+        set: (key, value) => {
+          stored.set(key, value)
+          return Promise.resolve()
+        },
+      }
+      const { control, provider } = controlledProvider()
+      const flags = createFlags({ cache: { coalesce, store }, identify, provider })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      // A plain read starts its store get, then a refresh replaces the decision.
+      const release = createDeferred<null>()
+      reading.hold = release.promise
+      control.value = false
+      const plain = flags.details(betaAccess)
+      await flushBackground()
+      delete reading.hold
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      release.resolve(null)
+      expect(await plain).toMatchObject({ value: false })
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {
