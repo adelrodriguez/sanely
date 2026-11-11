@@ -242,10 +242,8 @@ export class TaskGraph implements AsyncDisposable {
     }
 
     this.#state = { event, status: "stopped" }
-
-    if (!this.#controller.signal.aborted) {
-      this.#controller.abort(abortReason)
-    }
+    // Only this method aborts the controller, and the state check above lets it run once.
+    this.#controller.abort(abortReason)
 
     this.#stopped.resolve(true)
   }

@@ -12,24 +12,19 @@ export function assertValidTimeout(ms: number): void {
 }
 
 export class TimeoutController {
-  readonly signal?: AbortSignal
-  readonly #controller?: AbortController
+  readonly #controller = new AbortController()
+  /**
+   * Aborts with a {@link TimeoutError} when the deadline expires.
+   */
+  readonly signal: AbortSignal = this.#controller.signal
   readonly #startedAt = Date.now()
   readonly #timeoutMs: number
   #timeoutId: ReturnType<typeof setTimeout> | undefined
   declare [Symbol.dispose]: () => void
 
-  constructor(timeoutMs?: number) {
-    this.#timeoutMs = timeoutMs ?? -1
-
-    if (timeoutMs === undefined) {
-      return
-    }
-
+  constructor(timeoutMs: number) {
     assertValidTimeout(timeoutMs)
-
-    this.#controller = new AbortController()
-    this.signal = this.#controller.signal
+    this.#timeoutMs = timeoutMs
 
     if (this.#timeoutMs <= 0) {
       this.#abort()
@@ -46,8 +41,9 @@ export class TimeoutController {
       cause,
     })
 
-    if (!this.signal?.aborted) {
-      this.#controller?.abort(timeoutError)
+    // The timer can fire after a clock check already aborted the deadline.
+    if (!this.signal.aborted) {
+      this.#controller.abort(timeoutError)
     }
 
     return timeoutError
@@ -60,10 +56,6 @@ export class TimeoutController {
   }
 
   checkDidTimeout(cause?: unknown): TimeoutError | undefined {
-    if (!this.signal) {
-      return
-    }
-
     if (this.signal.aborted) {
       const reason = this.signal.reason
 
@@ -84,10 +76,6 @@ export class TimeoutController {
   }
 
   race<V>(promise: PromiseLike<V>, cause?: unknown): PromiseLike<V | TimeoutError> {
-    if (!this.signal) {
-      return promise
-    }
-
     const timedOut = this.checkDidTimeout(cause)
 
     if (timedOut) {

@@ -81,19 +81,6 @@ function checkCanRegister(disposed: boolean, name: string) {
   }
 }
 
-function resolveSyncDisposer(value: Disposable | DisposableLike): SyncDisposer {
-  const candidate = value as DisposableLike
-  const disposer = candidate[DISPOSE]
-
-  if (typeof disposer !== "function") {
-    throw new TypeError("Object not disposable")
-  }
-
-  return () => {
-    disposer.call(value)
-  }
-}
-
 function resolveAsyncDisposer(
   value: AsyncDisposable | Disposable | MaybeDisposable
 ): AsyncDisposerFn {
@@ -129,19 +116,6 @@ export class InternalDisposableStack implements Disposable {
     this.#stack.push(fn)
   }
 
-  use<T extends Disposable | DisposableLike>(value: T): T
-  use(value: null): null
-  use(value: undefined): undefined
-  use(value: Disposable | DisposableLike | null | undefined) {
-    if (value === null || value === undefined) {
-      return value
-    }
-
-    checkCanRegister(this.#disposed, "DisposableStack")
-    this.#stack.push(resolveSyncDisposer(value))
-    return value
-  }
-
   dispose(): void {
     this.#disposeAll()
   }
@@ -154,14 +128,10 @@ export class InternalDisposableStack implements Disposable {
     this.#disposed = true
 
     let error: unknown
+    const stack = this.#stack
+    this.#stack = []
 
-    while (this.#stack.length > 0) {
-      const disposer = this.#stack.pop()
-
-      if (!disposer) {
-        continue
-      }
-
+    for (const disposer of stack.toReversed()) {
       try {
         disposer()
       } catch (caughtError) {
@@ -215,14 +185,10 @@ class AsyncDisposerStack implements AsyncDisposer {
     this.#disposed = true
 
     let error: unknown
+    const stack = this.#stack
+    this.#stack = []
 
-    while (this.#stack.length > 0) {
-      const disposer = this.#stack.pop()
-
-      if (!disposer) {
-        continue
-      }
-
+    for (const disposer of stack.toReversed()) {
       try {
         // Cleanup must remain sequential so LIFO teardown order is preserved.
         // oxlint-disable-next-line no-await-in-loop

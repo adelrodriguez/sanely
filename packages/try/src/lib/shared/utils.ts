@@ -39,14 +39,10 @@ export async function resolveWithAbort<V, E>(
 
   using disposer = new InternalDisposableStack()
 
+  // The executor runs synchronously after the aborted check above, so the signal is still live.
   const abortPromise = new Promise<E>((resolve) => {
     const onAbort = () => {
       resolve(createAbortResult())
-    }
-
-    if (signal.aborted) {
-      onAbort()
-      return
     }
 
     signal.addEventListener("abort", onAbort, { once: true })
