@@ -82,7 +82,7 @@ describe("entrypoints", () => {
   it("exposes retryOptions from the root entrypoint", () => {
     expect(try$.retryOptions(2)).toEqual({
       backoff: "constant",
-      delayMs: 0,
+      delay: 0,
       limit: 2,
     })
   })
@@ -103,6 +103,53 @@ describe("entrypoints", () => {
     } catch (error) {
       expectPanic(error, "TIMEOUT_INVALID_MS")
     }
+  })
+
+  // A string from config reaches the API without the compile-time check.
+  it.each(["soon", "-1s", "1M", "Infinity"])(
+    "throws Panic when an entry point receives the time expression %j",
+    (value) => {
+      const fromConfig = value as never
+      const delayPolicy = { backoff: "constant", delay: fromConfig, limit: 2 } as const
+      const capPolicy = { backoff: "exponential", limit: 2, maxDelay: fromConfig } as const
+
+      expect(() => try$.timeout(fromConfig)).toThrow(
+        expect.objectContaining({ code: "TIMEOUT_INVALID_MS", name: "Panic" })
+      )
+      expect(() => try$.retry(3).timeout(fromConfig)).toThrow(
+        expect.objectContaining({ code: "TIMEOUT_INVALID_MS", name: "Panic" })
+      )
+      expect(() => try$.signal(new AbortController().signal).timeout(fromConfig)).toThrow(
+        expect.objectContaining({ code: "TIMEOUT_INVALID_MS", name: "Panic" })
+      )
+      for (const policy of [delayPolicy, capPolicy]) {
+        expect(() => try$.retry(policy)).toThrow(
+          expect.objectContaining({ code: "RETRY_INVALID_DELAY", name: "Panic" })
+        )
+        expect(() => try$.timeout(100).retry(policy)).toThrow(
+          expect.objectContaining({ code: "RETRY_INVALID_DELAY", name: "Panic" })
+        )
+        expect(() => try$.retryOptions(policy)).toThrow(
+          expect.objectContaining({ code: "RETRY_INVALID_DELAY", name: "Panic" })
+        )
+      }
+    }
+  )
+
+  it("reads time expressions the same way from every entry point", async () => {
+    expect(
+      try$.retryOptions({ backoff: "exponential", delay: "200ms", limit: 4, maxDelay: "2s" })
+    ).toEqual(try$.retryOptions({ backoff: "exponential", delay: 200, limit: 4, maxDelay: 2000 }))
+
+    const timedOut = await try$.timeout("0ms").run(() => "late")
+    expect(timedOut).toBeInstanceOf(TimeoutError)
+    expect((timedOut as TimeoutError).message).toBe("Execution exceeded timeout of 0ms")
+
+    const chained = await try$
+      .retry(2)
+      .timeout("5s")
+      .run(() => "done")
+    expect(chained).toBe("done")
   })
 
   it("throws Panic when timeout() receives a negative number", () => {

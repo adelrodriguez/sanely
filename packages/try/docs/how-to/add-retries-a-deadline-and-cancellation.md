@@ -14,14 +14,14 @@ This guide shows you how to put a retry policy, a total deadline, and external c
    const etag = await try$
      .retry({
        backoff: "exponential",
-       delayMs: 100,
-       maxDelayMs: 5_000,
+       delay: "100ms",
+       maxDelay: "5s",
        jitter: true,
        limit: 5,
        // Retry server errors, and give up at once when the server rejects the request.
        shouldRetry: (error) => !(error instanceof RejectedUploadError),
      })
-     .timeout(30_000)
+     .timeout("30s")
      .signal(controller.signal)
      .run(async ({ signal, retry }) => {
        console.log(`upload attempt ${retry.attempt} of ${retry.limit}`)
@@ -44,7 +44,7 @@ This guide shows you how to put a retry policy, a total deadline, and external c
      })
    ```
 
-   For a fixed number of attempts with no delay, use `retry(3)`. The limit counts the first attempt.
+   For a fixed number of attempts with no delay, use `retry(3)`. The limit counts the first attempt. `delay`, `maxDelay`, and `timeout` each take a number of milliseconds or a time expression, such as `"5s"`.
 
 2. Pass `signal` from the context to the I/O in the work. It combines your external signal with the deadline, so one `fetch` option covers both. Cancellation is cooperative, so work that ignores `signal` keeps running.
 
@@ -76,8 +76,8 @@ If you give `catch`, the error of the last attempt goes through `catch`, and the
 class RateUnavailableError extends Error {}
 
 const rate = await try$
-  .retry({ backoff: "exponential", delayMs: 200, maxDelayMs: 2_000, limit: 4 })
-  .timeout(10_000)
+  .retry({ backoff: "exponential", delay: "200ms", maxDelay: "2s", limit: 4 })
+  .timeout("10s")
   .run({
     try: async ({ signal }) => {
       const response = await fetch("https://api.example.com/rates/EUR", { signal })
@@ -97,10 +97,10 @@ const rate = await try$
 
 ## Retry synchronous work
 
-`runSync` stays available after `retry(3)`, and after a retry policy with no delay, such as `retry({ backoff: "linear", limit: 3 })`. It is not available after a policy with a `delayMs`, or anywhere in a chain with `timeout` or `signal`, because those policies can wait or interrupt.
+`runSync` stays available after `retry(3)`, and after a retry policy with no delay, such as `retry({ backoff: "linear", limit: 3 })`. It is not available after a policy with a `delay`, or anywhere in a chain with `timeout` or `signal`, because those policies can wait or interrupt.
 
 ## Know what the deadline covers
 
-`timeout(ms)` is one total deadline. Attempts, the delays between them, and `catch` all count against it. It does not restart for each attempt.
+`timeout(deadline)` is one total deadline. Attempts, the delays between them, and `catch` all count against it. It does not restart for each attempt.
 
 Refer to the [`retry` reference](../reference.md#retrypolicy) for every option and the delay formulas.

@@ -1,14 +1,15 @@
 import { defineDisposeAlias } from "#lib/disposal/index.ts"
-import { Panic, TimeoutError } from "#lib/shared/errors.ts"
-import { discardOutcome, invariant, resolveWithAbort, startTimer } from "#lib/shared/utils.ts"
+import { TimeoutError } from "#lib/shared/errors.ts"
+import { discardOutcome, resolveWithAbort, startTimer } from "#lib/shared/utils.ts"
+import { milliseconds } from "./milliseconds.ts"
 
 /**
  * Single source of truth for timeout validation: used eagerly by the builder at `.timeout()` call
- * time and defensively by {@link TimeoutController}.
+ * time and defensively by {@link TimeoutController}. Reads a deadline in milliseconds or as a time
+ * expression, and throws a `Panic` with the code `TIMEOUT_INVALID_MS` for an invalid one.
  */
-export function assertValidTimeout(ms: number): void {
-  invariant(Number.isFinite(ms), new Panic("TIMEOUT_INVALID_MS"))
-  invariant(ms >= 0, new Panic("TIMEOUT_INVALID_MS"))
+export function parseTimeout(timeout: number | string): number {
+  return milliseconds(timeout, "TIMEOUT_INVALID_MS")
 }
 
 export class TimeoutController {
@@ -22,26 +23,28 @@ export class TimeoutController {
    * it.
    */
   readonly #startedAt = performance.now()
-  readonly #timeoutMs: number
+  readonly #timeout: number
   #cancelTimer: (() => void) | undefined
   declare [Symbol.dispose]: () => void
 
-  constructor(timeoutMs: number) {
-    assertValidTimeout(timeoutMs)
-    this.#timeoutMs = timeoutMs
+  /**
+   * @param timeout - The deadline in milliseconds.
+   */
+  constructor(timeout: number) {
+    this.#timeout = parseTimeout(timeout)
 
-    if (this.#timeoutMs <= 0) {
+    if (this.#timeout <= 0) {
       this.#abort()
       return
     }
 
     this.#cancelTimer = startTimer(() => {
       this.#abort()
-    }, this.#timeoutMs)
+    }, this.#timeout)
   }
 
   #abort(cause?: unknown) {
-    const timeoutError = new TimeoutError(`Execution exceeded timeout of ${this.#timeoutMs}ms`, {
+    const timeoutError = new TimeoutError(`Execution exceeded timeout of ${this.#timeout}ms`, {
       cause,
     })
 
@@ -56,7 +59,7 @@ export class TimeoutController {
   get #remaining() {
     const elapsed = performance.now() - this.#startedAt
 
-    return this.#timeoutMs - elapsed
+    return this.#timeout - elapsed
   }
 
   checkDidTimeout(cause?: unknown): TimeoutError | undefined {
@@ -67,7 +70,7 @@ export class TimeoutController {
         return reason
       }
 
-      return new TimeoutError(`Execution exceeded timeout of ${this.#timeoutMs}ms`, {
+      return new TimeoutError(`Execution exceeded timeout of ${this.#timeout}ms`, {
         cause: cause ?? reason,
       })
     }
@@ -92,7 +95,7 @@ export class TimeoutController {
       promise,
       () =>
         this.checkDidTimeout(cause)
-        ?? new TimeoutError(`Execution exceeded timeout of ${this.#timeoutMs}ms`, { cause })
+        ?? new TimeoutError(`Execution exceeded timeout of ${this.#timeout}ms`, { cause })
     )
   }
 

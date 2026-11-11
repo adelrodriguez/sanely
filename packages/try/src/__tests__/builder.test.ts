@@ -177,6 +177,29 @@ describe("builder chaining", () => {
     )
   })
 
+  it("keeps the tighter deadline when timeout() mixes milliseconds and time expressions", async () => {
+    const results = await Promise.all(
+      [
+        try$.timeout("10ms").timeout("1m"),
+        try$.timeout("1m").timeout("10ms"),
+        try$.timeout(10).timeout("1m"),
+        try$.timeout("1m").timeout(10),
+      ].map((chained) => chained.run(finishAfter200ms))
+    )
+
+    for (const result of results) {
+      expect(result).toBeInstanceOf(TimeoutError)
+      expect((result as TimeoutError).message).toBe("Execution exceeded timeout of 10ms")
+    }
+
+    expect(
+      await try$
+        .timeout("10ms")
+        .timeout("1m")
+        .run(() => "done")
+    ).toBe("done")
+  })
+
   it("throws Panic when wrapped runSync returns a Promise", () => {
     const unsafeWrap = (() => Promise.resolve(1)) as unknown as Parameters<typeof try$.wrap>[0]
 
@@ -248,7 +271,7 @@ describe("full builder chain", () => {
       const result = await try$
         .retry({
           backoff: "constant",
-          delayMs: 1,
+          delay: 1,
           limit: 3,
           shouldRetry: () => false,
         })

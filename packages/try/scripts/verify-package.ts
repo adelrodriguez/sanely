@@ -69,6 +69,18 @@ if (runResult !== 42) {
   throw new Error(`Expected run() to return 42, received ${String(runResult)}`)
 }
 
+const retryOptions = rootModule.retryOptions
+if (typeof retryOptions !== "function") {
+  throw new Error("@sanely/try does not export retryOptions()")
+}
+
+const policy: unknown = Reflect.apply(retryOptions, undefined, [
+  { backoff: "exponential", delay: "200ms", limit: 4, maxDelay: "2s" },
+])
+if (!isRecord(policy) || policy.delay !== 200 || policy.maxDelay !== 2000) {
+  throw new Error(`Expected retryOptions() to read time expressions, received ${String(policy)}`)
+}
+
 const consumerPath = "dist/node-next-consumer.ts"
 writeFileSync(
   consumerPath,
@@ -78,6 +90,9 @@ import type { AsyncDisposer, FlowExit, SettledResult } from "@sanely/try/types"
 
 const result: Promise<number | UnhandledException> = run(() => 42)
 const timeoutResult: Promise<number | TimeoutError | UnhandledException> = timeout(100).run(() => 42)
+const expressionResult: Promise<number | TimeoutError | UnhandledException> = timeout("5s").run(() => 42)
+// @ts-expect-error -- "M" is ambiguous between minutes and months.
+timeout("1M")
 declare const disposer: AsyncDisposer
 declare const exit: FlowExit<string>
 declare const settled: SettledResult<number>
@@ -87,6 +102,7 @@ void exit
 void result
 void settled
 void timeoutResult
+void expressionResult
 `
 )
 

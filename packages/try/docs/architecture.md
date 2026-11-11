@@ -18,6 +18,11 @@ The root entry point binds the terminal execution APIs and policy builders to on
 `policies/options.ts` is the single owner of configuration, execution context, retry-policy, and literal-validation types.
 It imports no upper domain. Execution modules need no import from the builder.
 
+`policies/milliseconds.ts` reads a retry delay or a deadline given as a time expression with `@sanely/duration`.
+The builder and `retryOptions` read each value once, so `BuilderConfig` and execution hold milliseconds.
+Duration is a runtime dependency, so a consumer that also imports it shares one copy.
+The build keeps it external, and `build:verify` installs it from its own tarball.
+
 The root lint configuration enforces this dependency direction at every depth, including type imports:
 
 ```text

@@ -322,10 +322,15 @@ describe("retry behavior", () => {
   })
 
   it.each([
-    [{ backoff: "constant", delayMs: 7, limit: 3 }, [7, 7]],
-    [{ backoff: "linear", delayMs: 10, limit: 4 }, [10, 20, 30]],
-    [{ backoff: "exponential", delayMs: 5, limit: 4 }, [5, 10, 20]],
-    [{ backoff: "exponential", delayMs: 5, limit: 4, maxDelayMs: 12 }, [5, 10, 12]],
+    [{ backoff: "constant", delay: 7, limit: 3 }, [7, 7]],
+    [{ backoff: "linear", delay: 10, limit: 4 }, [10, 20, 30]],
+    [{ backoff: "exponential", delay: 5, limit: 4 }, [5, 10, 20]],
+    [{ backoff: "exponential", delay: 5, limit: 4, maxDelay: 12 }, [5, 10, 12]],
+    [{ backoff: "constant", delay: "7ms", limit: 3 }, [7, 7]],
+    [{ backoff: "linear", delay: "10ms", limit: 4 }, [10, 20, 30]],
+    [{ backoff: "exponential", delay: "5ms", limit: 4, maxDelay: "12ms" }, [5, 10, 12]],
+    [{ backoff: "exponential", delay: "200ms", limit: 4, maxDelay: "2s" }, [200, 400, 800]],
+    [{ backoff: "exponential", delay: "0.5s", limit: 4, maxDelay: "1s" }, [500, 1000, 1000]],
   ] as const)("waits the backoff delay of %o between attempts", async (policy, expected) => {
     const scheduledDelays = captureScheduledDelays()
 
@@ -340,14 +345,14 @@ describe("retry behavior", () => {
     }
   })
 
-  it("caps exponential backoff delays at maxDelayMs through the public API", async () => {
+  it("caps exponential backoff delays at maxDelay through the public API", async () => {
     const scheduledDelays = captureScheduledDelays()
 
     try {
       let attempts = 0
 
       const result = await try$
-        .retry({ backoff: "exponential", delayMs: 25, limit: 4, maxDelayMs: 25 })
+        .retry({ backoff: "exponential", delay: 25, limit: 4, maxDelay: 25 })
         .run(() => {
           attempts += 1
           throw new Error("boom")
@@ -372,7 +377,7 @@ describe("retry behavior", () => {
       let attempts = 0
 
       const result = await try$
-        .retry({ backoff: "constant", delayMs: 50, jitter: true, limit: 3 })
+        .retry({ backoff: "constant", delay: 50, jitter: true, limit: 3 })
         .run(() => {
           attempts += 1
           throw new Error("boom")
@@ -392,9 +397,9 @@ describe("retry behavior", () => {
   it.each([
     { backoff: "constant", limit: 3 },
     { backoff: "constant", jitter: true, limit: 3 },
-    { backoff: "linear", delayMs: 0, limit: 3 },
+    { backoff: "linear", delay: 0, limit: 3 },
     { backoff: "linear", limit: 3 },
-    { backoff: "exponential", jitter: true, limit: 3, maxDelayMs: 100 },
+    { backoff: "exponential", jitter: true, limit: 3, maxDelay: 100 },
   ] as const)("retries a policy with no delay in runSync: %o", (policy) => {
     const attempts: number[] = []
 
@@ -413,10 +418,10 @@ describe("retry behavior", () => {
   })
 
   it.each([
-    { backoff: "constant", delayMs: 10, limit: 2 },
-    { backoff: "constant", delayMs: 10, jitter: true, limit: 2 },
-    { backoff: "linear", delayMs: 10, limit: 2 },
-    { backoff: "exponential", delayMs: 10, limit: 2 },
+    { backoff: "constant", delay: 10, limit: 2 },
+    { backoff: "constant", delay: 10, jitter: true, limit: 2 },
+    { backoff: "linear", delay: 10, limit: 2 },
+    { backoff: "exponential", delay: 10, limit: 2 },
   ] as const)("panics when runSync receives an async retry policy via casts: %o", (policy) => {
     const unsafeBuilder = try$.retry(policy) as unknown as {
       runSync(tryFn: () => number): unknown
@@ -514,7 +519,7 @@ describe("retry behavior", () => {
     const result = await try$
       .retry({
         backoff: "constant",
-        delayMs: 1,
+        delay: 1,
         limit: 3,
         shouldRetry: (error, ctx) => {
           calls.push({ attempt: ctx.retry.attempt, error })
@@ -654,7 +659,7 @@ describe("retry give-up and catch contract", () => {
       let attempts = 0
 
       const pending = try$
-        .retry({ backoff: "constant", delayMs: 50, limit: 3 })
+        .retry({ backoff: "constant", delay: 50, limit: 3 })
         .timeout(5)
         .run({
           catch: (error) => {
@@ -908,9 +913,9 @@ describe("timeout and cancellation behavior", () => {
   })
 
   it.each([
-    { delays: [3_000_000_000], policy: { backoff: "constant", delayMs: 3_000_000_000, limit: 2 } },
+    { delays: [3_000_000_000], policy: { backoff: "constant", delay: 3_000_000_000, limit: 2 } },
     // The second delay, 2 ** 31 ms, is one above the timer limit.
-    { delays: [2 ** 30, 2 ** 31], policy: { backoff: "exponential", delayMs: 2 ** 30, limit: 3 } },
+    { delays: [2 ** 30, 2 ** 31], policy: { backoff: "exponential", delay: 2 ** 30, limit: 3 } },
   ] as const)(
     "waits the full retry delay above the timer limit: $policy.backoff",
     async ({ delays, policy }) => {
@@ -950,7 +955,7 @@ describe("timeout and cancellation behavior", () => {
       let attempts = 0
 
       const pending = try$
-        .retry({ backoff: "constant", delayMs: 50, limit: 3 })
+        .retry({ backoff: "constant", delay: 50, limit: 3 })
         .signal(controller.signal)
         .run(() => {
           attempts += 1
@@ -1165,7 +1170,7 @@ describe("wrap behavior", () => {
         wrapCalls += 1
         return next()
       })
-      .retry({ backoff: "constant", delayMs: 1, limit: 3 })
+      .retry({ backoff: "constant", delay: 1, limit: 3 })
       .run(async (ctx) => {
         attempts += 1
 
