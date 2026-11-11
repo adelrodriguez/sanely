@@ -28,7 +28,7 @@ This guide shows you how to turn a schedule that a person or a stored record giv
    }
    ```
 
-   If you only need to know whether the input is valid, use `safeParse` instead. It returns `null` instead of throwing:
+   If you need to know only whether the input is valid, use `safeParse` instead. It returns `null` instead of throwing:
 
    ```ts
    import { safeParse } from "@sanely/cron"
@@ -39,6 +39,6 @@ This guide shows you how to turn a schedule that a person or a stored record giv
 
 3. Store the `Schedule` object as JSON. When you read it back, pass it to `parse` again, because stored data can change outside your program.
 
-4. To show a stored schedule to a person, pass it to `describe`. It returns the canonical cron phrase, such as `"every monday, wednesday and friday at 8:00"`. Parsing that phrase returns the same schedule, with its day lists in calendar order and without duplicates.
+4. To show a stored schedule to a person, pass it to `describe`. It returns the canonical cron phrase, such as `"every monday, wednesday and friday at 8:00"`. Parsing that phrase returns the same schedule in its canonical form, with each list of days in calendar order and without duplicates.
 
 See the [`@sanely/cron` reference](../reference.md#the-cron-phrase-language) for the full lenient form, and [`InvalidScheduleError`](../reference.md#invalidscheduleerror) for the error properties.

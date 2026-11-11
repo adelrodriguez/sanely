@@ -45,7 +45,7 @@ cron("every 7 minutes")
 const schedule = parse(form.schedule) // a Schedule, or throws InvalidScheduleError
 queue.upsertJobScheduler(id, { pattern: cron(schedule) })
 
-describe(schedule) // "every 15 minutes between 9:00 and 17:00 on weekdays"
+describe(schedule) // such as "every 15 minutes between 9:00 and 17:00 on weekdays"
 ```
 
 ## Documentation

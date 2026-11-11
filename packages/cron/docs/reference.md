@@ -12,7 +12,7 @@ cron({ every: "minute", interval: 10, between: { from: 18, to: 24 } }) // "*/10 
 cron(parse(input)) // a Schedule from parse
 ```
 
-An invalid phrase literal is a type error that gives the reason. An invalid object is a type error on the key that fails. A plain `string` is a type error: use `parse` for a string at runtime.
+An invalid phrase literal is a type error that gives the reason. An invalid object is a type error on the key that fails. A plain `string` is a type error. Use `parse` for a string at runtime.
 
 ```ts
 cron("every day at 9")
@@ -55,7 +55,7 @@ safeParse("every 90 minutes") // null
 
 ## `describe(schedule)`
 
-Writes a schedule as a cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule in its canonical form, with each list of days in calendar order and without duplicates. The result is a `CronPhrase`, so `cron` accepts it.
+Writes a schedule as a cron phrase in the strict form, for display. The phrase uses 24-hour times, the days in calendar order, and the long form of a shortcut. `parse` of the phrase gives the same schedule in its canonical form, with each list of days in calendar order and without duplicates. The result is a `CronPhrase`, so `cron` accepts it. Throws `InvalidScheduleError` for an invalid schedule from JavaScript or a cast.
 
 ```ts
 describe({ every: "day", at: { hour: 8, minute: 0 }, on: ["friday", "monday", "wednesday"] })
@@ -87,14 +87,14 @@ A `Schedule` is one of four kinds. The `every` key selects the kind.
 
 The keys take these values:
 
-| Key        | Type             | Values                                                                                                 |
-| ---------- | ---------------- | ------------------------------------------------------------------------------------------------------ |
-| `interval` | `MinuteInterval` | `2`, `3`, `4`, `5`, `6`, `10`, `12`, `15`, `20`, `30`. Leave out `interval` to run every minute.       |
-| `interval` | `HourInterval`   | `2`, `3`, `4`, `6`, `8`, `12`. Leave out `interval` to run every hour.                                 |
-| `between`  | `Window`         | `{ from, to }` on whole hours: `from` is `0` to `23`, and `to` is after `from`, up to `24` (midnight). |
-| `on`       | `DaySet`         | `"weekdays"` (Monday to Friday), `"weekends"`, or a list of one or more `Weekday` names.               |
-| `at`       | `Time`           | `{ hour, minute }`: `hour` is `0` to `23`, and `minute` is `0` to `59`.                                |
-| `day`      | `DayOfMonth`     | `1` to `28`.                                                                                           |
+| Key        | Type             | Values                                                                                                         |
+| ---------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| `interval` | `MinuteInterval` | `2`, `3`, `4`, `5`, `6`, `10`, `12`, `15`, `20`, `30`. Leave out `interval` to run every minute.               |
+| `interval` | `HourInterval`   | `2`, `3`, `4`, `6`, `8`, `12`. Leave out `interval` to run every hour.                                         |
+| `between`  | `Window`         | `{ from, to }` on whole hours: `from` is `0` to `23`, and `to` is after `from`, up to `24` (midnight).         |
+| `on`       | `DaySet`         | `"weekdays"` (Monday to Friday), `"weekends"` (Saturday and Sunday), or a list of one or more `Weekday` names. |
+| `at`       | `Time`           | `{ hour, minute }`: `hour` is `0` to `23`, and `minute` is `0` to `59`.                                        |
+| `day`      | `DayOfMonth`     | `1` to `28`.                                                                                                   |
 
 A list of days is a set: the order and duplicates do not change the schedule. `describe` writes the days in calendar order, Monday first.
 
@@ -179,7 +179,7 @@ These phrases are not valid:
 | Lists                 | Any spacing around a comma, such as `mon,wed and fri`, and a comma before `and`. The last day still needs `and`                      |
 | Times                 | `9:30 PM`, `9:30PM`                                                                                                                  |
 
-The unit aliases mean the same units as in [`@sanely/duration`](../../duration): `m` is minutes, and `mo` (months) is not an interval unit. `M` is not a unit in any case, because other notations use it for months, so `parse("every 5 M")` throws.
+The unit aliases mean the same units as in [`@sanely/duration`](../../duration): `m` is minutes, and `mo` (months) is not an interval unit. Uppercase `M` is not a unit, because other notations use it for months, so `parse("every 5 M")` throws.
 
 ## `InvalidScheduleError`
 
@@ -216,21 +216,21 @@ Each constant is an `as const` tuple. `MinuteInterval`, `HourInterval`, and `Wee
 
 ## Types
 
-| Type                    | Description                                                          |
-| ----------------------- | -------------------------------------------------------------------- |
-| `Schedule`              | A schedule object of one of the four kinds                           |
-| `CronExpression`        | A cron expression that `cron` made. It is a `string`                 |
-| `CronPhrase`            | A cron phrase in the strict form, such as the result of `describe`   |
-| `ValidateCronPhrase<T>` | `T` if it is a valid cron phrase, or a string that gives the reason  |
-| `MinuteInterval`        | One of `MINUTE_INTERVALS`                                            |
-| `HourInterval`          | One of `HOUR_INTERVALS`                                              |
-| `Weekday`               | One of `WEEKDAYS`                                                    |
-| `DaySet`                | `"weekdays"`, `"weekends"`, or a list of one or more `Weekday` names |
-| `Time`                  | `{ hour, minute }` on the 24-hour clock                              |
-| `Window`                | `{ from, to }` on whole hours, with `to` after `from`                |
-| `DayOfMonth`            | `1` to `28`                                                          |
+| Type                    | Description                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `Schedule`              | A schedule object of one of the four kinds                                     |
+| `CronExpression`        | A cron expression that `cron` made. A branded `string`, assignable to `string` |
+| `CronPhrase`            | A cron phrase in the strict form, such as the result of `describe`             |
+| `ValidateCronPhrase<T>` | `T` if it is a valid cron phrase, or a string that gives the reason            |
+| `MinuteInterval`        | One of `MINUTE_INTERVALS`                                                      |
+| `HourInterval`          | One of `HOUR_INTERVALS`                                                        |
+| `Weekday`               | One of `WEEKDAYS`                                                              |
+| `DaySet`                | `"weekdays"`, `"weekends"`, or a list of one or more `Weekday` names           |
+| `Time`                  | `{ hour, minute }` on the 24-hour clock                                        |
+| `Window`                | `{ from, to }` on whole hours, with `to` after `from`                          |
+| `DayOfMonth`            | `1` to `28`                                                                    |
 
-The `CronPhrase` type checks the sentence shape, the intervals, and the first word of each slot. The rest of each slot is open, so that the type stays small and fast to check. `cron` and `ValidateCronPhrase` check the full phrase of a string literal. Use `ValidateCronPhrase` to write your own typed functions:
+The `CronPhrase` type checks the sentence shape, the intervals, and the first word of each slot. The rest of each slot is open, so that the union stays small enough for TypeScript to compare. `cron` and `ValidateCronPhrase` check the full phrase of a string literal. `ValidateCronPhrase` types the phrase parameter of your own function:
 
 ```ts
 import type { ValidateCronPhrase } from "@sanely/cron"
@@ -242,3 +242,5 @@ function schedule<T extends string>(phrase: ValidateCronPhrase<T>, job: () => vo
 schedule("every weekday at 9:00", sendReport) // OK
 schedule("every weekday at 9", sendReport) // Type error: "9" is not a valid time
 ```
+
+See [How to accept a cron phrase in your own function](how-to/accept-a-cron-phrase.md) for the steps.
