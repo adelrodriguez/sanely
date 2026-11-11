@@ -135,6 +135,21 @@ describe("createClient", () => {
     expect(calls).toEqual([])
   })
 
+  test("unknown $ keys are inert, so probes such as $$typeof make no call", async () => {
+    const calls: string[] = []
+    const client = createClient(contract, (path) => {
+      calls.push(path)
+      return null
+    })
+    const node = client.localFiles as unknown as Record<string, unknown>
+
+    // Pretty-format and React's dev checks read `$$typeof` on any object they inspect.
+    expect(node.$$typeof).toBeUndefined()
+    expect(node.$typo).toBeUndefined()
+    await Promise.resolve()
+    expect(calls).toEqual([])
+  })
+
   test("JSON.stringify does not probe the tree through toJSON", () => {
     const calls: string[] = []
     const client = createClient(contract, (path) => {
