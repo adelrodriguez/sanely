@@ -354,11 +354,11 @@ A provider change for one of the flags drops its cached value and its snapshot e
 
 Returns `FlagCacheControls` for the nearest `FlagsProvider`. `prefetch` and `invalidate` act on its current identity, and `clear` acts on every identity:
 
-| Method              | Description                                                                                                                                                                                                                                                    |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. It evaluates even when the snapshot has the flags, and the hooks still read the snapshot first.                                 |
-| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. It drops them for every set of key fields cached for the identity's `distinctId`. The next evaluation reads fresh, so it skips the reader's store too. |
-| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                                                                                                    |
+| Method              | Description                                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. It evaluates even when the snapshot has the flags, and the hooks still read the snapshot first.                                                        |
+| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. It covers every set of key fields that the flag cache holds for the identity's `distinctId`, and the next evaluation of each reads fresh, so it skips the reader's store too. |
+| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                                                                                                                           |
 
 ### React types
 

@@ -182,14 +182,22 @@ export function useFlagCache(): FlagCacheControls {
     const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     // An entry's key holds the key fields of every flag in its list, so the same decision of an
     // invalidated flag can sit in entries for other key fields of this subject. Dropping all of
-    // them can cost a read, never a stale value.
-    const drop = (bucket: Bucket) => {
+    // them can cost a read, never a stale value. It returns the slots of the flags in `flagKeys`
+    // that the dropped entries held, so they read fresh too.
+    const drop = (bucket: Bucket, flagKeys: ReadonlySet<string>) => {
+      const slots: string[] = []
       for (const [key, entry] of bucket.entries) {
-        if (entry.subject === keys.subject) bucket.entries.delete(key)
+        if (entry.subject !== keys.subject) continue
+        bucket.entries.delete(key)
+        bucket.flags.forEach((flag, index) => {
+          const slot = entry.slots[index]
+          if (slot !== undefined && flagKeys.has(flag.key)) slots.push(slot)
+        })
       }
       for (const store of storesOf(bucket)) {
         if (store.subject === keys.subject) store.bump()
       }
+      return slots
     }
     return {
       clear() {
@@ -208,11 +216,13 @@ export function useFlagCache(): FlagCacheControls {
       },
       invalidate(flags) {
         const flagKeys = new Set(flags.map((flag) => flag.key))
-        cache.fresh.mark(keys.subject, slotsOf(keys, flags))
+        const slots = new Set(slotsOf(keys, flags))
         for (const flagKey of flagKeys) cache.snapshot?.entries.delete(flagKey)
         for (const bucket of cache.buckets.values()) {
-          if (bucket.flags.some((flag) => flagKeys.has(flag.key))) drop(bucket)
+          if (!bucket.flags.some((flag) => flagKeys.has(flag.key))) continue
+          for (const slot of drop(bucket, flagKeys)) slots.add(slot)
         }
+        cache.fresh.mark(keys.subject, slots)
       },
       async prefetch(flags) {
         if (flags.length === 0) return

@@ -20,6 +20,9 @@ type CacheEntry = {
   pendingExpiresAt?: number
   promise: Promise<readonly FlagResult[]>
   settled: boolean
+  // The fresh-read slot of each flag in the bucket's list, in order, so `invalidate` can mark the
+  // slots of an entry for other key fields of the same subject.
+  readonly slots: readonly string[]
   readonly subject: string
   watch: ChangeWatch
 }
@@ -351,10 +354,12 @@ export function storeEntry(
     keys: bucket.flags.map((flag) => flag.key),
     since: clock.count,
   }
+  const slots = slotsOf(keys, bucket.flags)
   const entry: CacheEntry = {
     pendingExpiresAt: cache.pendingTtl === undefined ? undefined : Date.now() + cache.pendingTtl,
     promise: Promise.resolve([]),
     settled: false,
+    slots,
     subject: keys.subject,
     watch,
   }
@@ -367,7 +372,6 @@ export function storeEntry(
     }, 0)
     return null
   }
-  const slots = slotsOf(keys, bucket.flags)
   const freshRead = cache.fresh.begin(keys.subject, slots)
   const fresh = freshRead !== undefined
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {

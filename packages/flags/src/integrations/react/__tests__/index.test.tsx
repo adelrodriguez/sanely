@@ -1332,6 +1332,45 @@ describe("identity keys", () => {
     expect(await screen.findByText("false:dark")).toBeTruthy()
   })
 
+  it("reads fresh after invalidate for every cached set of key fields when the reader has a store", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { key: ({ identity }) => [planOf(identity)], store: memoryStore() },
+      provider: provider.single,
+    })
+    const { capture, controls } = captureCache()
+    const view = (identity: Identity) =>
+      callerTree(
+        flags,
+        identity,
+        <>
+          {capture}
+          <Value item={beta} />
+        </>
+      )
+    const { rerender } = await renderAsync(view(dated("u1", { plan: "free" })))
+    expect(await screen.findByText("true")).toBeTruthy()
+    await act(() => {
+      rerender(view(dated("u1", { plan: "pro" })))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+
+    // The free plan's stored decision is old too, so it reads fresh instead of from the store.
+    await act(() => {
+      rerender(view(dated("u1", { plan: "free" })))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
+  })
+
   it("reads fresh after invalidate for an identity with key fields when the reader has a store", async () => {
     const provider = makeProvider()
     const flags = createFlags({
