@@ -24,6 +24,11 @@ describe("generate", () => {
     generate({ lists: { animal: ["cat"] }, pattern: ["animal", "color"] })
   })
 
+  it("requires lists when the type names custom lists", () => {
+    // @ts-expect-error -- "fruit" names a custom list, so lists must define it.
+    generate<"fruit">({ pattern: ["fruit", "animal"] })
+  })
+
   it("rejects segments with a pattern, and lists without one", () => {
     // @ts-expect-error -- pattern sets the number of words.
     generate({ pattern: ["color", "animal"], segments: 2 })

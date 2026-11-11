@@ -23,6 +23,15 @@ type Shape<N extends string> =
     }
   | {
       /**
+       * The built-in category for each word, in order. Its length sets the number of words, from 2
+       * to 16.
+       */
+      pattern: readonly Category[]
+      lists?: never
+      segments?: never
+    }
+  | {
+      /**
        * The list for each word, in order: a built-in category or the name of a custom list. Its
        * length sets the number of words, from 2 to 16.
        */
@@ -30,7 +39,7 @@ type Shape<N extends string> =
       /**
        * Custom word lists that `pattern` can name. A name must not reuse a built-in category.
        */
-      lists?: CustomLists<N>
+      lists: CustomLists<N>
       segments?: never
     }
 
