@@ -529,6 +529,10 @@ importers:
         version: 5.1.0(@types/node@24.19.2)(@vitest/coverage-v8@5.1.0)(happy-dom@21.0.4)(vite@8.3.7(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/try:
+    dependencies:
+      '@sanely/duration':
+        specifier: workspace:^
+        version: link:../duration
     devDependencies:
       '@tooling/tsconfig':
         specifier: workspace:*

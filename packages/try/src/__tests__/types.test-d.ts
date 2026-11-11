@@ -1,4 +1,5 @@
 // Compile-time checks only: `pnpm run check` enforces this file, and Vitest never runs it.
+import { isTimeExpression } from "@sanely/duration"
 import { expectTypeOf } from "vitest"
 import type {
   CancellationError,
@@ -170,13 +171,13 @@ class InternalError extends Error {
   const constantResult = try$.retry({ backoff: "constant", limit: 2 }).runSync(() => 1)
   const linearResult = try$.retry({ backoff: "linear", limit: 2 }).runSync(() => 1)
   const jitterResult = try$
-    .retry({ backoff: "exponential", delayMs: 0, jitter: true, limit: 2 })
+    .retry({ backoff: "exponential", delay: 0, jitter: true, limit: 2 })
     .runSync(() => 1)
   const unionResult = try$
     .retry(Math.random() > 0.5 ? 3 : { backoff: "linear" as const, limit: 5 })
     .runSync(() => 1)
   const replacedResult = try$
-    .retry({ backoff: "constant", delayMs: 10, limit: 2 })
+    .retry({ backoff: "constant", delay: 10, limit: 2 })
     .retry(3)
     .runSync(() => 1)
 
@@ -189,7 +190,7 @@ class InternalError extends Error {
 
 // Adds RetryExhaustedError to retry(policy) builder results.
 {
-  const retryBuilder = try$.retry({ backoff: "constant", delayMs: 1, limit: 3 })
+  const retryBuilder = try$.retry({ backoff: "constant", delay: 1, limit: 3 })
   const result = retryBuilder.run(() => 1)
 
   expectTypeOf(result).toEqualTypeOf<Promise<number | RetryExhaustedError>>()
@@ -1100,7 +1101,7 @@ function _negativeTypeTests() {
 
   // Hides orchestration, wrap(), and runSync() after retry(policy).
   {
-    const retryBuilder = try$.retry({ backoff: "constant", delayMs: 1, limit: 3 })
+    const retryBuilder = try$.retry({ backoff: "constant", delay: 1, limit: 3 })
 
     // @ts-expect-error -- orchestration is unavailable after retry()
     void retryBuilder.all
@@ -1167,12 +1168,12 @@ function _negativeTypeTests() {
   // Hides runSync() for retry policies that may wait.
   {
     const widenedPolicy: ReturnType<typeof try$.retryOptions> = { backoff: "linear", limit: 2 }
-    const delayMs = Number.parseInt("0", 10)
+    const delay = Number.parseInt("0", 10)
 
     // @ts-expect-error -- a delay makes the policy async
-    void try$.retry({ backoff: "linear", delayMs: 10, limit: 2 }).runSync
+    void try$.retry({ backoff: "linear", delay: 10, limit: 2 }).runSync
     // @ts-expect-error -- a widened delay may be async
-    void try$.retry({ backoff: "constant", delayMs, limit: 2 }).runSync
+    void try$.retry({ backoff: "constant", delay, limit: 2 }).runSync
     // @ts-expect-error -- a widened policy may be async
     void try$.retry(widenedPolicy).runSync
   }
@@ -1195,10 +1196,75 @@ function _negativeTypeTests() {
     void try$.retry({ backoff: "exponential", limit: 1.5 })
   }
 
+  // Takes delays and deadlines in milliseconds or as time expressions.
+  {
+    // A string read at run time, such as from config.
+    const fromConfig = " 200ms ".trim()
+
+    expectTypeOf(try$.timeout("5s").run(() => 1)).toEqualTypeOf<
+      Promise<number | TimeoutError | UnhandledException>
+    >()
+    void try$
+      .retry(3)
+      .timeout("1.5s")
+      .timeout(5000)
+      .run(() => 1)
+    void try$.retry({ backoff: "exponential", delay: "200ms", limit: 4, maxDelay: "2s" })
+    void try$.retry({ backoff: "constant", delay: 200, limit: 4 })
+    void try$.wrap((_, next) => next()).timeout("1m")
+    expectTypeOf(
+      try$.retryOptions({ backoff: "exponential", delay: "200ms", limit: 4, maxDelay: "2s" })
+    ).toEqualTypeOf<ReturnType<typeof try$.retryOptions>>()
+    expectTypeOf(try$.retryOptions(3).delay).toEqualTypeOf<number | undefined>()
+
+    if (isTimeExpression(fromConfig)) {
+      void try$.timeout(fromConfig)
+      void try$.retry({ backoff: "linear", delay: fromConfig, limit: 2 })
+    }
+
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    void try$.timeout("1M")
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    void try$.retry({ backoff: "constant", delay: "1M", limit: 2 })
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelay: "1M" })
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    void try$.retryOptions({ backoff: "constant", delay: "1M", limit: 2 })
+    // @ts-expect-error -- the strict grammar has no hexadecimal numbers
+    void try$.retry({ backoff: "constant", delay: "0x10h", limit: 2 })
+    // @ts-expect-error -- the strict grammar has no hexadecimal numbers
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelay: "0x10h" })
+    const mixedDelay = Math.random() > 0.5 ? 200 : ("0x10h" as const)
+    // @ts-expect-error -- the strict grammar applies to each member of a delay union
+    void try$.retry({ backoff: "constant", delay: mixedDelay, limit: 2 })
+    const validMixedDelay = Math.random() > 0.5 ? 200 : ("2s" as const)
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelay: validMixedDelay })
+    void try$.retry(
+      // @ts-expect-error -- the strict grammar applies to union members too
+      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delay: "0x10h", limit: 5 }
+    )
+    // @ts-expect-error -- a string from config needs isTimeExpression first
+    void try$.timeout(fromConfig)
+    // @ts-expect-error -- a string from config needs isTimeExpression first
+    void try$.retry({ backoff: "constant", delay: fromConfig, limit: 2 })
+    // @ts-expect-error -- the old name is gone
+    void try$.retry({ backoff: "constant", delayMs: 200, limit: 2 })
+    // @ts-expect-error -- the old name is gone
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelayMs: 200 })
+    void try$.retry(
+      // @ts-expect-error -- the old name is gone from union members too
+      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delayMs: 10, limit: 5 }
+    )
+    // @ts-expect-error -- maxDelay applies only to exponential backoff
+    void try$.retry({ backoff: "linear", limit: 2, maxDelay: "2s" })
+    // @ts-expect-error -- a delay expression makes the policy async
+    void try$.retry({ backoff: "constant", delay: "200ms", limit: 2 }).runSync
+  }
+
   // Hides runSync() for union-typed retry policies and rejects invalid union members.
   {
     const unionBuilder = try$.retry(
-      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delayMs: 10, limit: 5 }
+      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delay: 10, limit: 5 }
     )
 
     // @ts-expect-error -- runSync is unavailable when the policy may be async

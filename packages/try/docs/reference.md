@@ -78,13 +78,13 @@ A policy builder runs no work. It configures the next terminal call or orchestra
 | --------------------- | ----- | --------- | ------ | --------------------------- |
 | `retry(limit)`        | Yes   | Yes       | No     | No                          |
 | `retry(policy)`       | Yes   | No delay  | No     | No                          |
-| `timeout(ms)`         | Yes   | No        | No     | Yes, unless after `retry`   |
+| `timeout(deadline)`   | Yes   | No        | No     | Yes, unless after `retry`   |
 | `signal(abortSignal)` | Yes   | No        | No     | Yes, unless after `retry`   |
 | `wrap(fn)`            | Yes   | Yes       | Yes    | Yes                         |
 
-The table shows which methods stay available after each builder. The limits are type-level. `runSync` stays available after `retry(policy)` only when the policy has no delay, which means that `delayMs` is omitted or a literal `0`. Once `timeout` or `signal` is in the chain, a later `retry` does not bring `runSync` back.
+The table shows which methods stay available after each builder. The limits are type-level. `runSync` stays available after `retry(policy)` only when the policy has no delay, which means that `delay` is omitted or a literal `0`. Once `timeout` or `signal` is in the chain, a later `retry` does not bring `runSync` back.
 
-At run time, orchestration after `retry` throws a `Panic` with the code `ORCHESTRATION_UNSUPPORTED_POLICY`, and `runSync` with a retry policy whose `delayMs` is not `0` throws a `Panic` with the code `RUN_SYNC_ASYNC_RETRY_POLICY` before the work starts.
+At run time, orchestration after `retry` throws a `Panic` with the code `ORCHESTRATION_UNSUPPORTED_POLICY`, and `runSync` with a retry policy whose `delay` is not `0` throws a `Panic` with the code `RUN_SYNC_ASYNC_RETRY_POLICY` before the work starts.
 
 ### `retry(limit)`
 
@@ -97,51 +97,52 @@ Retries with no delay, up to `limit` attempts in total. `limit` counts the first
 ### `retry(policy)`
 
 ```ts
-retry(policy: RetryPolicy)
+retry<const T extends string = never>(policy: RetryPolicy<T>)
 ```
 
-| Option        | Type                                      | Default  | Description                                       |
-| ------------- | ----------------------------------------- | -------- | ------------------------------------------------- |
-| `limit`       | `number`                                  | Required | The most attempts, including the first.           |
-| `backoff`     | `"constant" \| "linear" \| "exponential"` | Required | How the delay grows.                              |
-| `delayMs`     | `number`                                  | `0`      | The base delay between attempts, in milliseconds. |
-| `maxDelayMs`  | `number`                                  | None     | The longest delay. Only for `"exponential"`.      |
-| `jitter`      | `boolean`                                 | `false`  | Use a random delay from 0 to the computed delay.  |
-| `shouldRetry` | `(error: unknown, ctx) => boolean`        | None     | Return `false` to stop after this error.          |
+| Option        | Type                                      | Default  | Description                                                  |
+| ------------- | ----------------------------------------- | -------- | ------------------------------------------------------------ |
+| `limit`       | `number`                                  | Required | The most attempts, including the first.                      |
+| `backoff`     | `"constant" \| "linear" \| "exponential"` | Required | How the delay grows.                                         |
+| `delay`       | `number \| ValidateTimeExpression<T>`     | `0`      | The base delay between attempts, such as `200` or `"200ms"`. |
+| `maxDelay`    | `number \| ValidateTimeExpression<T>`     | None     | The longest delay, such as `"2s"`. Only for `"exponential"`. |
+| `jitter`      | `boolean`                                 | `false`  | Use a random delay from 0 to the computed delay.             |
+| `shouldRetry` | `(error: unknown, ctx) => boolean`        | None     | Return `false` to stop after this error.                     |
 
 The delay after attempt `n` is:
 
-| `backoff`       | Delay                                          |
-| --------------- | ---------------------------------------------- |
-| `"constant"`    | `delayMs`                                      |
-| `"linear"`      | `delayMs * n`                                  |
-| `"exponential"` | `delayMs * 2 ** (n - 1)`, at most `maxDelayMs` |
+| `backoff`       | Delay                                      |
+| --------------- | ------------------------------------------ |
+| `"constant"`    | `delay`                                    |
+| `"linear"`      | `delay * n`                                |
+| `"exponential"` | `delay * 2 ** (n - 1)`, at most `maxDelay` |
 
-`delayMs` and `maxDelayMs` must be finite numbers that are not negative, or `retry` throws a `Panic` with the code `RETRY_INVALID_DELAY`. Without `maxDelayMs`, a computed delay is at most `Number.MAX_SAFE_INTEGER` milliseconds. A delay above the 32-bit timer limit of about 24.8 days waits the full time.
+`delay` and `maxDelay` take a number of milliseconds or a time expression from [`@sanely/duration`](../../duration/README.md). `ValidateTimeExpression` makes a literal that is not a time expression, such as `"1M"`, fail to compile with the reason. A string from config needs `isTimeExpression` from `@sanely/duration` first. Each value must be a finite length of time that is not negative, or `retry` throws a `Panic` with the code `RETRY_INVALID_DELAY`. That includes a string that is not a time expression. Without `maxDelay`, a computed delay is at most `Number.MAX_SAFE_INTEGER` milliseconds. A delay above the 32-bit timer limit of about 24.8 days waits the full time.
 
 ```ts
-try$.retry({ backoff: "exponential", delayMs: 100, maxDelayMs: 5_000, jitter: true, limit: 5 })
+try$.retry({ backoff: "exponential", delay: "100ms", maxDelay: "5s", jitter: true, limit: 5 })
 ```
 
 ### `retryOptions(options)`
 
 ```ts
-function retryOptions(options: number | RetryPolicy): RetryPolicy
+function retryOptions<const T extends string = never>(options: number | RetryPolicy<T>): RetryPolicy
 ```
 
-Returns the policy that `retry` uses for `options`. It throws a `Panic` with the code `RETRY_INVALID_LIMIT` for an invalid limit, and with the code `RETRY_INVALID_DELAY` for an invalid `delayMs` or `maxDelayMs`.
+Returns the policy that `retry` uses for `options`, with `delay` and `maxDelay` in milliseconds. It throws a `Panic` with the code `RETRY_INVALID_LIMIT` for an invalid limit, and with the code `RETRY_INVALID_DELAY` for an invalid `delay` or `maxDelay`.
 
 ```ts
-try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
+try$.retryOptions(3) // { backoff: "constant", delay: 0, limit: 3 }
+try$.retryOptions({ backoff: "linear", delay: "1.5s", limit: 3 }).delay // 1500
 ```
 
-### `timeout(ms)`
+### `timeout(deadline)`
 
 ```ts
-timeout(ms: number)
+timeout<const T extends string = never>(deadline: number | ValidateTimeExpression<T>)
 ```
 
-Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. When the chain already has a deadline, the tighter deadline applies. The deadline counts the time that passes on the monotonic clock, so a change to the system clock does not move it, and a deadline above the 32-bit timer limit of about 24.8 days waits the full time.
+Sets one total deadline, such as `5_000` or `"5s"`. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `deadline` takes a number of milliseconds or a time expression, and the type checker checks a literal expression as it does for `retry`. It must be a finite length of time that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. That includes a string that is not a time expression. When the chain already has a deadline, the tighter deadline applies. The deadline counts the time that passes on the monotonic clock, so a change to the system clock does not move it, and a deadline above the 32-bit timer limit of about 24.8 days waits the full time.
 
 ### `signal(abortSignal)`
 
@@ -263,28 +264,28 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 
 ### `PanicCode`
 
-| Code                               | Cause                                                        |
-| ---------------------------------- | ------------------------------------------------------------ |
-| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.                |
-| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                   |
-| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                          |
-| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                    |
-| `RETRY_INVALID_DELAY`              | A retry `delayMs` or `maxDelayMs` is negative or not finite. |
-| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                   |
-| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay.              |
-| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.                 |
-| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                   |
-| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                      |
-| `TASK_CLEANUP_THROW`               | A cleanup on `this.$disposer` threw or rejected.             |
-| `TASK_INVALID_HANDLER`             | A task is not a function.                                    |
-| `TASK_SELF_REFERENCE`              | A task read its own result.                                  |
-| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                   |
-| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                       |
-| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                   |
-| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                   |
-| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                       |
-| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                    |
-| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.          |
+| Code                               | Cause                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.                                    |
+| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                                       |
+| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                                              |
+| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                                        |
+| `RETRY_INVALID_DELAY`              | A retry `delay` or `maxDelay` is negative, not finite, or not a time expression. |
+| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                                       |
+| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay.                                  |
+| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.                                     |
+| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                                       |
+| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                                          |
+| `TASK_CLEANUP_THROW`               | A cleanup on `this.$disposer` threw or rejected.                                 |
+| `TASK_INVALID_HANDLER`             | A task is not a function.                                                        |
+| `TASK_SELF_REFERENCE`              | A task read its own result.                                                      |
+| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                                       |
+| `TIMEOUT_INVALID_MS`               | The timeout is negative, not finite, or not a time expression.                   |
+| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                                       |
+| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                                       |
+| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                                           |
+| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                                        |
+| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.                              |
 
 ## Types
 

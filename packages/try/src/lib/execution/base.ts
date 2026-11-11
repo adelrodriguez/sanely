@@ -180,9 +180,9 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
   }
 
   protected static createTimeoutController(
-    timeoutMs: number | undefined
+    timeout: number | undefined
   ): TimeoutController | undefined {
-    return timeoutMs === undefined ? undefined : new TimeoutController(timeoutMs)
+    return timeout === undefined ? undefined : new TimeoutController(timeout)
   }
 
   protected static createSignalController(

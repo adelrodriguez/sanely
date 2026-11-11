@@ -33,7 +33,7 @@ One execution of the work under a retry policy. The first execution is an attemp
 _Avoid_: retry (as a noun for the count)
 
 **Total deadline**:
-The single time budget `timeout(ms)` enforces — across all attempts for terminal execution, across the whole task graph for orchestration.
+The single time budget `timeout(deadline)` enforces — across all attempts for terminal execution, across the whole task graph for orchestration.
 _Avoid_: per-attempt timeout
 
 **Task graph**:

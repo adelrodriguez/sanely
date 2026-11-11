@@ -25,7 +25,8 @@ export const PanicMessages = {
   CATCH_HANDLER_THROW: "A catch handler threw.",
   FLOW_NO_EXIT: "flow() requires at least one task to call $exit().",
   ORCHESTRATION_UNSUPPORTED_POLICY: "Orchestration does not support retry() policies.",
-  RETRY_INVALID_DELAY: "retry() requires a non-negative finite delayMs and maxDelayMs.",
+  RETRY_INVALID_DELAY:
+    "retry() requires a delay and maxDelay that are non-negative finite milliseconds or time expressions.",
   RETRY_INVALID_LIMIT: "retry() requires a positive integer retry limit.",
   RUN_SYNC_ASYNC_RETRY_POLICY: "This retry policy may run asynchronously. Use run() instead.",
   RUN_SYNC_CATCH_PROMISE: "runSync() catch cannot return a Promise. Use run() instead.",
@@ -36,7 +37,7 @@ export const PanicMessages = {
   TASK_INVALID_HANDLER: "Task runner expected a function handler.",
   TASK_SELF_REFERENCE: "Task cannot await its own result.",
   TASK_UNKNOWN_REFERENCE: "Task attempted to read an unknown task result.",
-  TIMEOUT_INVALID_MS: "timeout() requires a non-negative finite millisecond value.",
+  TIMEOUT_INVALID_MS: "timeout() requires non-negative finite milliseconds or a time expression.",
   UNREACHABLE_RETRY_POLICY_BACKOFF: "Panic: unreachable retry policy backoff",
   UNREACHABLE_WORK_STATE: "Panic: unreachable wrapped work state",
   WRAP_NEXT_CALLED_TWICE: "wrap() called next() more than once.",

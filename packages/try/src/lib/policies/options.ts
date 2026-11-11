@@ -1,3 +1,5 @@
+import type { TimeExpression, ValidateTimeExpression } from "@sanely/duration"
+
 interface RetryInfo {
   readonly attempt: number
   readonly limit: number
@@ -31,7 +33,7 @@ export interface BuilderConfig {
    */
   retry?: RetryPolicy
   /**
-   * Timeout configuration applied to the run.
+   * The total deadline applied to the run, in milliseconds.
    */
   timeout?: number
   /**
@@ -44,15 +46,16 @@ export interface BuilderConfig {
   wraps?: WrapFn[]
 }
 
-interface BaseRetryPolicy {
+interface BaseRetryPolicy<T extends string> {
   /**
    * Maximum number of attempts, including the first run.
    */
   limit: number
   /**
-   * Delay in milliseconds between attempts. Defaults to 0.
+   * The delay between attempts, in milliseconds or as a time expression such as `"200ms"`. Defaults
+   * to 0.
    */
-  delayMs?: number
+  delay?: number | ValidateTimeExpression<T>
   /**
    * Adds random jitter to delays when enabled.
    */
@@ -63,7 +66,7 @@ interface BaseRetryPolicy {
   shouldRetry?: (error: unknown, ctx: TryCtx) => boolean
 }
 
-interface LinearBackoffRetryPolicy extends BaseRetryPolicy {
+interface LinearBackoffRetryPolicy<T extends string> extends BaseRetryPolicy<T> {
   /**
    * Use linearly increasing delay between attempts.
    */
@@ -71,24 +74,24 @@ interface LinearBackoffRetryPolicy extends BaseRetryPolicy {
   /**
    * Not supported for linear backoff.
    */
-  maxDelayMs?: never
+  maxDelay?: never
 }
 
-interface ExponentialBackoffRetryPolicy extends BaseRetryPolicy {
+interface ExponentialBackoffRetryPolicy<T extends string> extends BaseRetryPolicy<T> {
   /**
    * Use exponential delay growth between attempts.
    */
   backoff: "exponential"
   /**
-   * Optional cap for exponential delay in milliseconds.
+   * Optional cap for the exponential delay, in milliseconds or as a time expression such as `"2s"`.
    */
-  maxDelayMs?: number
+  maxDelay?: number | ValidateTimeExpression<T>
 }
 
 /**
  * Retry policy using a constant delay strategy.
  */
-interface ConstantBackoffRetryPolicy extends BaseRetryPolicy {
+interface ConstantBackoffRetryPolicy<T extends string> extends BaseRetryPolicy<T> {
   /**
    * Required discriminant: use a fixed delay between attempts.
    */
@@ -96,16 +99,18 @@ interface ConstantBackoffRetryPolicy extends BaseRetryPolicy {
   /**
    * Not supported for constant backoff.
    */
-  maxDelayMs?: never
+  maxDelay?: never
 }
 
 /**
- * Retry configuration object.
+ * Retry configuration object. `T` holds the literal time expressions in `delay` and `maxDelay`, so
+ * the type checker can check them. Without it, the delays are milliseconds, which is the form that
+ * {@link retryOptions} returns.
  */
-export type RetryPolicy =
-  | LinearBackoffRetryPolicy
-  | ExponentialBackoffRetryPolicy
-  | ConstantBackoffRetryPolicy
+export type RetryPolicy<T extends string = never> =
+  | LinearBackoffRetryPolicy<T>
+  | ExponentialBackoffRetryPolicy<T>
+  | ConstantBackoffRetryPolicy<T>
 
 /**
  * Retry shorthand or full retry configuration.
@@ -113,7 +118,7 @@ export type RetryPolicy =
  * - `number`: attempt limit
  * - `RetryPolicy`: detailed retry settings
  */
-export type RetryOptions = number | RetryPolicy
+export type RetryOptions<T extends string = never> = number | RetryPolicy<T>
 
 declare const INVALID_RETRY_LIMIT: unique symbol
 type InvalidRetryLimit = {
@@ -133,14 +138,21 @@ export type ValidateRetryLimit<N extends number> = number extends N
       ? InvalidRetryLimit
       : number
 
+// Distributes over a union such as `number | "2s"`, so each string member is checked.
+type ValidateDelay<D> = D extends string ? ValidateTimeExpression<D> : D
+
 /**
  * Compile-time validation for full {@link RetryOptions} values, including unions of number and
  * policy forms. Distributes over union members so that mixed inputs like `flag ? 3 : { backoff:
  * "constant", limit: 5 }` are accepted while any member carrying an invalid literal limit still
- * fails to compile.
+ * fails to compile. A generic parameter skips the excess-property check, so a member with an
+ * unknown key, such as a misspelled `delay`, also fails here. A literal `delay` or `maxDelay` must
+ * pass the strict time expression grammar, which is narrower than `TimeExpression`.
  */
-export type ValidateRetryOptions<P extends RetryOptions> = P extends number
+export type ValidateRetryOptions<P extends RetryOptions<TimeExpression>> = P extends number
   ? ValidateRetryLimit<P>
   : P extends { limit: infer N extends number }
-    ? { limit: ValidateRetryLimit<N> }
+    ? { limit: ValidateRetryLimit<N> } & Record<Exclude<keyof P, keyof RetryPolicy>, never> & {
+          [K in keyof P & ("delay" | "maxDelay")]: ValidateDelay<P[K]>
+        }
     : never

@@ -22,7 +22,7 @@ class OrderLookupError extends Error {}
 
 const result = await try$
   .retry(3) // Up to 3 attempts in total, including the first
-  .timeout(5_000) // One total deadline across all attempts
+  .timeout("5s") // One total deadline across all attempts, in milliseconds or a time expression
   .run({
     try: async ({ signal }) => {
       const response = await fetch("https://api.example.com/orders/ord_123", {
@@ -50,7 +50,7 @@ const result = await try$
 - **Named task orchestration.** Run concurrent and ordered workflows as objects of named tasks.
 - **Instrumentation hooks.** Observe execution with `wrap(...)` for logs, traces, and metrics.
 - **Resource cleanup.** Register teardown that works across async boundaries with `disposer()` and task disposers.
-- **No runtime dependencies.**
+- **One small runtime dependency.** [`@sanely/duration`](../duration) reads time expressions such as `"500ms"`.
 
 ## Install
 

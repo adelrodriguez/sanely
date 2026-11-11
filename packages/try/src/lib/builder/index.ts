@@ -1,3 +1,4 @@
+import type { TimeExpression, ValidateTimeExpression } from "@sanely/duration"
 import type { FlowResult, FlowValue, InferredFlowTaskContext } from "#lib/orchestration/flow.ts"
 import type {
   InferredTaskContext,
@@ -27,7 +28,7 @@ import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "#lib/execu
 import { executeRun, type AsyncRunInput, type RunTryFn } from "#lib/execution/run.ts"
 import { orchestrate } from "#lib/orchestration/orchestrate.ts"
 import { retryOptions, type SyncRetryOptions } from "#lib/policies/retry.ts"
-import { assertValidTimeout } from "#lib/policies/timeout.ts"
+import { parseTimeout } from "#lib/policies/timeout.ts"
 
 type ConfigRunErrors = TimeoutError | CancellationError
 /**
@@ -87,13 +88,13 @@ export class RunBuilder<
     this.config = config
   }
 
-  protected buildTimeoutConfig(ms: number): BuilderConfig {
-    assertValidTimeout(ms)
+  protected buildTimeoutConfig(value: number | string): BuilderConfig {
+    const timeout = parseTimeout(value)
 
     // Deadlines combine the way signals do: each one can only make the call stop sooner.
     return {
       ...this.config,
-      timeout: Math.min(this.config.timeout ?? ms, ms),
+      timeout: Math.min(this.config.timeout ?? timeout, timeout),
     }
   }
 
@@ -116,13 +117,13 @@ export class RunBuilder<
       | (N & ValidateRetryLimit<N>)
       | (Exclude<SyncRetryOptions, number> & { limit: N & ValidateRetryLimit<N> })
   ): RetryBuilderSurface<E, true>
-  retry<N extends number>(
-    policy: RetryPolicy & { limit: N & ValidateRetryLimit<N> }
+  retry<N extends number, const T extends string = never>(
+    policy: RetryPolicy<T> & { limit: N & ValidateRetryLimit<N> }
   ): RetryBuilderSurface<E, false>
-  retry<const P extends RetryOptions>(
+  retry<const P extends RetryOptions<TimeExpression>>(
     policy: P & ValidateRetryOptions<P>
   ): RetryBuilderSurface<E, [P] extends [SyncRetryOptions] ? true : false>
-  retry(policy: RetryOptions): ExecutionBuilderSurface<E, true> {
+  retry(policy: RetryOptions<TimeExpression>): ExecutionBuilderSurface<E, true> {
     return new RunBuilder<E, true, false>({
       ...this.config,
       retry: retryOptions(policy),
@@ -130,18 +131,19 @@ export class RunBuilder<
   }
 
   /**
-   * Applies one total deadline to the next terminal call. When the chain already has a deadline,
-   * the tighter one applies. For `run`, the deadline spans attempts, delays, and catch handling,
-   * and surfaces typed as {@link TimeoutError}. For orchestration (`all`/`allSettled`/`flow`), it is
-   * a whole-graph deadline: the task signal aborts when it fires and the orchestration resolves
-   * with {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative:
+   * Applies one total deadline to the next terminal call. The deadline is milliseconds or a time
+   * expression such as `"5s"`. When the chain already has a deadline, the tighter one applies. For
+   * `run`, the deadline spans attempts, delays, and catch handling, and surfaces typed as
+   * {@link TimeoutError}. For orchestration (`all`/`allSettled`/`flow`), it is a whole-graph
+   * deadline: the task signal aborts when it fires and the orchestration resolves with
+   * {@link TimeoutError} (cancellation still wins when both fire). The deadline is cooperative:
    * orchestration waits for in-flight tasks to settle before it resolves, so tasks must observe
    * `$signal` for it to bound wall-clock time.
    */
-  timeout(
-    ms: number
+  timeout<const T extends string = never>(
+    timeout: number | ValidateTimeExpression<T>
   ): AsyncPolicyBuilderSurface<E | TimeoutError, HasRetry, SupportsOrchestration> {
-    return new RunBuilder(this.buildTimeoutConfig(ms)) as unknown as AsyncPolicyBuilderSurface<
+    return new RunBuilder(this.buildTimeoutConfig(timeout)) as unknown as AsyncPolicyBuilderSurface<
       E | TimeoutError,
       HasRetry,
       SupportsOrchestration
