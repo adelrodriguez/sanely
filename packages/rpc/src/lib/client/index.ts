@@ -26,34 +26,31 @@ export function createClient<Tree extends ContractTree, Options = never>(
   const leaves = flatten(contract)
 
   const make = (bound: Options | undefined, basePath: readonly string[]): unknown =>
-    createRecursiveProxy(({ path, args }) => {
-      const last = path.at(-1) ?? ""
+    createRecursiveProxy(
+      ({ path, args }) =>
+        // Calls always return a promise: validation and misuse failures reject
+        // instead of throwing synchronously.
+        // Proxy call arguments are untyped; the `InferClient` signature is what constrains them
+        send(path.join("."), args[0], mergeOptions(bound, args[1] as Options | undefined)),
+      ({ key, parent }) => {
+        const leafPath = parent.join(".")
+        const helpers: Partial<Record<string, () => unknown>> = {
+          $input: () => getChannel(leaves, leafPath).input,
+          $output: () => getChannel(leaves, leafPath).output,
+          $path: () => {
+            getChannel(leaves, leafPath)
+            return leafPath
+          },
+          $with: () => (options: Options) => make(mergeOptions(bound, options), parent),
+        }
 
-      if (last === "$with") {
-        // `$`-keys resolve on property access, so return the binder itself.
-        const base = path.slice(0, -1)
-        return (options: Options) => make(mergeOptions(bound, options), base)
-      }
-
-      if (last === "$path") {
-        const parentPath = path.slice(0, -1).join(".")
-        getChannel(leaves, parentPath)
-        return parentPath
-      }
-
-      if (last === "$input") {
-        return getChannel(leaves, path.slice(0, -1).join(".")).input
-      }
-
-      if (last === "$output") {
-        return getChannel(leaves, path.slice(0, -1).join(".")).output
-      }
-
-      // Calls always return a promise: validation and misuse failures reject
-      // instead of throwing synchronously.
-      // Proxy call arguments are untyped; the `InferClient` signature is what constrains them
-      return send(path.join("."), args[0], mergeOptions(bound, args[1] as Options | undefined))
-    }, basePath)
+        // `$`-keys resolve on property access. `defineContract` rejects every `$` key, so one
+        // that names no helper is a probe, such as pretty-format's `$$typeof`, and stays inert.
+        // No `Object.prototype` member starts with `$`, so the lookup cannot reach one.
+        return helpers[key]?.()
+      },
+      basePath
+    )
 
   // The Proxy answers every path at runtime; only the contract's type knows the shape
   return make(undefined, []) as InferClient<Tree, Options>
