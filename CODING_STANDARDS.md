@@ -32,3 +32,25 @@ Spot it: A glossary change adds a source tree, a module ownership list, or build
 ```
 
 Evidence: [PR #44](https://github.com/adelrodriguez/sanely/pull/44) moved the source map and compatibility details out of the errors glossary.
+
+## Code structure
+
+### Create a value only in the mode that uses it
+
+When a value serves only one mode, create it only in that mode, and let its absence stand for the other modes.
+A value that exists in every mode needs a mode check wherever it is read, and that check hides which modes can reach it.
+
+Spot it: A value is created in every mode, and the code that reads it also checks the mode.
+
+```ts
+// Avoid: packages/ratelimit/src/lib/limiter/build-limiter.ts, where a dry-run limiter never stores a denial
+const blocks = (options.cache ?? defaults.cache ?? true) ? blockedCache() : undefined
+const blocked = mode === "enforce" ? blocks?.lookup(key, cost) : undefined
+
+// Prefer
+const blocks =
+  mode === "enforce" && (options.cache ?? defaults.cache ?? true) ? blockedCache() : undefined
+const blocked = blocks?.lookup(key, cost)
+```
+
+Evidence: [PR #119](https://github.com/adelrodriguez/sanely/pull/119) made `SignalController` and `TimeoutController` in `@sanely/try` exist only when a call has a signal or a deadline, which removed their no-signal branches.
