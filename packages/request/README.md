@@ -19,7 +19,7 @@ import { geo, ip } from "@sanely/request"
 
 const options = { platform: "vercel" } as const
 
-ip(request, options) // "203.0.113.9"
+ip(request, options) // "8.8.8.8"
 geo(request, options).country // "US"
 ```
 

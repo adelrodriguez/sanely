@@ -154,8 +154,8 @@ function parseClient(candidate: unknown, proxies: readonly Range[]) {
  * @example
  *   import { ip } from "@sanely/request"
  *
- *   ip(request, { platform: "vercel" }) // "203.0.113.9"
- *   ip(request, { platform: "none", proxies: parseProxies(["10.0.0.0/8"]) }) // "198.51.100.7"
+ *   ip(request, { platform: "vercel" }) // "8.8.8.8"
+ *   ip(request, { platform: "none", proxies: parseProxies(["10.0.0.0/8"]) }) // "1.1.1.1"
  *
  * @returns The client's address, or `undefined` when the request has no public address.
  */

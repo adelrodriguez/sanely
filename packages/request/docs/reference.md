@@ -13,7 +13,7 @@ Returns the IP address of the client that sent the request, or `undefined` when 
 ```ts
 import { ip, parseProxies } from "@sanely/request"
 
-ip(request, { platform: "cloudflare" }) // "203.0.113.9"
+ip(request, { platform: "cloudflare" }) // "8.8.8.8"
 ip(request, { platform: "none", proxies: parseProxies(["10.0.0.0/8"]) }) // "2606:4700::1"
 ip(new Request("http://localhost"), { platform: "none" }) // undefined
 ```
