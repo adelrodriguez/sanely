@@ -1152,6 +1152,30 @@ describe("connect over a pending wire", () => {
     client.close()
   })
 
+  test("a queued call whose send fails rejects alone, as it would on a wire that is here", async () => {
+    const [serverWire, clientWire] = createWirePair()
+    const echo = defineContract({ echo: channel({ input: z.unknown(), output: z.unknown() }) })
+    connect(serverWire, { router: createRouter(echo, { echo: ({ input }) => input }) })
+    // Fails the way `webSocket` does for a payload JSON cannot encode, such as a BigInt.
+    const strictWire: Wire = {
+      onMessage: clientWire.onMessage,
+      send: (data) => {
+        JSON.stringify(data)
+        clientWire.send(data)
+      },
+    }
+    const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
+    const client = connect(pending)
+
+    const bad = Promise.resolve(client.transport("echo", 1n)).catch((error: unknown) => error)
+    const good = Promise.resolve(client.transport("echo", "ok"))
+    deliver(strictWire)
+
+    await expect(bad).resolves.toBeInstanceOf(TypeError)
+    await expect(good).resolves.toBe("ok")
+    await expect(Promise.resolve(client.transport("echo", "later"))).resolves.toBe("later")
+  })
+
   test("releases the payload of a queued call that timed out", async () => {
     const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: 1 })
     const { failure, payload } = callWithPayload(client.transport)

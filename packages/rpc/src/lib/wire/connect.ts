@@ -3,7 +3,7 @@ import type { DispatchOptions, Router } from "#lib/server/router.ts"
 import { ChannelError } from "#lib/core/error.ts"
 import { isRecord } from "#lib/core/guards.ts"
 import type { Wire } from "./types"
-import { deferWire, subscribe } from "./deferred"
+import { deferWire, directWire, subscribe } from "./deferred"
 import { type ExposeOptions, fromWire, toWire } from "./envelope"
 
 // Every message carries the protocol marker and the calling session's id, `sid`. A reply and a
@@ -87,7 +87,7 @@ export function connect<Context = void>(
   // A wire that is already here has nothing buffered, so nothing to withdraw.
   const { wire: source, withdraw } =
     "send" in wire
-      ? { wire, withdraw: (): boolean => false }
+      ? { wire: directWire(wire), withdraw: (): boolean => false }
       : deferWire(wire, (reason) => {
           close(reason)
         })
@@ -222,14 +222,13 @@ export function connect<Context = void>(
           },
         })
 
-        try {
-          source.send(request)
-        } catch (error) {
-          // A synchronously-throwing send (DataCloneError on a non-cloneable
-          // payload) rejects the caller; don't leak the pending entry.
+        // A send that fails (a DataCloneError on a payload the wire cannot carry) rejects this
+        // call alone, now or once a pending wire arrives, and leaks no pending entry.
+        source.send(request, (error) => {
           cleanup()
-          throw error
-        }
+          // oxlint-disable-next-line prefer-promise-reject-errors -- forwards whatever the wire threw, unchanged
+          reject(error)
+        })
       }),
   }
 
@@ -241,11 +240,8 @@ export function connect<Context = void>(
       return
     }
 
-    try {
-      source.send({ id: request.id, kind: "cancel", rpc: PROTOCOL, sid })
-    } catch {
-      // Same as a lost reply: nothing to recover, and nobody awaits this.
-    }
+    // Same as a lost reply: nothing to recover, and nobody awaits this.
+    source.send({ id: request.id, kind: "cancel", rpc: PROTOCOL, sid }, ignoreFailure)
   }
 
   async function respond(message: Extract<WireMessage, { kind: "req" }>): Promise<void> {
@@ -275,13 +271,13 @@ export function connect<Context = void>(
 
     // A cancelled caller already stopped listening for this id.
     if (!closed && !controller.signal.aborted) {
-      try {
-        source.send({ id: message.id, kind: "res", result, rpc: PROTOCOL, sid: message.sid })
-      } catch {
-        // The pipe died between request and reply; `respond` runs unawaited, so
-        // swallowing here is what keeps this from becoming an unhandled
-        // rejection. The peer's own timeout covers the lost reply.
-      }
+      // The pipe died between request and reply, or the reply cannot be sent; `respond` runs
+      // unawaited, so ignoring it keeps this from becoming an unhandled rejection. The peer's
+      // own timeout covers the lost reply.
+      source.send(
+        { id: message.id, kind: "res", result, rpc: PROTOCOL, sid: message.sid },
+        ignoreFailure
+      )
     }
   }
 }
@@ -310,6 +306,11 @@ function parseMessage(data: unknown): WireMessage | undefined {
   }
 
   return undefined
+}
+
+// For sends nobody awaits: a lost cancel or reply has no caller to tell.
+function ignoreFailure(): void {
+  // Intentionally empty.
 }
 
 function servingKey(message: { id: number; sid: string }): string {
