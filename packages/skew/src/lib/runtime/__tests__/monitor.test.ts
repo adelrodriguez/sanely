@@ -108,8 +108,12 @@ describe("deployment monitor", () => {
     ["checkTimeout", "0ms"],
     ["checkTimeout", "30d"],
     ["checkInterval", 0],
+    ["checkInterval", -1],
+    ["checkInterval", 0.5],
     ["checkInterval", Number.NaN],
     ["checkInterval", Number.POSITIVE_INFINITY],
+    ["checkInterval", 2 ** 31],
+    ["checkInterval", "0ms"],
     ["checkInterval", "30d"],
     ["checkInterval", "soon"],
   ] as const)("rejects %s %o, which no timer can wait for", (option, value) => {
@@ -122,13 +126,23 @@ describe("deployment monitor", () => {
     expect(create).toThrow(expect.objectContaining({ option, value }))
   })
 
-  it("accepts the longest delay a timer can wait for", () => {
+  it("uses the longest delay a timer can wait for without shortening it", async () => {
     const environment = new FakeEnvironment()
     const source = { resolveTarget: neverSettles, running: { id: "running" } }
+    const monitor = monitorOf(source, {
+      checkInterval: 2 ** 31 - 1,
+      checkOnSubscribe: false,
+      checkTimeout: 2 ** 31 - 1,
+      environment,
+    })
+    const unsubscribe = monitor.subscribe(noop)
+    onTestFinished(unsubscribe)
+    const check = monitor.check()
 
-    expect(() =>
-      monitorOf(source, { checkInterval: 2 ** 31 - 1, checkTimeout: "24d", environment })
-    ).not.toThrow()
+    expect(environment.intervalDelays).toStrictEqual([2 ** 31 - 1])
+    expect(environment.timeoutDelays).toStrictEqual([2 ** 31 - 1])
+    unsubscribe()
+    await check
   })
 
   it("starts with stable unknown state for the running deployment", () => {
