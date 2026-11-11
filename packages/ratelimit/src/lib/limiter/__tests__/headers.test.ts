@@ -41,6 +41,7 @@ describe("headers", () => {
     expect(
       headers({
         error: new StoreError(new Error("down")),
+        mode: "enforce",
         name: "x",
         reason: "storeError",
         success: false,

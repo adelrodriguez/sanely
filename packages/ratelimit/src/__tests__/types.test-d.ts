@@ -131,13 +131,14 @@ describe("LimitResult", () => {
     if (result.success) expectTypeOf(result.reason).toEqualTypeOf<"store" | "dryRun">()
   })
 
-  it("carries the mode only on an allowed result", async () => {
+  it("carries the mode on an allowed result and a store error, not on a denial", async () => {
     const result = await rateLimit(perIp, request)
 
-    // @ts-expect-error -- a denial is always enforced, and a store error has no mode.
+    // @ts-expect-error -- a denial is always enforced, so it has no mode.
     void result.mode
 
     if (result.success) expectTypeOf(result.mode).toEqualTypeOf<Mode>()
+    if (result.reason === "storeError") expectTypeOf(result.mode).toEqualTypeOf<Mode>()
   })
 })
 

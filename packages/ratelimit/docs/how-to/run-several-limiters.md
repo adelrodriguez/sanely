@@ -25,7 +25,7 @@ This guide shows you how to apply several limits to one request, such as a limit
    result.results // the result of each limiter that ran, in order
    ```
 
-`rateLimit` stops at the first denial or store error. When every limiter allows the request, the result is the allowed result with the fewest units remaining.
+`rateLimit` stops at the first denial or at the first store error of an enforced limiter. When no limiter stops the request, the result is the allowed result with the fewest units remaining.
 
 When this process remembers a denial for any of the limiters, the request stops before any limiter spends. A caller who has used up a broad limit then gets a denial from memory, with no store call, until the limit resets. In that case, `results` holds only that denial. To turn this off for a limiter, set `cache: false` on it.
 

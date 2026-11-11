@@ -149,13 +149,13 @@ function rateLimit<Input>(
 
 Spends `cost` units and resolves with the result. It does not reject when the store fails. The result is then a store error.
 
-With an array, `rateLimit` runs the limiters in order and stops at the first denial or store error:
+With an array, `rateLimit` runs the limiters in order and stops at the first denial or at the first store error of an enforced limiter:
 
 1. It checks the cost against every limiter before it spends anything.
 2. It checks the remembered denials of every limiter. A remembered denial stops the request before any limiter spends, and `results` holds only that denial.
 3. It runs each limiter. Each limiter checks for a remembered denial again just before it calls the store.
 
-When every limiter allows the request, the result is the allowed result with the fewest units remaining. The result of an enforced limiter takes precedence over the result of a dry-run limiter.
+When no limiter stops the request, the result is the allowed result with the fewest units remaining. The result of an enforced limiter takes precedence over the result of a dry-run limiter. A dry-run limiter's store error does not stop the chain. It is the result only when no limiter allowed the request, and `results` holds it in either case.
 
 `rateLimit` rejects only with `InvalidOptionError`, or with what your `identify` function throws.
 
@@ -217,7 +217,7 @@ Every result has `name`, `success`, and `reason`. `AllowedResult` and `DeniedRes
 | `retryAfter` | Milliseconds until `reset`, measured on the store's clock.                                      |
 | `window`     | The period that the limit covers, in milliseconds.                                              |
 
-`AllowedResult` also has `mode`, `"enforce"` or `"dryRun"`. `StoreErrorResult` has `error` and no counts, so TypeScript requires a check of `reason` before you read the counts.
+`AllowedResult` and `StoreErrorResult` also have `mode`, `"enforce"` or `"dryRun"`. `StoreErrorResult` has `error` and no counts, so TypeScript requires a check of `reason` before you read the counts.
 
 ```typescript
 if (result.reason !== "storeError") {

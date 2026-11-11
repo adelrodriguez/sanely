@@ -104,6 +104,42 @@ describe("rateLimit", () => {
       }
     )
 
+    it.each([
+      ["before", (watched: Limiter, enforced: Limiter): Chain => [watched, enforced]],
+      ["after", (watched: Limiter, enforced: Limiter): Chain => [enforced, watched]],
+    ])(
+      "decides by an enforced limiter when a dry-run limiter's store fails %s it",
+      async (_order, chain) => {
+        const watched = buildLimiter({ store: failingStore })({
+          algorithm: threePerMinute,
+          mode: "dryRun",
+          name: "watched",
+        })
+        const enforced = buildLimiter({ store: memoryStore() })({
+          algorithm: threePerMinute,
+          name: "enforced",
+        })
+
+        const result = await rateLimit(chain(watched, enforced), "k")
+
+        expect(result).toMatchObject({ name: "enforced", remaining: 2, success: true })
+        expect(result.results).toContainEqual(
+          expect.objectContaining({ mode: "dryRun", name: "watched", reason: "storeError" })
+        )
+      }
+    )
+
+    it("returns a dry-run limiter's store error when no other limiter answers", async () => {
+      const limiter = buildLimiter({ store: failingStore })
+      const first = limiter({ algorithm: threePerMinute, mode: "dryRun", name: "first" })
+      const second = limiter({ algorithm: threePerMinute, mode: "dryRun", name: "second" })
+
+      const result = await rateLimit([first, second], "k")
+
+      expect(result).toMatchObject({ mode: "dryRun", name: "first", reason: "storeError" })
+      expect(result.results.map((each) => each.name)).toEqual(["first", "second"])
+    })
+
     it("stops at a store error", async () => {
       const healthy = buildLimiter({ store: memoryStore() })({
         algorithm: threePerMinute,
