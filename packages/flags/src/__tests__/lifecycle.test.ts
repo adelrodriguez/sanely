@@ -1807,8 +1807,11 @@ describe("request coalescing", () => {
     expect(await flags.get(betaAccess)).toBe(true)
     expect(await flags.get(betaAccess)).toBe(true)
     await flushBackground()
-    expect(reports.length).toBeGreaterThanOrEqual(1)
-    expect(reports[0]).toEqual({ _tag: "SubscribeFailed", error: new Error("subscribe failed") })
+    // The second evaluation tries to attach again, so each evaluation reports its own failure.
+    expect(reports).toEqual([
+      { _tag: "SubscribeFailed", error: new Error("subscribe failed") },
+      { _tag: "SubscribeFailed", error: new Error("subscribe failed") },
+    ])
   })
 
   test("reports a throwing subscribe to a change listener and returns a no-op unsubscribe", async () => {

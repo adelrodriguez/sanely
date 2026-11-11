@@ -1352,8 +1352,10 @@ describe("server rendering", () => {
     client.state.value = false
     // A snapshot crosses the network as JSON, so the provider cannot trust its shape.
     const malformed = JSON.parse(json) as FlagSnapshot
-    await renderAsync(<App flags={client.flags} snapshot={malformed} />)
+    const { container } = await renderAsync(<App flags={client.flags} snapshot={malformed} />)
     expect(await screen.findByText("false:dark")).toBeTruthy()
+    // FeatureFlag reads beta alone, so it shows "on" if any snapshot entry survived the parse.
+    expect(container.textContent).toBe("false:darkoff")
   })
 
   it("ignores snapshot entries with an unknown source", async () => {

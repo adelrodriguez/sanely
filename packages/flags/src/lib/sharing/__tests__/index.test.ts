@@ -199,7 +199,8 @@ describe("resolveDecision", () => {
 
   test("keeps the stored decisions of flags that a change does not name", async () => {
     const changes = createProvider()
-    const store = createStore({ deleteFlags: vi.fn(() => Promise.resolve()) })
+    const removal = Promise.withResolvers<null>()
+    const store = createStore({ deleteFlags: vi.fn(() => removal.promise) })
     const config = createConfig({ store }, changes.subscribe)
 
     await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
@@ -208,6 +209,7 @@ describe("resolveDecision", () => {
     await sleep(0)
 
     expect(store.deleteFlags).toHaveBeenCalledWith(["other"])
+    // The delete for "other" is still pending, and beta-access still reads the store.
     const again = await resolveDecision(
       config,
       createContext(),
@@ -217,6 +219,7 @@ describe("resolveDecision", () => {
       false
     )
     expect(again.source).toBe("cache")
+    removal.resolve(null)
   })
 
   test("reports a failing subscribe and retries on the next evaluation", async () => {
