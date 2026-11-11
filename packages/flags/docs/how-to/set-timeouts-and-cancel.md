@@ -16,7 +16,7 @@ The type checker checks a literal expression, so `"1M"` fails to compile with th
 
 When the deadline passes before the decision is valid, the read returns the default, and `details` reports an `EvaluationTimeoutError`.
 
-The timeout covers identity resolution, the `before` hooks, store reads, provider work, and decision validation. The `after` and `finally` hooks run later and add no latency.
+The timeout covers identity resolution, the `before` hooks, store reads, provider work, decision validation, and the `error` hooks. The `after` and `finally` hooks run later and add no latency.
 
 ## Cancel one read
 
