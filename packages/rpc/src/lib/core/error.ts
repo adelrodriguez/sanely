@@ -10,7 +10,6 @@ export type ChannelErrorDetail =
   | { code: "closed" }
   | { code: "internal" }
   | { code: "malformed-envelope" }
-  | { code: "no-router" }
   | { code: "output-validation"; issues: readonly StandardSchemaV1.Issue[] }
   | { code: "timeout"; path: string; timeoutMs: number }
   | { code: "unknown-channel"; path: string }
@@ -54,7 +53,6 @@ const CODES: { [C in Code]: CodeSpec<Extract<ChannelErrorDetail, { code: C }>> }
     fields: {},
     message: () => "Received a value that is not a WireResult envelope",
   },
-  "no-router": { exposed: true, fields: {}, message: () => "This end does not serve requests" },
   // The server's own data failed its schema, so its issues describe the server.
   "output-validation": { exposed: false, fields: { issues: isIssueList }, message: joinIssues },
   timeout: {
@@ -106,7 +104,6 @@ class ChannelBaseError extends Error {
  * - `closed` — the wire was torn down; the close reason is in `cause`
  * - `internal` — the other side failed and hid why (`toWire` and `connect` hide failures by default);
  *   the real error went to its `onHidden`
- * - `no-router` — the peer's `connect` has no router to serve requests
  * - `malformed-envelope` — `fromWire` received a value that is not a `WireResult` (a gateway error
  *   page, a proxy 502)
  *

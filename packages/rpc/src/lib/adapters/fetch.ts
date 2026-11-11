@@ -38,7 +38,6 @@ const STATUS: Record<ChannelErrorDetail["code"], number> = {
   closed: 502,
   internal: 500,
   "malformed-envelope": 502,
-  "no-router": 500,
   "output-validation": 500,
   timeout: 504,
   "unknown-channel": 404,

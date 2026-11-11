@@ -209,19 +209,26 @@ describe("connect", () => {
     expect((error as Error).message).toBe("resolver exploded")
   })
 
-  test("a call-only end rejects incoming requests with code no-router", async () => {
+  test("a call-only session leaves requests to the serving session on its end", async () => {
     const [serverWire, clientWire] = createWirePair()
-    connect(serverWire) // no router
+    const router = createRouter(pullContract, { "math.add": ({ input: { a, b } }) => a + b })
+
+    // Two features on one end: one serves, and the other only calls.
+    connect(serverWire, { router })
+    connect(serverWire)
     const { transport } = connect(clientWire)
 
-    const error = await Promise.resolve(transport("math.add", { a: 1, b: 2 })).catch(
-      (error: unknown) => error
-    )
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).resolves.toBe(3)
+  })
 
-    // Raised on the peer, rehydrated here with its code intact.
-    expect(error).toBeInstanceOf(ChannelError)
-    expect((error as ChannelError).code).toBe("no-router")
-    expect((error as ChannelError).message).toBe("This end does not serve requests")
+  test("a call to a wire with no serving end times out", async () => {
+    const [serverWire, clientWire] = createWirePair()
+    connect(serverWire) // no router
+    const { transport } = connect(clientWire, { timeoutMs: 20 })
+
+    await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
+      code: "timeout",
+    })
   })
 
   test("still replies when onHidden throws", async () => {
@@ -902,7 +909,8 @@ describe("toWire / fromWire", () => {
     const errors = [
       new ChannelError({ code: "validation", issues: [{ message: "bad" }] }),
       new ChannelError({ code: "unknown-channel", path: "nope" }),
-      new ChannelError({ code: "no-router" }),
+      // A hidden failure relayed through another server stays as it is.
+      new ChannelError({ code: "internal" }),
     ]
 
     const wires = await Promise.all(
@@ -919,7 +927,7 @@ describe("toWire / fromWire", () => {
     expect(wires.map((wire) => !wire.ok && wire.error.detail?.code)).toEqual([
       "validation",
       "unknown-channel",
-      "no-router",
+      "internal",
     ])
   })
 

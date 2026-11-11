@@ -22,11 +22,11 @@ export type WireResult =
 
 /**
  * Which failures `toWire` and `connect` let through with their real message and detail.
- * Caller-fault `ChannelError`s always pass — `validation` (with its `issues`), `unknown-channel`,
- * and `no-router` tell the caller what to fix and reveal nothing about the server — so the
- * predicate only decides the rest: application errors, and server-fault codes like
- * `output-validation`, whose `issues` describe the server's own data. A hidden failure crosses as a
- * `ChannelError` with code `internal`.
+ * Caller-fault `ChannelError`s always pass — `validation` (with its `issues`) and `unknown-channel`
+ * tell the caller what to fix and reveal nothing about the server — so the predicate only decides
+ * the rest: application errors, and server-fault codes like `output-validation`, whose `issues`
+ * describe the server's own data. A hidden failure crosses as a `ChannelError` with code
+ * `internal`.
  */
 export type ExposeOptions = {
   /**

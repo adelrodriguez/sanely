@@ -130,8 +130,12 @@ export function connect<Context = void>(
     // Anything that doesn't parse is not ours on a shared wire; ignore it.
     const message = closed ? undefined : parseMessage(data)
 
+    // A call-only end leaves requests alone: another session on this end may serve them, and an
+    // answer from here would reach the caller first and replace the real result.
     if (message?.kind === "req") {
-      void respond(message)
+      if (dispatch) {
+        void respond(dispatch, message)
+      }
       return
     }
 
@@ -252,16 +256,17 @@ export function connect<Context = void>(
     source.send({ id: request.id, kind: "cancel", rpc: PROTOCOL, sid }, ignoreFailure)
   }
 
-  async function respond(message: Extract<WireMessage, { kind: "req" }>): Promise<void> {
+  async function respond(
+    serve: NonNullable<typeof dispatch>,
+    message: Extract<WireMessage, { kind: "req" }>
+  ): Promise<void> {
     const controller = new AbortController()
     const key = servingKey(message)
     serving.set(key, controller)
 
     const result = await toWire(
-      dispatch
-        ? // The thunk form lets toWire capture even a synchronously-throwing dispatch.
-          () => dispatch(message.path, message.payload, { context, signal: controller.signal })
-        : Promise.reject(new ChannelError({ code: "no-router" })),
+      // The thunk form lets toWire capture even a synchronously-throwing dispatch.
+      () => serve(message.path, message.payload, { context, signal: controller.signal }),
       {
         expose,
         // A resolver that failed because the caller cancelled is not a failure worth logging.

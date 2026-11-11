@@ -180,7 +180,6 @@ The class of every failure that the package raises during a call. `code` selects
 | `internal`           | `toWire` or `connect` hid a failure from the caller            |                     |
 | `timeout`            | A `connect` call gets no response within `timeoutMs`           | `path`, `timeoutMs` |
 | `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`             |
-| `no-router`          | A request reaches a `connect` end that has no router           |                     |
 | `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                     |
 
 `issues` holds the Standard Schema issues.
@@ -224,7 +223,7 @@ Takes a promise, or a function that may throw synchronously. Resolves with a `Wi
 
 `toWire` hides failures by default. These cross with their message, code, and fields:
 
-- a `ChannelError` with code `validation`, `unknown-channel`, `no-router`, or `internal`
+- a `ChannelError` with code `validation`, `unknown-channel`, or `internal`
 - any error for which `options.expose` returns `true`
 
 Every other failure crosses as a `ChannelError` with code `internal`. `toWire` passes the original error to `options.onHidden`.
@@ -260,7 +259,7 @@ Turns a `Wire` into a transport for calling the peer, and serves the peer's call
 
 | Option      | Type                          | Description                                                                                                                                                                                                                                                                |
 | ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, the peer's calls fail with `no-router`                                                                                                                                                                                             |
+| `router`    | `Router<Context>`             | Serves calls from the peer. Without it, this end only calls, and leaves the peer's calls to the wire's serving end                                                                                                                                                         |
 | `context`   | `Context`                     | Passed to every dispatch this end serves. Required when the router's context type isn't `void`                                                                                                                                                                             |
 | `timeoutMs` | `number`                      | Fails a call with `timeout` after this many milliseconds. Defaults to 30 seconds. `Infinity` disables it, so a call to a dead peer settles only on `close`. Any other value that isn't a positive number, such as `NaN`, throws a `SetupError` with code `invalid-timeout` |
 | `signal`    | `AbortSignal`                 | Closes the session when it aborts, with the signal's reason                                                                                                                                                                                                                |

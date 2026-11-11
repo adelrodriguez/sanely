@@ -167,7 +167,6 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
     | { code: "closed" }
     | { code: "internal" }
     | { code: "malformed-envelope" }
-    | { code: "no-router" }
     | { code: "output-validation"; issues: Issues }
     | { code: "timeout"; path: string; timeoutMs: number }
     | { code: "unknown-channel"; path: string }

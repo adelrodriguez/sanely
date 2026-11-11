@@ -38,7 +38,7 @@ Whatever the edge learns, it passes to the resolvers as context.
 
 An error message can leak a lot: a file path, a SQL fragment, the shape of your data. `output-validation` is a sharp case. Its `issues` describe the value your own resolver returned, which is server data the caller never asked for.
 
-So `toWire` and `connect` decide what the caller may see. A failure that is the caller's fault crosses intact, because the caller needs it to fix the call and it reveals nothing about the server. That covers `validation`, `unknown-channel`, and `no-router`. Everything else crosses as a `ChannelError` with code `internal`, and the real error goes to `onHidden` for your logs.
+So `toWire` and `connect` decide what the caller may see. A failure that is the caller's fault crosses intact, because the caller needs it to fix the call and it reveals nothing about the server. That covers `validation` and `unknown-channel`. Everything else crosses as a `ChannelError` with code `internal`, and the real error goes to `onHidden` for your logs.
 
 The default favors the public server, where the caller might be anyone. Between your own processes, such as a worker and the main thread, hiding errors only makes debugging harder. Pass `expose: () => true` there. To expose only some errors, such as a "not found", return `true` for those.
 
