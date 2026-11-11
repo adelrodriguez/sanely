@@ -34,6 +34,8 @@ Returns `tree` unchanged. Branches are plain objects, and leaves are channels. T
 | `then`, `toJSON` | `reserved-key` | Would make a client node look like a promise or break `JSON.stringify` |
 | Contains `.`     | `dotted-key`   | Would collide with the dotted path of a nested leaf                    |
 
+`createClient`, `createRouter`, `implement`, and `flatten` apply the same rules, so a contract written as a plain object fails the same way.
+
 ### `createRouter(contract, resolvers)`
 
 Returns a `Router`. `resolvers` takes one of two shapes:
@@ -160,6 +162,8 @@ Parses `value` with a Standard Schema and resolves with the parsed value. Reject
 
 Returns an object from dotted path to `Channel`. The object has no prototype. Use `Object.hasOwn(result, path)` to test for a path.
 
+Throws a `SetupError` for a reserved or dotted key, as `defineContract` does.
+
 ### `isChannel(node)`
 
 Returns `true` if `node` is a leaf.
@@ -273,7 +277,7 @@ Turns a `Wire` into a transport for calling the peer, and serves the peer's call
 
 A call's `signal` rejects that call with `signal.reason` and drops its late reply. When a call is aborted or hits `timeoutMs`, `connect` tells the peer, and the peer aborts the `signal` its resolver received.
 
-`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason.
+`wire` may be a `Wire` or a `Promise<Wire>`. While the promise is pending, calls wait in a queue, and `timeoutMs` applies to them. A queued call that is aborted or times out leaves the queue at once, so it is never sent and the queue does not keep its payload. Closing the session empties the queue. If the promise rejects, the session closes with the rejection as its reason. A queued call whose payload the wire can't send, such as a BigInt over a WebSocket, rejects alone with the wire's error once the wire arrives.
 
 When the session closes, every pending call and every later call rejects with a `ChannelError` with code `closed` and the reason as `cause`. This end stops serving and aborts every resolver it is running.
 
@@ -333,24 +337,26 @@ Payloads must survive `JSON.stringify`. A call with an `undefined` payload sends
 
 Every parameter is typed by shape. You don't need Electron or DOM types installed.
 
-| Export                                   | Runs in                      | Description                                                                 |
-| ---------------------------------------- | ---------------------------- | --------------------------------------------------------------------------- |
-| `mainPort(port)`                         | Main, utility                | Wraps an Electron `MessagePortMain` as a `Wire`                             |
-| `domPort(port)`                          | Renderer, iframe, web worker | Wraps a DOM `MessagePort` as a `Wire`                                       |
-| `nodePort(port)`                         | Node                         | Wraps a `node:worker_threads` port, a `Worker`, or `parentPort` as a `Wire` |
-| `sendPort(win, port, type)`              | Main                         | Posts `port` to `win` once its page has loaded                              |
-| `relayPort(ipcRenderer, type, options?)` | Preload                      | Forwards every port that arrives on the IPC channel `type` into the page    |
-| `receivePort(type, options?)`            | Renderer                     | Resolves with the first port relayed on `type`                              |
+| Export                                   | Runs in                      | Description                                                                        |
+| ---------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------- |
+| `mainPort(port)`                         | Main, utility                | Wraps an Electron `MessagePortMain` as a `Wire`                                    |
+| `domPort(port)`                          | Renderer, iframe, web worker | Wraps a DOM `MessagePort` as a `Wire`                                              |
+| `nodePort(port)`                         | Node                         | Wraps a `node:worker_threads` port, a `Worker`, or `parentPort` as a `Wire`        |
+| `sendPort(win, port, type)`              | Main                         | Posts `port` to `win` once its page has loaded                                     |
+| `relayPort(ipcRenderer, type, options?)` | Preload                      | Holds each port that arrives on the IPC channel `type` until the page asks for one |
+| `receivePort(type, options?)`            | Renderer                     | Asks the relay for a port on `type` and resolves with it                           |
 
 `mainPort` and `domPort` start the port after they attach their listener.
 
-`sendPort` posts immediately if the page has finished loading, and otherwise waits for `did-finish-load`.
+`sendPort` posts immediately if the page has stopped loading, and otherwise waits for `did-stop-loading`. `loadURL` resolves before the page stops loading, so you can call `sendPort` right after it.
+
+`relayPort` and `receivePort` can start in either order. `receivePort` asks for a port when it starts listening, and `relayPort` posts each port it holds to one receiver, in the order the receivers asked. A `receivePort` that aborts withdraws its request.
 
 `relayPort` takes these options:
 
 | Option         | Description                                                                                                 |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |
-| `signal`       | Stops the relay when it aborts                                                                              |
+| `signal`       | Stops the relay when it aborts, and drops the ports it holds                                                |
 | `target`       | The window to post to. Defaults to the global `window`                                                      |
 | `targetOrigin` | The origin to post to. Defaults to the window's own origin, or `"*"` for an opaque origin such as `file://` |
 

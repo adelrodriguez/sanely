@@ -30,7 +30,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    }
    ```
 
-   You can call `attach` before or after `loadURL`. If the page has loaded, `sendPort` posts the port right away. Otherwise it waits for `did-finish-load`.
+   You can call `attach` before or after `loadURL`. If the page has stopped loading, `sendPort` posts the port right away. Otherwise it waits for `did-stop-loading`.
 
 2. In the preload, relay the port into the page. A port can't cross `contextBridge`, but `relayPort` transfers it with `window.postMessage`:
 
@@ -62,7 +62,7 @@ This guide uses two contracts. `contract` holds the calls from the renderer to m
    export const api = createClient(contract, transport)
    ```
 
-You don't need a ready handshake. A port holds messages until its listener starts it, and `connect` holds calls until the port arrives.
+You don't need a handshake of your own. `relayPort` holds the port until `receivePort` asks for it, so the renderer can call `receivePort` at any time, even from a module that loads late. A port holds messages until its listener starts it, and `connect` holds calls until the port arrives.
 
 ## Decide which errors cross
 

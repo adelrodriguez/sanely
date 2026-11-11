@@ -42,7 +42,8 @@ A wire has one serving end. Two sessions that both serve one wire both answer ev
 
 ## State and compatibility
 
-Each `connect` session owns its session id, its pending calls, the requests it is serving, and its closed state. A pending wire owns its outbound queue until the wire arrives.
+Each `connect` session owns its session id, its pending calls, the requests it is serving, and its closed state. A pending wire owns its outbound queue until the wire arrives. Each queued send carries its caller's failure, so a send that fails at the flush rejects only its own call.
+Each `relayPort` owns the ports no page has asked for yet and the count of open requests. A window message is not buffered, so the relay posts a port only when a `receivePort` asks for one.
 Each router owns a prototype-free snapshot of its leaves and resolvers, so an untrusted path never resolves to an `Object.prototype` member.
 Each client node owns a cache of its children, so a node is stable across reads.
 
