@@ -1,15 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type { Decision } from "#lib/definition/decision.ts"
+import type { EvaluationContext, Identity, Subject } from "#lib/identity/index.ts"
 import { createChangeBroadcaster, type ChangeListener } from "#lib/changes/index.ts"
 import { flag } from "#lib/definition/index.ts"
-import { InvalidDecisionError } from "#lib/errors/index.ts"
-import {
-  anonymous,
-  type EvaluationContext,
-  type Identity,
-  type Subject,
-} from "#lib/identity/index.ts"
 import {
   createSharing,
   type CacheOptions,
@@ -84,100 +78,6 @@ function createStore(overrides: Partial<StoreFunctions> = {}) {
 const signal = () => new AbortController().signal
 
 describe("resolveDecision", () => {
-  test("does not remove a newer leader when a replaced leader settles", async () => {
-    const changes = createProvider()
-    const config = createConfig({}, changes.subscribe)
-    const context = createContext()
-    const firstRequest = Promise.withResolvers<Decision>()
-    const secondRequest = Promise.withResolvers<Decision>()
-
-    const firstLeader = resolveDecision(
-      config,
-      context,
-      betaAccess,
-      () => firstRequest.promise,
-      signal(),
-      false
-    )
-    changes.notify(["beta-access"])
-    expect(config.state.pending.size).toBe(0)
-
-    const secondLeader = resolveDecision(
-      config,
-      context,
-      betaAccess,
-      () => secondRequest.promise,
-      signal(),
-      false
-    )
-    expect(config.state.pending.size).toBe(1)
-
-    firstRequest.resolve(trueDecision)
-    await firstLeader
-    expect(config.state.pending.size).toBe(1)
-
-    secondRequest.resolve(falseDecision)
-    const second = await secondLeader
-    expect(second.decision).toEqual(falseDecision)
-    expect(config.state.pending.size).toBe(0)
-  })
-
-  test("keeps a pending call for another flag when a change names other flags", async () => {
-    const changes = createProvider()
-    const config = createConfig({}, changes.subscribe)
-    const request = Promise.withResolvers<Decision>()
-
-    const pending = resolveDecision(
-      config,
-      createContext(),
-      betaAccess,
-      () => request.promise,
-      signal(),
-      false
-    )
-    changes.notify(["other"])
-    expect(config.state.pending.size).toBe(1)
-    request.resolve(trueDecision)
-    await pending
-  })
-
-  test("validates the provider decision on every path", async () => {
-    const variantDecision = { type: "variant", variant: "dark" }
-    const direct = createConfig({ coalesce: false })
-    const coalesced = createConfig()
-
-    await expect(
-      resolveDecision(
-        direct,
-        createContext(anonymous),
-        betaAccess,
-        () => variantDecision,
-        signal(),
-        false
-      )
-    ).rejects.toBeInstanceOf(InvalidDecisionError)
-    await expect(
-      resolveDecision(
-        createConfig({ coalesce: false, store: createStore() }),
-        createContext(),
-        betaAccess,
-        () => variantDecision,
-        signal(),
-        false
-      )
-    ).rejects.toBeInstanceOf(InvalidDecisionError)
-    await expect(
-      resolveDecision(
-        coalesced,
-        createContext(),
-        betaAccess,
-        () => variantDecision,
-        signal(),
-        false
-      )
-    ).rejects.toBeInstanceOf(InvalidDecisionError)
-  })
-
   test("reports a failing store write and delete", async () => {
     const onError = vi.fn()
     const store = createStore({
@@ -220,28 +120,5 @@ describe("resolveDecision", () => {
     )
     expect(again.source).toBe("cache")
     removal.resolve(null)
-  })
-
-  test("reports a failing subscribe and retries on the next evaluation", async () => {
-    const onError = vi.fn()
-    const subscribe = vi
-      .fn<(notify: ChangeListener) => () => void>()
-      .mockImplementationOnce(() => {
-        throw new Error("subscribe failed")
-      })
-      .mockImplementation(() => () => null)
-    const config = createConfig({}, subscribe, onError)
-
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
-    await sleep(0)
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ _tag: "SubscribeFailed", error: expect.any(Error) })
-    )
-    expect(config.state.subscription.registered).toBe(true)
-
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
-    expect(subscribe).toHaveBeenCalledTimes(2)
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
-    expect(subscribe).toHaveBeenCalledTimes(2)
   })
 })

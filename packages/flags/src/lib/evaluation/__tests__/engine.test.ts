@@ -2,11 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vitest"
 import type { Hook } from "#lib/evaluation/hooks.ts"
 import { flag } from "#lib/definition/index.ts"
-import {
-  EvaluationTimeoutError,
-  IdentityNotFoundError,
-  ProviderFailedError,
-} from "#lib/errors/index.ts"
+import { EvaluationTimeoutError, IdentityNotFoundError } from "#lib/errors/index.ts"
 import { type Decide, evaluate, type Evaluator } from "#lib/evaluation/engine.ts"
 import { identifyAs, identifyWith, type Identity } from "#lib/identity/index.ts"
 import { createSharing } from "#lib/sharing/index.ts"
@@ -41,19 +37,6 @@ function neverSettles(): Promise<never> {
 const noDeadline = { signal: undefined }
 
 describe("evaluate", () => {
-  test("wraps an unexpected failure as ProviderFailedError", async () => {
-    const details = await evaluate(
-      createEvaluator(),
-      betaAccess,
-      identify,
-      () => Promise.reject(new Error("unexpected")),
-      noDeadline
-    )
-
-    expect(details.error).toBeInstanceOf(ProviderFailedError)
-    expect(details.error).toMatchObject({ provider: "test" })
-  })
-
   test("reports the timeout that aborted the signal when a later step throws a plain error", async () => {
     const controller = new AbortController()
     const timeout = new EvaluationTimeoutError(5)

@@ -609,6 +609,57 @@ describe("evaluation errors", () => {
     expect(details.error).toBeInstanceOf(ProviderFailedError)
   })
 
+  test("ProviderFailedError when reading the provider's decision throws", async () => {
+    const failure = new Error("hostile getter")
+    const flags = createFlags({
+      identify: () => user,
+      provider: provideOne(
+        () => ({
+          get type(): never {
+            throw failure
+          },
+        }),
+        "launchdarkly"
+      ),
+    })
+
+    const details = await flags.details(betaAccess)
+    expect(details).toEqual({
+      error: expect.any(ProviderFailedError),
+      flagKey: "beta-access",
+      source: "default",
+      value: false,
+    })
+    expect(details.error).toHaveProperty("provider", "launchdarkly")
+    expect(details.error?.cause).toBe(failure)
+  })
+
+  test("InvalidDecisionError for an anonymous or uncoalesced evaluation, without storing it", async () => {
+    const store = {
+      get: vi.fn(() => Promise.resolve(null)),
+      set: vi.fn(() => Promise.resolve()),
+    }
+    const provider = defineProvider({
+      decideOne: (_flag: Flag, _identity: Identity | typeof anonymous) => decision.variant("dark"),
+      name: "test",
+    })
+    const readers = [
+      createFlags({ cache: { store }, identify: () => anonymous, provider }),
+      createFlags({ cache: { coalesce: false, store }, identify: () => user, provider }),
+    ]
+
+    const results = await Promise.all(readers.map((reader) => reader.details(betaAccess)))
+    const fallback = {
+      error: expect.any(InvalidDecisionError),
+      flagKey: "beta-access",
+      source: "default",
+      value: false,
+    }
+    expect(results).toEqual([fallback, fallback])
+    await sleep(0)
+    expect(store.set).not.toHaveBeenCalled()
+  })
+
   test("reads a reader timeout given as a time expression", async () => {
     const flags = createFlags({
       identify: () => user,

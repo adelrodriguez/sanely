@@ -1790,6 +1790,68 @@ describe("request coalescing", () => {
     expect(await flags.get(enabled)).toBe(false)
   })
 
+  test("keeps a newer call shared after the call it replaced settles", async () => {
+    const first = createDeferred<Decision>()
+    const second = createDeferred<Decision>()
+    let notifyChange: ChangeListener | undefined
+    const decideOne = vi.fn((): Promise<Decision> =>
+      decideOne.mock.calls.length === 1 ? first.promise : second.promise
+    )
+    const flags = createFlags({
+      identify,
+      provider: defineProvider({
+        decideOne,
+        name: "test",
+        subscribe: (notify) => {
+          notifyChange = notify
+          return () => null
+        },
+      }),
+    })
+
+    const stale = flags.get(betaAccess)
+    await sleep(0)
+    notifyChange?.(["beta-access"])
+    const current = flags.get(betaAccess)
+    await sleep(0)
+    first.resolve(TRUE)
+    expect(await stale).toBe(true)
+
+    // The replaced call settled, and a later read still joins the call that replaced it.
+    const joined = flags.get(betaAccess)
+    await sleep(0)
+    second.resolve(FALSE)
+    expect(await Promise.all([current, joined])).toEqual([false, false])
+    expect(decideOne).toHaveBeenCalledTimes(2)
+  })
+
+  test("keeps sharing a flag's call when a change names other flags", async () => {
+    const pending = createDeferred<Decision>()
+    let notifyChange: ChangeListener | undefined
+    const decideOne = vi.fn(() => pending.promise)
+    const flags = createFlags({
+      identify,
+      provider: defineProvider({
+        decideOne,
+        name: "test",
+        subscribe: (notify) => {
+          notifyChange = notify
+          return () => null
+        },
+      }),
+    })
+
+    const leader = flags.get(betaAccess)
+    await sleep(0)
+    notifyChange?.(["other"])
+    const follower = flags.get(betaAccess)
+    await sleep(0)
+    pending.resolve(TRUE)
+
+    expect(await Promise.all([leader, follower])).toEqual([true, true])
+    expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
   test("degrades softly when subscribe throws instead of poisoning coalescing", async () => {
     const reports: ErrorReport[] = []
     const flags = createFlags({
@@ -1812,6 +1874,35 @@ describe("request coalescing", () => {
       { _tag: "SubscribeFailed", error: new Error("subscribe failed") },
       { _tag: "SubscribeFailed", error: new Error("subscribe failed") },
     ])
+  })
+
+  test("attaches once more after a failed subscribe and then receives changes", async () => {
+    const reports: ErrorReport[] = []
+    const failure = new Error("subscribe failed")
+    const { deleteFlags, store } = sharedStore()
+    let notifyChange: ChangeListener | undefined
+    const subscribe = vi.fn((notify: ChangeListener) => {
+      if (subscribe.mock.calls.length === 1) throw failure
+      notifyChange = notify
+      return () => null
+    })
+    const flags = createFlags({
+      cache: { store },
+      identify,
+      onError: (report) => void reports.push(report),
+      provider: defineProvider({ decideOne: () => TRUE, name: "test", subscribe }),
+    })
+
+    await flags.get(betaAccess)
+    await flags.get(betaAccess)
+    expect(subscribe).toHaveBeenCalledTimes(2)
+    await flags.get(betaAccess)
+    expect(subscribe).toHaveBeenCalledTimes(2)
+
+    notifyChange?.(["beta-access"])
+    await flushBackground()
+    expect(deleteFlags).toHaveBeenCalledWith(["beta-access"])
+    expect(reports).toEqual([{ _tag: "SubscribeFailed", error: failure }])
   })
 
   test("reports a throwing subscribe to a change listener and returns a no-op unsubscribe", async () => {
