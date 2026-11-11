@@ -182,11 +182,7 @@ const domainOverrides = Object.entries(dependencies).flatMap(([name, domains]) =
 
 export default defineConfig({
   extends: [core, custom()],
-  ignorePatterns: [
-    ...core.ignorePatterns,
-    // These fixtures import the built package by name, so they lint only after a build.
-    "packages/skew/tests/package-contract/**",
-  ],
+  ignorePatterns: core.ignorePatterns,
   options: {
     respectEslintDisableDirectives: true,
     typeAware: true,

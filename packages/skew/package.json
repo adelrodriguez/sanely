@@ -48,7 +48,7 @@
   "scripts": {
     "build": "tsdown",
     "build:debug": "tsdown --no-minify --sourcemap",
-    "build:verify": "node scripts/verify-package-contract.ts",
+    "build:verify": "node scripts/verify-package.ts",
     "dev": "tsdown --no-minify --sourcemap --watch",
     "test": "vitest run",
     "test:compat": "node ../../scripts/compat-smoke.mjs",
