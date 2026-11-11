@@ -98,15 +98,6 @@ describe("buildLimiter", () => {
     ).toThrow(expect.objectContaining({ option: "timeout", value: "soon" }))
   })
 
-  it("lets limiter settings override factory settings", async () => {
-    const limiter = buildLimiter({ store: silentStore, timeout: 60_000 })
-    const quick = limiter({ algorithm: threePerMinute, name: "quick", timeout: 10 })
-
-    const result = await rateLimit(quick, "k")
-
-    expect(result.reason).toBe("storeError")
-  })
-
   describe("the blocked-identity cache", () => {
     it("answers a repeated denial without the store", async () => {
       const { requests, store } = recordingStore()

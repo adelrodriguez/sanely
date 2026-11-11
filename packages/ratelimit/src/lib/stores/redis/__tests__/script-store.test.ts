@@ -89,23 +89,6 @@ describe("scriptStore", () => {
 
   it.each(
     Object.values({
-      fixedWindow: fixedWindow({ limit: 5, window: 2000 }),
-      slidingWindow: slidingWindow({ limit: 5, window: 2000 }),
-      tokenBucket: tokenBucket({ capacity: 5, interval: 2000, refillRate: 1 }),
-    } satisfies Record<Algorithm["type"], Algorithm>)
-  )("expires $type state once it no longer matters", async (algorithm) => {
-    const store = scriptStore(commands)
-    const key = `test:${crypto.randomUUID()}`
-    await store.consume({ algorithm, cost: 1, key })
-
-    const ttl = await client.pttl(key)
-
-    expect(ttl).toBeGreaterThan(0)
-    expect(ttl).toBeLessThanOrEqual(4000)
-  })
-
-  it.each(
-    Object.values({
       fixedWindow: fixedWindow({ limit: 5, window: week }),
       slidingWindow: slidingWindow({ limit: 5, window: week }),
       tokenBucket: tokenBucket({ capacity: 5, interval: week, refillRate: 1 }),

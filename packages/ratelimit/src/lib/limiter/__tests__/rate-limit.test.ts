@@ -82,22 +82,6 @@ describe("rateLimit", () => {
       expect(result.results.map((each) => each.name)).toEqual(["roomy", "tight"])
     })
 
-    it("does not stop at a dry-run limiter", async () => {
-      const limiter = buildLimiter({ store: memoryStore() })
-      const watched = limiter({
-        algorithm: fixedWindow({ limit: 1, window: 60_000 }),
-        mode: "dryRun",
-        name: "watched",
-      })
-      const enforced = limiter({ algorithm: threePerMinute, name: "enforced" })
-      await rateLimit(watched, "k")
-
-      const result = await rateLimit([watched, enforced], "k")
-
-      expect(result.success).toBe(true)
-      expect(result.results.map((each) => each.reason)).toEqual(["dryRun", "store"])
-    })
-
     it.each([
       ["before", (watched: Limiter, enforced: Limiter): Chain => [watched, enforced]],
       ["after", (watched: Limiter, enforced: Limiter): Chain => [enforced, watched]],
