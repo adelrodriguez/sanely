@@ -57,7 +57,7 @@ CloudFront sends `CloudFront-Viewer-Address` only when an origin request policy 
 | Option     | Type                   | Default  | Description                                                                                          |
 | ---------- | ---------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
 | `platform` | `IpPlatform \| "none"` | Required | The platform the app runs on, or `"none"`. With a platform, `ip` reads only that platform's headers. |
-| `proxies`  | `Proxies`              | None     | Your own proxies, from `parseProxies`. `ip` skips their addresses.                                   |
+| `proxies`  | `Proxies`              | None     | The trusted proxies, from `parseProxies`. `ip` skips their addresses.                                |
 
 `ip` throws a `TypeError` when `platform` is not `"none"` or a known platform, such as when it comes from an unset environment variable.
 
@@ -79,7 +79,11 @@ const proxies = parseProxies(process.env.PROXIES?.split(",") ?? [])
 ip(request, { platform: "none", proxies })
 ```
 
-`parseProxies` throws a `TypeError` that names the first entry that is not an IP address or a CIDR range, so a typo stops the app at startup instead of failing every request. `ip` accepts only the `Proxies` value it returns, not a raw array.
+`parseProxies` throws a `TypeError` that names the first entry that is not an IP address or a CIDR range, so a typo stops the app at startup instead of failing every request.
+
+### `Proxies`
+
+The trusted proxies that `parseProxies` returns. Only `parseProxies` can make a `Proxies` value, so `ip` does not accept a raw array.
 
 ## `geo`
 
@@ -100,7 +104,24 @@ geo(request, { platform: "vercel" })
 // }
 ```
 
-`platform` is required, and `geo` throws a `TypeError` for an unknown one. Location headers have no common form, and a client can send any header that its platform does not replace.
+| `platform`     | Fields                                     | Setup                                                                                          |
+| -------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `"app-engine"` | `country`, `region`, `city`, `coordinates` | None.                                                                                          |
+| `"cloudflare"` | Every field.                               | Turn on the "Add visitor location headers" managed transform for every field except `country`. |
+| `"cloudfront"` | Every field except `continent`.            | Add the `CloudFront-Viewer-*` headers to an origin request policy.                             |
+| `"vercel"`     | Every field.                               | None.                                                                                          |
+
+### `GeoOptions`
+
+| Option     | Type          | Default  | Description                                                                  |
+| ---------- | ------------- | -------- | ---------------------------------------------------------------------------- |
+| `platform` | `GeoPlatform` | Required | The platform the app runs on. `geo` reads only the location headers it sets. |
+
+`geo` throws a `TypeError` when `platform` is not a known platform. `geo` has no `"none"` option, because location headers have no common form, and a client can send any header that its platform does not replace.
+
+### `Geo`
+
+The location that `geo` returns.
 
 | Field         | Type          | Description                                                                                                                                            |
 | ------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -114,20 +135,13 @@ geo(request, { platform: "vercel" })
 
 `geo` reads platform markers for an unknown value as `undefined`: an unknown country (`XX` or `ZZ`), Cloudflare's Tor marker (`T1`), App Engine's `?` city, the coordinates `0,0`, and a pair with one coordinate missing or out of range.
 
-| `platform`     | Fields                                                   | Setup                                                                                        |
-| -------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `"app-engine"` | `country`, `region`, `city`, `coordinates`               | None.                                                                                        |
-| `"cloudflare"` | `country`. The others need the visitor location headers. | Turn on the "Add visitor location headers" managed transform for the fields after `country`. |
-| `"cloudfront"` | Every field except `continent`.                          | Add the `CloudFront-Viewer-*` headers to an origin request policy.                           |
-| `"vercel"`     | Every field.                                             | None.                                                                                        |
-
 ## Types
 
 ```ts
 type HeadersLike = Headers | Readonly<Record<string, string | readonly string[] | undefined>>
 ```
 
-Request headers, either as a Fetch `Headers` object or as a record, such as Node.js's `IncomingMessage.headers`. Record names match in any case, because some sources, such as an AWS API Gateway REST event, keep the case the client sent. A record joins repeated values with commas.
+Request headers, either as a Fetch `Headers` object or as a record, such as Node.js's `IncomingMessage.headers`. Record names match in any case, because some sources, such as an AWS API Gateway REST event, keep the case the client sent. `ip` and `geo` join repeated values in a record with commas, as `Headers` does, and read an empty value as missing.
 
 ```ts
 interface RequestLike {

@@ -55,7 +55,7 @@ ip(request, { platform: "none", proxies })
 
 ## Documentation
 
-- [Reference](docs/reference.md): `ip`, `geo`, platforms, and types
+- [Reference](docs/reference.md): `ip`, `parseProxies`, `geo`, platforms, and types
 
 ## Contributing
 
