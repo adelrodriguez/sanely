@@ -4,27 +4,39 @@ This guide shows you how to store provider decisions, drop them when the provide
 
 ## Add a store
 
-1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This one keeps a set of keys for each flag, so `deleteFlags` can find a flag's decisions:
+1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This one stamps each decision with a version for its flag. `deleteFlags` advances the version, and `get` ignores a decision with an older one, so there is no index to keep in step with writes, and old decisions leave with their expiry:
 
    ```typescript
    import type { DecisionStore, Decision } from "@sanely/flags"
 
+   type Entry = { decision: Decision; flagKey: string; version: string }
+
+   // A notification without keys advances the version of every flag at once.
+   async function versionOf(flagKey: string): Promise<string> {
+     const [all, flag] = await redis.mget<[number | null, number | null]>(
+       "flag-version",
+       `flag-version:${flagKey}`
+     )
+     return `${all ?? 0}.${flag ?? 0}`
+   }
+
    const store: DecisionStore = {
-     get: (key) => redis.get<Decision>(key),
+     get: async (key) => {
+       const entry = await redis.get<Entry>(key)
+       return entry && entry.version === (await versionOf(entry.flagKey)) ? entry.decision : null
+     },
      set: async (key, decision, { flagKey }) => {
-       await redis.set(key, decision, { ex: 60 })
-       await redis.sadd(`flag-keys:${flagKey}`, key)
-       await redis.sadd("flag-keys", flagKey)
+       await redis.set(key, { decision, flagKey, version: await versionOf(flagKey) }, { ex: 60 })
      },
      delete: (key) => redis.del(key),
      deleteFlags: async (flagKeys) => {
-       for (const flagKey of flagKeys ?? (await redis.smembers("flag-keys"))) {
-         const keys = await redis.smembers(`flag-keys:${flagKey}`)
-         if (keys.length > 0) await redis.del(...keys, `flag-keys:${flagKey}`)
-       }
+       const versions = flagKeys?.map((flagKey) => `flag-version:${flagKey}`) ?? ["flag-version"]
+       await Promise.all(versions.map((version) => redis.incr(version)))
      },
    }
    ```
+
+   A write that read the version before a change stores the old version, so `get` never returns it.
 
    A variant payload can hold values that are not JSON-safe. A persistent store must keep them, or the provider must return JSON-safe payloads. The store keeps the raw payload, and the flag's parser runs after each read.
 
