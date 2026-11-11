@@ -4,7 +4,8 @@ export * from "./key"
 
 export type FlagCacheOptions<T extends string = never> = {
   /**
-   * Maximum number of identities retained by the cache. Defaults to 100.
+   * The most settled entries for each list of flags, one for each identity. Pending entries do not
+   * count. Defaults to 100.
    */
   maxEntries?: number
   /**
