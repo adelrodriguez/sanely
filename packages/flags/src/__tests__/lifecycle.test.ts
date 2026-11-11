@@ -442,6 +442,8 @@ describe("first-class cache", () => {
         cache: {
           coalesce,
           store: {
+            // A fresh read deletes the decision it replaces, so the store needs `delete`.
+            delete: (key) => Promise.resolve(stored.delete(key)),
             get: (key) => Promise.resolve(stored.get(key)),
             set: (key, value) => {
               if (writes.fail) return Promise.reject(new Error("store down"))
@@ -499,6 +501,50 @@ describe("first-class cache", () => {
       expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
       older.resolve(TRUE)
       await first
+    }
+  )
+
+  test.each([true, false])(
+    "never returns a replaced decision while an older refresh is still storing, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>([])
+      const writing = { hold: undefined as Promise<void> | undefined }
+      const store: DecisionStore = {
+        delete: (key) => Promise.resolve(stored.delete(key)),
+        get: (key) => Promise.resolve(stored.get(key)),
+        set: async (key, value) => {
+          await writing.hold
+          stored.set(key, value)
+        },
+      }
+      let answer: Decision | Error = TRUE
+      const flags = createFlags({
+        cache: { coalesce, store },
+        identify,
+        provider: defineProvider({
+          decideOne: () => (answer instanceof Error ? Promise.reject(answer) : answer),
+          name: "test",
+        }),
+      })
+      expect(await flags.get(betaAccess)).toBe(true)
+      await flushBackground()
+
+      // Refresh A answers false, and its store write waits.
+      const release = createDeferred<undefined>()
+      writing.hold = release.promise
+      answer = FALSE
+      expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
+      // Refresh B starts while A's write waits, and fails.
+      answer = new Error("provider down")
+      expect((await flags.details(betaAccess, { fresh: true })).error).toBeInstanceOf(
+        ProviderFailedError
+      )
+      answer = FALSE
+      expect(await flags.details(betaAccess)).toMatchObject({ value: false })
+      release.resolve(undefined)
+      writing.hold = undefined
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ value: false })
     }
   )
 

@@ -36,8 +36,9 @@ export type ErrorReport<TIdentity extends Subject = Subject> =
 export type ReadOptions = {
   signal?: AbortSignal
   /**
-   * Skips the store and any provider call in flight, asks the provider, and stores its decision.
-   * Use it after a decision may have changed without a change notification.
+   * Deletes the stored decision with the store's `delete`, skips any provider call in flight, asks
+   * the provider, and stores its decision. Use it after a decision may have changed without a
+   * change notification.
    */
   fresh?: boolean
 }

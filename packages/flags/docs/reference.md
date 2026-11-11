@@ -174,7 +174,7 @@ A reader stays attached to its provider until you dispose it, so create one read
 | `detailsMany(flags, options?)` | A tuple of `EvaluationDetails`      | The details of several flags, in the order of `flags`.             |
 | `snapshot(flags, options?)`    | `Promise<FlagSnapshot>`             | Serializable values of several flags, for a client's first render. |
 
-`options` is `{ signal?: AbortSignal; fresh?: boolean }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. `fresh: true` skips the store and any provider call in flight, asks the provider, and stores its decision. No read rejects.
+`options` is `{ signal?: AbortSignal; fresh?: boolean }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. `fresh: true` deletes the stored decision with the store's `delete`, skips any provider call in flight, asks the provider, and stores its decision. Other reads of the flag then miss the store until the new decision is stored, so none of them returns the replaced one. A store without `delete` keeps the replaced decision, and other reads can return it until the fresh decision is stored. No read rejects.
 
 `getMany`, `detailsMany`, and `snapshot` resolve the identity once. Within one tick, the flags that need provider work share one provider request. A provider with `decide` gets one call with each flag key once. A provider with `decideOne` gets one call for each flag key. Each flag keeps its own hooks, validation, timeout, and fallback. The batch deadline is the longest flag timeout, or none when any flag has none.
 

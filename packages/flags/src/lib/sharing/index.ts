@@ -285,7 +285,6 @@ export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdent
   const { state } = config
   state.disposed = true
   state.pending.clear()
-  state.stale.clear()
   state.tickets.clear()
   state.keysByFlag.clear()
   state.writes.generation += 1
@@ -367,11 +366,8 @@ async function consultStore<TIdentity extends Subject>(
   const generationBeforeRead = state.writes.generation
   // The delete for an earlier change has not completed, so the store can hold a stale decision.
   const { flagDeletes } = state
-  // A fresh write of this key has not completed, so the store can hold the decision it replaces.
   if (
-    state.tickets.get(key)?.held === true
-    || state.stale.has(key)
-    || state.mutations.get(key)?.deletes
+    state.mutations.get(key)?.deletes
     || flagDeletes.all > 0
     || (flagDeletes.byFlag.get(flag.key) ?? 0) > 0
   ) {
@@ -402,17 +398,9 @@ async function consultStore<TIdentity extends Subject>(
 /**
  * A read's permission to store the decision it fetches. A change notification voids every open
  * ticket through `generation`, and a fresh read voids the older tickets of its key through `epoch`.
- * Each ticket closes once: when its write starts, or when its read ends without one. A fresh ticket
- * also holds its key's store until the write completes, so reads of the key skip a store that may
- * still hold the decision being replaced.
+ * Each ticket closes once: when its write starts, or when its read ends without one.
  */
-type WriteTicket = {
-  epoch: number
-  fresh: boolean
-  generation: number
-  key: string
-  store: DecisionStore
-}
+type WriteTicket = { epoch: number; generation: number; key: string; store: DecisionStore }
 
 function openTicket<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
@@ -422,33 +410,19 @@ function openTicket<TIdentity extends Subject>(
   fresh: boolean
 ): WriteTicket {
   const { tickets } = config.state
-  const entry = tickets.get(key) ?? { epoch: 0, held: false, open: 0 }
-  if (fresh) {
-    entry.epoch += 1
-    entry.held = true
-  }
+  const entry = tickets.get(key) ?? { epoch: 0, open: 0 }
+  if (fresh) entry.epoch += 1
   entry.open += 1
   tickets.set(key, entry)
-  return { epoch: entry.epoch, fresh, generation, key, store }
+  return { epoch: entry.epoch, generation, key, store }
 }
 
-function updateTicket<TIdentity extends Subject>(
-  config: Sharing<TIdentity>,
-  ticket: WriteTicket,
-  release: { fresh: boolean; open: boolean }
-): void {
+function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
   const { tickets } = config.state
   const entry = tickets.get(ticket.key)
   if (!entry) return
-  if (release.open) entry.open -= 1
-  // Only the latest fresh ticket holds the key. A voided older one releases nothing.
-  if (release.fresh && ticket.fresh && ticket.epoch === entry.epoch) entry.held = false
-  if (entry.open === 0 && !entry.held) tickets.delete(ticket.key)
-}
-
-// Closes a ticket whose read ends without a write.
-function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
-  updateTicket(config, ticket, { fresh: true, open: true })
+  entry.open -= 1
+  if (entry.open === 0) tickets.delete(ticket.key)
 }
 
 function writeThrough<TIdentity extends Subject>(
@@ -462,30 +436,14 @@ function writeThrough<TIdentity extends Subject>(
   // during the write queues its delete after the write.
   return mutateStore(config, storeContext(context), key, "set", () => {
     const epoch = config.state.tickets.get(key)?.epoch
-    updateTicket(config, ticket, { fresh: false, open: true })
+    closeTicket(config, ticket)
     if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
-      updateTicket(config, ticket, { fresh: true, open: false })
       return
     }
     // A change during the read removed this key from the index, so index it again for the decision
     // that this write stores.
     indexCacheKey(config, context, store, key)
-    // The fresh hold ends when the write completes, failed or not.
-    return Promise.resolve()
-      .then(() => store.set(key, decision, { flagKey: context.flag.key }))
-      .then(
-        () => {
-          config.state.stale.delete(key)
-          return null
-        },
-        (error: unknown) => {
-          if (ticket.fresh) config.state.stale.add(key)
-          throw error
-        }
-      )
-      .finally(() => {
-        updateTicket(config, ticket, { fresh: true, open: false })
-      })
+    return store.set(key, decision, { flagKey: context.flag.key })
   })
 }
 
@@ -588,6 +546,10 @@ export async function resolveDecision<TIdentity extends Subject>(
       return { ...consultation.accepted, source: "cache" }
     }
     write = openTicket(config, store, key, consultation.generation, fresh)
+    // A fresh read deletes the decision it replaces before it asks the provider. Reads of the key
+    // skip the store while the delete is pending and miss it afterward, so none of them returns
+    // the old decision, even when this read's own write later fails or stalls.
+    if (fresh) deleteCacheEntry(config, storeContext(context), store, key)
   }
 
   if (!coalesce) {
