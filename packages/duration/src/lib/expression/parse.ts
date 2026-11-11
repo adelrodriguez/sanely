@@ -197,15 +197,17 @@ export function safeParse(value: string): Duration<"milliseconds"> | null {
 /**
  * Multiplies a decimal number by a unit's milliseconds, rounding once. `"1.1h"` is 11 tenths of an
  * hour, so the result is `11 * 3_600_000 / 10`, exactly 3_960_000. Multiplying the parsed float
- * instead rounds twice, and `1.1 * 3_600_000` is 3_960_000.0000000005. A number with too many
- * digits for one rounding falls back to the float product.
+ * instead rounds twice, and `1.1 * 3_600_000` is 3_960_000.0000000005. A number with more
+ * significant digits than one exact product can hold falls back to the float product.
  */
 function segmentMilliseconds(number: string, multiplier: number): number {
   const parts = NUMBER_PARTS_RE.exec(number)
-  const whole = parts?.[1] ?? ""
   const fraction = parts?.[2] ?? ""
-  const exponent = Number(parts?.[3] ?? 0) - fraction.length
-  const scaled = Number(whole + fraction) * multiplier
+  const digits = `${parts?.[1] ?? ""}${fraction}`
+  // Trailing zeros move into the power of ten, so "1.100000000000000000h" stays in safe range.
+  const significant = digits.replace(/0+$/u, "")
+  const exponent = Number(parts?.[3] ?? 0) - fraction.length + (digits.length - significant.length)
+  const scaled = Number(significant) * multiplier
 
   if (!Number.isSafeInteger(scaled) || Math.abs(exponent) > MAX_EXACT_POWER_OF_TEN) {
     return Number.parseFloat(number) * multiplier
