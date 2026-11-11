@@ -189,6 +189,8 @@ function clear<Input>(limiter: Limiter<Input>, input: Input): Promise<void>
 
 Restores every unit of the identity, and forgets the remembered denial for it. Rejects with `StoreError` when the store fails.
 
+Only this limiter forgets its remembered denial. Other instances of your application, and other limiters with the same name, keep denying the identity until the reset that the store gave them. Set `cache: false` on a limiter that you clear while other instances serve the same identities.
+
 ```typescript
 await clear(perIp, request)
 ```
