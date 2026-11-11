@@ -543,13 +543,14 @@ describe("connect", () => {
     }
   })
 
-  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY])(
+  // Timers keep a delay as a signed 32-bit integer, so a longer one fires at once.
+  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY, 2_147_483_648])(
     "rejects timeoutMs %s when it connects",
     (timeoutMs) => {
       expect(() => connect(createWirePair()[0], { timeoutMs })).toThrow(
         expect.objectContaining({
           code: "invalid-timeout",
-          message: `timeoutMs must be a positive number of milliseconds or Infinity, not ${timeoutMs}`,
+          message: `timeoutMs must be a positive number of milliseconds up to 2147483647, or Infinity, not ${timeoutMs}`,
           name: "SetupError",
           timeoutMs,
         })

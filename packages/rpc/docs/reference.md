@@ -188,16 +188,16 @@ The class of every failure that the package raises during a call. `code` selects
 
 The class of every wiring mistake. It is thrown when you build something, and it never crosses the wire.
 
-| `code`              | Raised when                                                                | Extra fields           |
-| ------------------- | -------------------------------------------------------------------------- | ---------------------- |
-| `reserved-key`      | A contract key is reserved                                                 | `key`, `path`          |
-| `dotted-key`        | A contract key contains `.`                                                | `key`, `path`          |
-| `missing-resolver`  | A contract leaf has no resolver                                            | `path`                 |
-| `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel              | `path`                 |
-| `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch   | `expected`, `path`     |
-| `invalid-timeout`   | `connect` gets a `timeoutMs` that isn't a positive number or `Infinity`    | `timeoutMs`            |
-| `misplaced-handler` | A fragment sits at a path other than its own                               | `fragmentPath`, `path` |
-| `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window` | `caller`               |
+| `code`              | Raised when                                                                                 | Extra fields           |
+| ------------------- | ------------------------------------------------------------------------------------------- | ---------------------- |
+| `reserved-key`      | A contract key is reserved                                                                  | `key`, `path`          |
+| `dotted-key`        | A contract key contains `.`                                                                 | `key`, `path`          |
+| `missing-resolver`  | A contract leaf has no resolver                                                             | `path`                 |
+| `duplicate-channel` | Two routers passed to `mergeRouters` declare the same channel                               | `path`                 |
+| `invalid-handler`   | A handler tree has a non-fragment at a leaf, or a non-object at a branch                    | `expected`, `path`     |
+| `invalid-timeout`   | `connect` gets a `timeoutMs` that isn't a positive number up to 2,147,483,647 or `Infinity` | `timeoutMs`            |
+| `misplaced-handler` | A fragment sits at a path other than its own                                                | `fragmentPath`, `path` |
+| `no-window`         | `receivePort` or `relayPort` gets no `target` and finds no global `window`                  | `caller`               |
 
 ### Types
 

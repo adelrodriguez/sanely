@@ -21,6 +21,9 @@ const PROTOCOL = 1
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
+// Timers keep a delay as a signed 32-bit integer and fire a longer one at once.
+const MAX_TIMER_DELAY_MS = 2_147_483_647
+
 type PendingEntry = {
   fail: (error: ChannelError) => void
   settle: (result: unknown) => void
@@ -95,8 +98,9 @@ export function connect<Context = void>(
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options ?? {}
 
-  // `NaN` would silently disable the timeout, and zero or less would time out every call at once.
-  if (!(timeoutMs > 0)) {
+  // `NaN` would silently disable the timeout, and zero or less, or more than a timer holds, would
+  // time out every call at once.
+  if (!(timeoutMs > 0 && (timeoutMs <= MAX_TIMER_DELAY_MS || timeoutMs === Infinity))) {
     throw new SetupError({ code: "invalid-timeout", timeoutMs })
   }
 
