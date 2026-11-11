@@ -469,6 +469,39 @@ describe("first-class cache", () => {
     }
   )
 
+  test.each([true, false])(
+    "uses the store again once the latest refresh is stored, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const older = createDeferred<Decision>()
+      const answers: Array<() => Promise<Decision>> = [() => older.promise]
+      const decideOne = vi.fn(() => answers.shift()?.() ?? Promise.resolve(FALSE))
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne, name: "test" }),
+      })
+
+      // Refresh A waits for its provider while refresh B stores its decision.
+      const first = flags.details(betaAccess, { fresh: true })
+      await flushBackground()
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({ value: false })
+      await flushBackground()
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+      older.resolve(TRUE)
+      await first
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {

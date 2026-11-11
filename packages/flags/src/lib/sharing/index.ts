@@ -369,7 +369,7 @@ async function consultStore<TIdentity extends Subject>(
   const { flagDeletes } = state
   // A fresh write of this key has not completed, so the store can hold the decision it replaces.
   if (
-    (state.tickets.get(key)?.fresh ?? 0) > 0
+    state.tickets.get(key)?.held === true
     || state.stale.has(key)
     || state.mutations.get(key)?.deletes
     || flagDeletes.all > 0
@@ -422,10 +422,10 @@ function openTicket<TIdentity extends Subject>(
   fresh: boolean
 ): WriteTicket {
   const { tickets } = config.state
-  const entry = tickets.get(key) ?? { epoch: 0, fresh: 0, open: 0 }
+  const entry = tickets.get(key) ?? { epoch: 0, held: false, open: 0 }
   if (fresh) {
     entry.epoch += 1
-    entry.fresh += 1
+    entry.held = true
   }
   entry.open += 1
   tickets.set(key, entry)
@@ -441,8 +441,9 @@ function updateTicket<TIdentity extends Subject>(
   const entry = tickets.get(ticket.key)
   if (!entry) return
   if (release.open) entry.open -= 1
-  if (release.fresh && ticket.fresh) entry.fresh -= 1
-  if (entry.open === 0 && entry.fresh === 0) tickets.delete(ticket.key)
+  // Only the latest fresh ticket holds the key. A voided older one releases nothing.
+  if (release.fresh && ticket.fresh && ticket.epoch === entry.epoch) entry.held = false
+  if (entry.open === 0 && !entry.held) tickets.delete(ticket.key)
 }
 
 // Closes a ticket whose read ends without a write.

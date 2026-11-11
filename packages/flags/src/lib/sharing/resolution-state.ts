@@ -57,9 +57,9 @@ export type ResolutionState<TIdentity extends Subject> = {
   // one is always safe. It is cheaper than tracking which flags a notification covers.
   writes: { generation: number }
   // The open write tickets of each evaluation key. A fresh read advances its key's epoch, which
-  // voids only that key's older tickets, and counts in `fresh` until its store write completes.
-  // A key leaves the map once neither count holds, so the map holds only keys with work in flight.
-  tickets: Map<string, { epoch: number; fresh: number; open: number }>
+  // voids only that key's older tickets, and `held` is true until the latest fresh read's store
+  // write completes. A key leaves the map once no ticket is open and nothing holds it.
+  tickets: Map<string, { epoch: number; held: boolean; open: number }>
   // Keys whose fresh write failed, so the store can still hold the decision it replaced. Reads of
   // them skip the store until a write of the key succeeds, which the next read makes.
   stale: Set<string>
