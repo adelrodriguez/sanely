@@ -159,6 +159,23 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
   void connect(wire, { context: { sender: "main", userId: 1 }, router })
 }
 
+// connect takes a timeout in milliseconds or as a time expression, and keeps context inference.
+{
+  const wire: Wire = { onMessage: () => () => null, send: () => null }
+  const fromConfig = String(process.env.RPC_TIMEOUT)
+
+  void connect(wire, { timeout: 5000 })
+  void connect(wire, { timeout: Infinity })
+  void connect(wire, { timeout: "1.5s" })
+  void connect(wire, { context: { userId: 1 }, router: meRouter, timeout: "5s" })
+  // @ts-expect-error -- "1M" is not a time expression
+  void connect(wire, { timeout: "1M" })
+  // @ts-expect-error -- a string from config needs isTimeExpression first
+  void connect(wire, { timeout: fromConfig })
+  // @ts-expect-error -- the old name is gone
+  void connect(wire, { timeoutMs: 5000 })
+}
+
 // ChannelErrorDetail is exactly the documented union, one variant per code.
 {
   type Issues = readonly StandardSchemaV1.Issue[]
@@ -168,7 +185,7 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
     | { code: "internal" }
     | { code: "malformed-envelope" }
     | { code: "output-validation"; issues: Issues }
-    | { code: "timeout"; path: string; timeoutMs: number }
+    | { code: "timeout"; path: string; timeout: number }
     | { code: "unknown-channel"; path: string }
     | { code: "validation"; issues: Issues }
   >()
@@ -176,10 +193,10 @@ const unknownRouter = createRouter<typeof pingContract, unknown>(pingContract, {
 
 // A ChannelError's code narrows its fields.
 {
-  const error = new ChannelError({ code: "timeout", path: "a", timeoutMs: 1 })
+  const error = new ChannelError({ code: "timeout", path: "a", timeout: 1 })
 
   if (error.code === "timeout") {
-    expectTypeOf(error.timeoutMs).toEqualTypeOf<number>()
+    expectTypeOf(error.timeout).toEqualTypeOf<number>()
   }
 
   if (error.code === "validation") {

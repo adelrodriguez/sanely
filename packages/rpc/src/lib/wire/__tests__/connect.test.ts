@@ -129,7 +129,7 @@ function createServingPeer(options: { onHidden?: (error: unknown) => void } = {}
   }
 
   const server = connect(tappedServerWire, { onHidden: options.onHidden, router })
-  const client = connect(clientWire, { timeoutMs: 1000 })
+  const client = connect(clientWire, { timeout: 1000 })
 
   return { client, running, sent, server, signals }
 }
@@ -224,7 +224,7 @@ describe("connect", () => {
   test("a call to a wire with no serving end times out", async () => {
     const [serverWire, clientWire] = createWirePair()
     connect(serverWire) // no router
-    const { transport } = connect(clientWire, { timeoutMs: 20 })
+    const { transport } = connect(clientWire, { timeout: 20 })
 
     await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
       code: "timeout",
@@ -245,7 +245,7 @@ describe("connect", () => {
       },
       router,
     })
-    const { transport } = connect(clientWire, { timeoutMs: 1000 })
+    const { transport } = connect(clientWire, { timeout: 1000 })
 
     await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toMatchObject({
       code: "internal",
@@ -429,7 +429,7 @@ describe("connect", () => {
         },
       }),
     })
-    const { transport } = connect(clientWire, { timeoutMs: 20 })
+    const { transport } = connect(clientWire, { timeout: 20 })
 
     server.close()
 
@@ -508,7 +508,7 @@ describe("connect", () => {
 
   test("times out calls the peer never answers", async () => {
     const [wire] = createWirePair() // peer end never connected
-    const { transport } = connect(wire, { timeoutMs: 20 })
+    const { transport } = connect(wire, { timeout: 20 })
 
     const error = await Promise.resolve(transport("math.add", { a: 1, b: 2 })).catch(
       (error: unknown) => error
@@ -520,10 +520,10 @@ describe("connect", () => {
 
     expect(channelError.code).toBe("timeout")
     expect(channelError.path).toBe("math.add")
-    expect(channelError.timeoutMs).toBe(20)
+    expect(channelError.timeout).toBe(20)
   })
 
-  test("times out after 30 seconds when timeoutMs is unset", async () => {
+  test("times out after 30 seconds when timeout is unset", async () => {
     vi.useFakeTimers()
 
     try {
@@ -537,32 +537,65 @@ describe("connect", () => {
       expect(vi.getTimerCount()).toBe(1)
       await vi.advanceTimersByTimeAsync(1)
 
-      await expect(call).resolves.toMatchObject({ code: "timeout", timeoutMs: 30_000 })
+      await expect(call).resolves.toMatchObject({ code: "timeout", timeout: 30_000 })
     } finally {
       vi.useRealTimers()
     }
   })
 
-  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY])(
-    "rejects timeoutMs %s when it connects",
-    (timeoutMs) => {
-      expect(() => connect(createWirePair()[0], { timeoutMs })).toThrow(
+  test("times out after a time expression", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const [wire] = createWirePair()
+      const { transport } = connect(wire, { timeout: "1.5s" })
+      const call = Promise.resolve(transport("math.add", { a: 1, b: 2 })).catch(
+        (error: unknown) => error
+      )
+
+      await vi.advanceTimersByTimeAsync(1499)
+      expect(vi.getTimerCount()).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+
+      await expect(call).resolves.toMatchObject({ code: "timeout", timeout: 1500 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Timers keep a delay as a signed 32-bit integer, so a longer one fires at once.
+  test.each([Number.NaN, -1, 0, Number.NEGATIVE_INFINITY, 2_147_483_648])(
+    "rejects timeout %s when it connects",
+    (timeout) => {
+      expect(() => connect(createWirePair()[0], { timeout })).toThrow(
         expect.objectContaining({
           code: "invalid-timeout",
-          message: `timeoutMs must be a positive number of milliseconds or Infinity, not ${timeoutMs}`,
+          message: `timeout must be a time expression or a positive number of milliseconds up to 2147483647, or Infinity, not ${timeout}`,
           name: "SetupError",
-          timeoutMs,
+          timeout,
         })
       )
     }
   )
 
-  test("timeoutMs: Infinity leaves calls pending until close", async () => {
+  // A string from config is checked when it connects, not when it compiles.
+  test.each(["soon", "0s", "30d"])("rejects timeout %s from config when it connects", (timeout) => {
+    expect(() => connect(createWirePair()[0], { timeout: timeout as "1s" })).toThrow(
+      expect.objectContaining({
+        code: "invalid-timeout",
+        message: `timeout must be a time expression or a positive number of milliseconds up to 2147483647, or Infinity, not "${timeout}"`,
+        name: "SetupError",
+        timeout,
+      })
+    )
+  })
+
+  test("timeout: Infinity leaves calls pending until close", async () => {
     vi.useFakeTimers()
 
     try {
       const [wire] = createWirePair()
-      const { close, transport } = connect(wire, { timeoutMs: Infinity })
+      const { close, transport } = connect(wire, { timeout: Infinity })
       const call = Promise.resolve(transport("math.add", { a: 1, b: 2 })).catch(
         (error: unknown) => error
       )
@@ -693,7 +726,7 @@ describe("connect", () => {
           throw new Error("DataCloneError: not cloneable")
         },
       }
-      const { transport } = connect(wire, { timeoutMs: 1000 })
+      const { transport } = connect(wire, { timeout: 1000 })
 
       await expect(Promise.resolve(transport("math.add", { a: 1, b: 2 }))).rejects.toThrow(
         "not cloneable"
@@ -784,7 +817,7 @@ describe("toWire / fromWire", () => {
         ok: false,
       },
       {
-        error: { detail: { code: "timeout", path: 1, timeoutMs: 5 }, message: "x", name: "E" },
+        error: { detail: { code: "timeout", path: 1, timeout: 5 }, message: "x", name: "E" },
         ok: false,
       },
       { error: { message: 42, name: "Error" }, ok: false },
@@ -1052,7 +1085,7 @@ describe("connect over a pending wire", () => {
   test("does not flush requests whose callers already timed out", async () => {
     const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
 
-    const client = connect(pending, { timeoutMs: 5 })
+    const client = connect(pending, { timeout: 5 })
     const api = createClient(pullContract, client.transport)
 
     // Times out while the wire is still pending; the queued frame must die with it.
@@ -1096,7 +1129,7 @@ describe("connect over a pending wire", () => {
     ],
   ])("does not send a queued request when the first send %s", async (_name, end) => {
     const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
-    const client = connect(pending, { timeoutMs: Number.POSITIVE_INFINITY })
+    const client = connect(pending, { timeout: Number.POSITIVE_INFINITY })
     const controller = new AbortController()
     const calls = [
       Promise.resolve(client.transport("first", { name: "first" })),
@@ -1153,7 +1186,7 @@ describe("connect over a pending wire", () => {
 
   test("cancels a flushed call on the peer instead of withdrawing it", async () => {
     const { promise: pending, resolve: deliver } = Promise.withResolvers<Wire>()
-    const client = connect(pending, { timeoutMs: Infinity })
+    const client = connect(pending, { timeout: Infinity })
     const controller = new AbortController()
     const sent: unknown[] = []
 
@@ -1199,7 +1232,7 @@ describe("connect over a pending wire", () => {
   })
 
   test("releases the payload of a queued call that timed out", async () => {
-    const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: 1 })
+    const client = connect(Promise.withResolvers<Wire>().promise, { timeout: 1 })
     const { failure, payload } = callWithPayload(client.transport)
 
     await expect(failure).resolves.toBe("timeout")
@@ -1224,7 +1257,7 @@ describe("connect over a pending wire", () => {
   })
 
   test("releases queued payloads when the session closes", async () => {
-    const client = connect(Promise.withResolvers<Wire>().promise, { timeoutMs: Infinity })
+    const client = connect(Promise.withResolvers<Wire>().promise, { timeout: Infinity })
     const { failure, payload } = callWithPayload(client.transport)
 
     client.close()

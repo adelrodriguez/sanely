@@ -106,8 +106,8 @@ const timeImports = {
   message: "Import shared time definitions through @sanely/core/time.",
 }
 
-// Flags, ratelimit, skew, and try read lengths of time with @sanely/duration, which they depend on at
-// run time.
+// Flags, ratelimit, rpc, skew, and try read lengths of time with @sanely/duration, which they depend
+// on at run time.
 const durationImports = {
   group: [...timeImports.group, "!@sanely/duration"],
   message:
@@ -123,6 +123,7 @@ const workspaceImports: Record<string, { group: string[]; message: string }> = {
   duration: timeImports,
   flags: durationImports,
   ratelimit: durationImports,
+  rpc: durationImports,
   skew: durationImports,
   try: durationImports,
 }

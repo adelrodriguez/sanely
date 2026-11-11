@@ -11,7 +11,7 @@ export type ChannelErrorDetail =
   | { code: "internal" }
   | { code: "malformed-envelope" }
   | { code: "output-validation"; issues: readonly StandardSchemaV1.Issue[] }
-  | { code: "timeout"; path: string; timeoutMs: number }
+  | { code: "timeout"; path: string; timeout: number }
   | { code: "unknown-channel"; path: string }
   | { code: "validation"; issues: readonly StandardSchemaV1.Issue[] }
 
@@ -57,8 +57,8 @@ const CODES: { [C in Code]: CodeSpec<Extract<ChannelErrorDetail, { code: C }>> }
   "output-validation": { exposed: false, fields: { issues: isIssueList }, message: joinIssues },
   timeout: {
     exposed: false,
-    fields: { path: isString, timeoutMs: isNumber },
-    message: ({ path, timeoutMs }) => `Call to "${path}" timed out after ${timeoutMs}ms`,
+    fields: { path: isString, timeout: isNumber },
+    message: ({ path, timeout }) => `Call to "${path}" timed out after ${timeout}ms`,
   },
   "unknown-channel": {
     exposed: true,
@@ -100,7 +100,8 @@ class ChannelBaseError extends Error {
  * - `output-validation` (`issues`) — the resolver's result failed the leaf's `output` schema; the
  *   server's fault, so edges should not blame (or inform) the caller
  * - `unknown-channel` (`path`) — the path is not in the contract
- * - `timeout` (`path`, `timeoutMs`) — a `connect` call the peer never answered
+ * - `timeout` (`path`, `timeout`) — a `connect` call the peer never answered, after `timeout`
+ *   milliseconds
  * - `closed` — the wire was torn down; the close reason is in `cause`
  * - `internal` — the other side failed and hid why (`toWire` and `connect` hide failures by default);
  *   the real error went to its `onHidden`
