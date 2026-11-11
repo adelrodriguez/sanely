@@ -13,7 +13,8 @@ import { createResolutionState, type ResolutionState } from "./resolution-state"
  */
 export type DecisionStore = {
   /**
-   * Deletes one stored decision that no longer fits its flag.
+   * Deletes one stored decision: one that no longer fits its flag, or one that a fresh read
+   * replaces.
    */
   delete?(key: string): Promise<unknown>
   /**
