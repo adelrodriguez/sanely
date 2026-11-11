@@ -53,7 +53,7 @@ Use an `after` hook for exposure tracking. It runs once for each evaluation, als
 
 ## Keep state in a hook
 
-The reader shares one hook object between every evaluation. If a hook keeps state, create a new hook object for each reader:
+Every evaluation uses the same hook object, and so does every reader that you pass it to. To keep state for one reader, create the hook in a function, and call the function for each reader:
 
 ```typescript
 function countingHook(label: string): Hook {
