@@ -62,6 +62,13 @@ const dependencies: Record<string, Record<string, string[]>> = {
     shared: ["errors"],
     sharing: ["changes", "definition", "identity", "shared"],
   },
+  // Each reader, such as `ip` or `geo`, imports the shared request domain and never another reader.
+  request: {
+    address: [],
+    geo: ["request"],
+    ip: ["address", "request"],
+    request: [],
+  },
   rpc: {
     adapters: ["core", "wire"],
     client: ["core"],

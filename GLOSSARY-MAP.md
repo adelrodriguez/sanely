@@ -12,6 +12,7 @@ Each package is its own context. A package gets its glossary at `packages/<name>
 - [`@sanely/cron`](./packages/cron/GLOSSARY.md): compiles an English-like schedule language to cron expressions
 - `@sanely/rpc`: calls procedures from a Standard Schema contract over any transport
 - [`@sanely/skew`](./packages/skew/GLOSSARY.md): detects stale clients after a deployment
+- [`@sanely/request`](./packages/request/GLOSSARY.md): reads the client IP address and location from a request
 - [`@sanely/core`](./packages/core/GLOSSARY.md): shared time units and their aliases
 
 ## Relationships
