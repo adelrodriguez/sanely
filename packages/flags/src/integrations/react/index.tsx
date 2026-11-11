@@ -489,20 +489,22 @@ function parseSnapshot(
 }
 
 /**
- * The state of each snapshot object, so a provider that remounts with the same snapshot keeps the
- * entries that a change or `invalidate` already dropped. A state belongs to one reader's change
- * clock, and a snapshot read with another reader starts over.
+ * The state of each snapshot object for each reader's change clock, so a provider that remounts
+ * with the same snapshot keeps the entries that a change or `invalidate` already dropped. Another
+ * reader that reads the same snapshot object gets a state of its own and leaves this one alone.
  */
-const snapshotStates = new WeakMap<object, SnapshotState>()
+const snapshotStates = new WeakMap<object, WeakMap<ChangeClock, SnapshotState>>()
 
 function snapshotState(snapshot: unknown, clock: ChangeClock): SnapshotState | undefined {
   if (!isRecord(snapshot)) return undefined
-  const existing = snapshotStates.get(snapshot)
-  if (existing?.watch.clock === clock) return existing
+  const states = snapshotStates.get(snapshot) ?? new WeakMap<ChangeClock, SnapshotState>()
+  snapshotStates.set(snapshot, states)
+  const existing = states.get(clock)
+  if (existing) return existing
   const parsed = parseSnapshot(snapshot)
   if (!parsed) return undefined
   const state = { ...parsed, watch: { clock, since: clock.count } }
-  snapshotStates.set(snapshot, state)
+  states.set(clock, state)
   return state
 }
 

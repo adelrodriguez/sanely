@@ -1054,6 +1054,34 @@ describe("server rendering", () => {
     expect(await screen.findByText("false:dark")).toBeTruthy()
   })
 
+  it("keeps a reader's dropped snapshot values when another reader uses the snapshot", async () => {
+    const identity = { distinctId: "user" }
+    const { snapshot } = await serverRender(identity)
+    const first = makeFlags("bulk")
+    const second = makeFlags("bulk")
+    first.state.value = false
+    const tree = (flags: TestFlags, key: string) => (
+      <App key={key} flags={flags} identity={identity} snapshot={snapshot} />
+    )
+    const { rerender } = await renderAsync(tree(first.flags, "a"))
+    act(() => {
+      first.emit(["beta"])
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    // Another reader reads the same snapshot object, then the first reader mounts again.
+    await act(() => {
+      rerender(tree(second.flags, "b"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true:dark")).toBeTruthy()
+    await act(() => {
+      rerender(tree(first.flags, "c"))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
   it("drops a snapshot value after a change notification and evaluates", async () => {
     const identity = { distinctId: "user" }
     const { html, snapshot } = await serverRender(identity)
