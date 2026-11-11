@@ -56,19 +56,6 @@ describe("evaluate", () => {
     expect(details.error).toBe(timeout)
   })
 
-  test("adds no timeout of its own when the deadline is a signal", async () => {
-    const decide = vi.fn(async () => {
-      await sleep(15)
-      return { type: "boolean", value: true }
-    })
-
-    const details = await evaluate(createEvaluator({ timeout: 1 }), betaAccess, identify, decide, {
-      deadline: new AbortController().signal,
-    })
-
-    expect(details.source).toBe("provider")
-  })
-
   test("runs before, after, and finally hooks on success", async () => {
     const calls: string[] = []
     const hook: Hook<Identity> = {

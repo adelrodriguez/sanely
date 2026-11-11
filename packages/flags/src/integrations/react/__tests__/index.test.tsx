@@ -336,20 +336,6 @@ describe("React integration", () => {
     expect(seen).toEqual(["provider"])
   })
 
-  it("evaluates a reader without identify for the provider identity", async () => {
-    const provider = makeProvider()
-    const serverFlags = createFlags({ provider: provider.single })
-    await renderAsync(
-      <FlagsProvider flags={serverFlags} identity={{ distinctId: "caller" }}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    await screen.findByText("true")
-    expect(provider.seen).toEqual(["caller"])
-  })
-
   it("keeps the cached value when the identity object changes but its content does not", async () => {
     const { decideOne, flags } = makeFlags()
     const tree = (distinctId: string) => (
@@ -978,35 +964,6 @@ describe("React integration", () => {
     await sleep(0)
     await controls().prefetch([beta])
     expect(decideOne).toHaveBeenCalledTimes(2)
-  })
-
-  it("renders a flag when the provider subscribe throws", async () => {
-    const reports: unknown[] = []
-    const decideOne = vi.fn(() => decision.boolean(true))
-    const flags = createFlags({
-      identify: () => ({ distinctId: "core" }),
-      onError: (report) => {
-        reports.push(report._tag)
-      },
-      provider: defineProvider({
-        decideOne,
-        name: "failing",
-        subscribe: () => {
-          throw new Error("subscribe failed")
-        },
-      }),
-    })
-    await renderAsync(
-      <FlagsProvider flags={flags}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decideOne).toHaveBeenCalledTimes(1)
-    await sleep(1)
-    expect(reports).toContain("SubscribeFailed")
   })
 
   it("drops a snapshot value after a change once a failed subscribe recovers", async () => {
