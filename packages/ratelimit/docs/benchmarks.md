@@ -1,7 +1,7 @@
-# Benchmarks
+# Benchmark reference
 
 - `pnpm run bench` runs the benchmarks that need no server: the memory store and the limiter. Each store has its own script: `bench:redis-store`, `bench:valkey-store`, and `bench:bun-redis-store`. They need the same server as the store tests.
-- Every store runs the shared benchmarks in `src/lib/store/__tests__/benchmarks.ts`. A new store gets a `<name>.bench.ts` file and a `benchmark.include` entry in `vitest.config.ts`.
+- The memory store and the three Redis stores run the shared benchmarks in `src/lib/store/__tests__/benchmarks.ts`. The Durable Object store has no benchmarks. A new store gets a `<name>.bench.ts` file. The `unit` project in `vitest.config.ts` picks up every `*.bench.ts` file outside `src/lib/stores/redis/`, and a store that needs a server gets its own project with a `benchmark.include` entry.
 - `vitest bench` names each benchmark project `<project> (bench)`.
 - The `ratelimit-performance-check` workflow runs only on a pull request with the `performance-check` label that changes this package. Use the label on a pull request that changes performance. It runs the benchmarks of the base branch and of the pull request in turns on one runner, and posts the results as one comment, which each run updates. The check is not required on `main`, so it does not block a merge.
 - The check fails when a case goes over its budget in `scripts/bench-budgets.ts`. For the memory store and the limiter, it also fails when the median of three rounds is more than 10% slower than the base branch, and every pull request round is slower than every base round. The network stores move by up to 80% between runs on one runner, so they check only their budgets. `scripts/bench-report.ts` makes these decisions and writes the comment. The report runs the script and the budgets from the base branch, so a change to either takes effect only after it merges.

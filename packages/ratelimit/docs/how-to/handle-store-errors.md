@@ -51,6 +51,6 @@ Give the local limiter a lower limit, because each instance counts separately. W
 
 ## Fail at once when Redis is down
 
-By default, ioredis and the Bun client queue commands until they reconnect, so each request waits for the full `timeout`. To fail at once instead, set `enableOfflineQueue: false` on the client.
+By default, the Redis clients queue commands until they reconnect, so each request waits for the full `timeout`. To fail at once instead, set `enableOfflineQueue: false` on an ioredis, iovalkey, or Bun client, or set `disableOfflineQueue: true` on a node-redis client.
 
 To wait a different time for the store, set `timeout` on `buildLimiter` or on one limiter, in milliseconds or as a time expression such as `"500ms"`. The default is `1000`.

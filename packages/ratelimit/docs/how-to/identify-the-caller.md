@@ -20,7 +20,7 @@ Add `identify` to turn your input into an identity. Its parameter type becomes t
 
 ```typescript
 import type { Context } from "hono"
-import { slidingWindow } from "@sanely/ratelimit"
+import { rateLimit, slidingWindow } from "@sanely/ratelimit"
 
 const perDevice = limiter({
   name: "suggestions:device",

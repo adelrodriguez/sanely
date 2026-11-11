@@ -16,7 +16,7 @@ Every duration is a whole number of milliseconds, up to 2^50 ms (about 35,000 ye
 ### `fixedWindow({ limit, window })`
 
 ```typescript
-function fixedWindow<const T extends string>(options: WindowOptions<T>): FixedWindow
+function fixedWindow<const T extends string = never>(options: WindowOptions<T>): FixedWindow
 ```
 
 Allows `limit` units in each window. Windows start at multiples of `window` since the epoch, so a window of one day starts at midnight UTC.
@@ -30,7 +30,7 @@ fixedWindow({ limit: 2_000, window: "1d" }) // At most 2,000 units per day.
 ### `slidingWindow({ limit, window })`
 
 ```typescript
-function slidingWindow<const T extends string>(options: WindowOptions<T>): SlidingWindow
+function slidingWindow<const T extends string = never>(options: WindowOptions<T>): SlidingWindow
 ```
 
 Allows `limit` units in any period of `window`. The count is the current window's count plus the previous window's count, weighted by how much of the previous window the last full window length still covers.
@@ -44,7 +44,7 @@ slidingWindow({ limit: 30, window: "1h" }) // At most 30 units in any hour.
 ### `tokenBucket({ refillRate, interval, capacity })`
 
 ```typescript
-function tokenBucket<const T extends string>(options: TokenBucketOptions<T>): TokenBucket
+function tokenBucket<const T extends string = never>(options: TokenBucketOptions<T>): TokenBucket
 ```
 
 Holds up to `capacity` tokens and adds `refillRate` tokens every `interval`. A new bucket starts full. A full refill must take at most 2^50 ms.
@@ -70,7 +70,7 @@ tokenBucket({ refillRate: 5, interval: "1m", capacity: 50 }) // 50 tokens, 5 mor
 ### `buildLimiter(options)`
 
 ```typescript
-function buildLimiter<Supported extends Algorithm, const T extends string>(
+function buildLimiter<Supported extends Algorithm, const T extends string = never>(
   options: BuildLimiterOptions<Supported, T>
 ): DefineLimiter<Supported>
 ```
@@ -96,11 +96,11 @@ const limiter = buildLimiter({ store: memoryStore(), timeout: "500ms" })
 
 ```typescript
 type DefineLimiter<Supported extends Algorithm> = {
-  <Input, const T extends string>(
-    options: LimiterOptions<Supported, T> & { identify: Identify<Input> }
+  <Input, const T extends string = never>(
+    options: LimiterOptions<Supported, T> & { readonly identify: Identify<Input> }
   ): Limiter<Input>
-  <const T extends string>(
-    options: LimiterOptions<Supported, T> & { identify?: undefined }
+  <const T extends string = never>(
+    options: LimiterOptions<Supported, T> & { readonly identify?: undefined }
   ): Limiter
 }
 ```
@@ -361,23 +361,25 @@ Builds a store from one atomic read and write of a key. The package applies the 
 
 ## Types
 
-| Type                                                                               | Describes                                                |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `Algorithm`                                                                        | `FixedWindow \| SlidingWindow \| TokenBucket`.           |
-| `FixedWindow`, `SlidingWindow`, `TokenBucket`                                      | Made only by the algorithm functions, not by a literal.  |
-| `WindowOptions`, `TokenBucketOptions`                                              | The arguments of the algorithm functions.                |
-| `BuildLimiterOptions`                                                              | The argument of `buildLimiter`.                          |
-| `LimiterOptions`                                                                   | The argument of the limiter factory, without `identify`. |
-| `LimiterSettings`                                                                  | `timeout`, `cache`, and `mode`.                          |
-| `Mode`                                                                             | `"enforce" \| "dryRun"`.                                 |
-| `DefineLimiter`                                                                    | The limiter factory that `buildLimiter` returns.         |
-| `Limiter<Input>`                                                                   | A limiter definition. It has `name`.                     |
-| `Identify<Input>`                                                                  | `(input: Input) => Identity \| Promise<Identity>`.       |
-| `Identity`                                                                         | See [`Identity`](#identity).                             |
-| `RateLimitOptions`                                                                 | The options of `rateLimit`.                              |
-| `LimitResult`, `LimitResults`, `AllowedResult`, `DeniedResult`, `StoreErrorResult` | See [Results](#results).                                 |
-| `Remaining`                                                                        | The value that `remaining` resolves with.                |
-| `Store`, `StoreRequest`, `StoreResult`                                             | See [`Store`](#store).                                   |
-| `MemoryStoreOptions`                                                               | The options of `memoryStore`.                            |
-| `StateStoreOptions`, `State`                                                       | See [`stateStore`](#statestoreoptions).                  |
-| `IoredisClient`, `NodeRedisClient`, `IovalkeyClient`, `BunRedisClient`             | The client shapes that the Redis stores accept.          |
+| Type                                                                               | Describes                                                                          |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `Algorithm`                                                                        | `FixedWindow \| SlidingWindow \| TokenBucket`.                                     |
+| `FixedWindow`, `SlidingWindow`, `TokenBucket`                                      | Made only by the algorithm functions, not by a literal.                            |
+| `WindowOptions`, `TokenBucketOptions`                                              | The arguments of the algorithm functions.                                          |
+| `BuildLimiterOptions`                                                              | The argument of `buildLimiter`.                                                    |
+| `LimiterOptions`                                                                   | The argument of the limiter factory, without `identify`.                           |
+| `LimiterSettings`                                                                  | `timeout`, `cache`, and `mode`.                                                    |
+| `Mode`                                                                             | `"enforce" \| "dryRun"`.                                                           |
+| `DefineLimiter`                                                                    | The limiter factory that `buildLimiter` returns.                                   |
+| `Limiter<Input>`                                                                   | A limiter definition. It has `name`.                                               |
+| `Identify<Input>`                                                                  | `(input: Input) => Identity \| Promise<Identity>`.                                 |
+| `Identity`                                                                         | See [`Identity`](#identity).                                                       |
+| `RateLimitOptions`                                                                 | The options of `rateLimit`.                                                        |
+| `LimitResult`, `LimitResults`, `AllowedResult`, `DeniedResult`, `StoreErrorResult` | See [Results](#results).                                                           |
+| `Remaining`                                                                        | The value that `remaining` resolves with.                                          |
+| `Store`, `StoreRequest`, `StoreResult`                                             | See [`Store`](#store).                                                             |
+| `MemoryStoreOptions`                                                               | The options of `memoryStore`.                                                      |
+| `StateStoreOptions`, `State`                                                       | See [`stateStore`](#statestoreoptions).                                            |
+| `IoredisClient`, `NodeRedisClient`, `IovalkeyClient`, `BunRedisClient`             | The client shapes that the Redis stores accept.                                    |
+| `RateLimitNamespace`                                                               | The binding of a `RateLimitObject` namespace that `durableObjectStore` takes.      |
+| `ObjectRequest`                                                                    | The `algorithm` and `cost` that `durableObjectStore` sends to a `RateLimitObject`. |

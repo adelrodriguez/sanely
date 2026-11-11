@@ -44,7 +44,7 @@ import { buildLimiter, rateLimit, slidingWindow } from "@sanely/ratelimit"
 import { redisStore } from "@sanely/ratelimit/stores/redis"
 import Redis from "ioredis"
 
-const redis = new Redis(process.env.REDIS_URL)
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379")
 
 const limiter = buildLimiter({
   store: redisStore(redis),
@@ -55,6 +55,7 @@ const perIp = limiter({
   algorithm: slidingWindow({ limit: 30, window: "1h" }),
 })
 
+const ip = "203.0.113.7" // The client IP that your platform or trusted proxy gives you.
 const result = await rateLimit(perIp, ip)
 
 if (!result.success) {
