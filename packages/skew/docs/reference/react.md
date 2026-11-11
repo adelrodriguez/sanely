@@ -5,7 +5,9 @@ The React integration. It needs `react` 18 or later.
 ## `useDeploymentStatus(options?)`
 
 ```ts
-function useDeploymentStatus(options?: DeploymentStatusOptions): DeploymentStatus
+function useDeploymentStatus<const T extends string>(
+  options?: DeploymentStatusOptions<T>
+): DeploymentStatus
 ```
 
 Subscribes the component to a shared monitor and returns its current `DeploymentStatus`. Without `source`, the hook uses the default monitor, which reads the embed that the adapter wrote into the page. With `source`, the hook uses the shared monitor for that source object. All components with the same source share one monitor and one request.
@@ -16,14 +18,14 @@ During server rendering, the hook returns a state with `status: "unknown"`, `che
 
 `DeploymentStatusOptions` extends `DeploymentSubscriberOptions`.
 
-| Option             | Type                  | Default                   | Description                                                                                                    |
-| ------------------ | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `checkInterval`    | `number`              | `300000`                  | Milliseconds between checks while the page is visible. Values below `10000` change to `10000`, with a warning. |
-| `checkOnReconnect` | `boolean`             | `true`                    | Check when the browser comes back online.                                                                      |
-| `checkOnSubscribe` | `boolean`             | `true`                    | Check when the first subscriber attaches.                                                                      |
-| `checkOnVisible`   | `boolean`             | `true`                    | Check when the page becomes visible or the browser restores it from the back-forward cache.                    |
-| `isCurrent`        | `IsDeploymentCurrent` | Exact deployment ID match | Decides whether the running deployment is current for a target.                                                |
-| `source`           | `DeploymentSource`    | The source from the embed | Uses the shared monitor for this source.                                                                       |
+| Option             | Type                  | Default                   | Description                                                                                                                                          |
+| ------------------ | --------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkInterval`    | `number \| string`    | `300000`                  | Milliseconds or a time expression, such as `"5m"`, between checks while the page is visible. Values below `10000` change to `10000`, with a warning. |
+| `checkOnReconnect` | `boolean`             | `true`                    | Check when the browser comes back online.                                                                                                            |
+| `checkOnSubscribe` | `boolean`             | `true`                    | Check when the first subscriber attaches.                                                                                                            |
+| `checkOnVisible`   | `boolean`             | `true`                    | Check when the page becomes visible or the browser restores it from the back-forward cache.                                                          |
+| `isCurrent`        | `IsDeploymentCurrent` | Exact deployment ID match | Decides whether the running deployment is current for a target.                                                                                      |
+| `source`           | `DeploymentSource`    | The source from the embed | Uses the shared monitor for this source.                                                                                                             |
 
 The hook compares a new options object with the previous one key by key. An inline object with the same values does not subscribe again. `source` and `isCurrent` compare by reference. Define them at module scope or memoize them.
 

@@ -1,8 +1,10 @@
+import type { ValidateTimeExpression } from "@sanely/duration"
 import { MS_PER_MINUTE, MS_PER_SECOND } from "@sanely/core/time"
 import type { Deployment, DeploymentSource, IsDeploymentCurrent } from "#lib/protocol/types.ts"
 import type { RuntimeEnvironment, TimerHandle } from "./environment"
 import type { DeploymentSchedule } from "./scheduler"
 import { createBrowserEnvironment } from "./environment"
+import { milliseconds } from "./milliseconds"
 import {
   DEFAULT_DEPLOYMENT_SCHEDULE,
   DeploymentScheduler,
@@ -52,18 +54,19 @@ export const DEFAULT_CHECK_TIMEOUT = 30 * MS_PER_SECOND
 const RELOAD_MARKER_KEY = "deployment-check:reload"
 const RELOAD_COOLDOWN = 10 * MS_PER_MINUTE
 
-export interface DeploymentMonitorOptions {
-  readonly checkTimeout?: number
+export interface DeploymentMonitorOptions<T extends string = never> {
+  readonly checkTimeout?: number | ValidateTimeExpression<T>
   readonly environment?: RuntimeEnvironment
   readonly isCurrent?: IsDeploymentCurrent
 }
 
-interface InternalMonitorOptions extends DeploymentMonitorOptions {
+interface InternalMonitorOptions extends Omit<DeploymentMonitorOptions, "checkTimeout"> {
+  readonly checkTimeout?: number | string
   readonly onDestroy?: () => void
 }
 
-export interface DeploymentSubscriberOptions {
-  readonly checkInterval?: number
+export interface DeploymentSubscriberOptions<T extends string = never> {
+  readonly checkInterval?: number | ValidateTimeExpression<T>
   readonly checkOnReconnect?: boolean
   readonly checkOnSubscribe?: boolean
   readonly checkOnVisible?: boolean
@@ -75,9 +78,9 @@ export interface DeploymentMonitor {
   destroy(): void
   getState(): DeploymentStatus
   reload(): void
-  subscribe(
+  subscribe<const T extends string = never>(
     listener: (state: DeploymentStatus) => void,
-    options?: DeploymentSubscriberOptions
+    options?: DeploymentSubscriberOptions<T>
   ): () => void
 }
 
@@ -100,7 +103,7 @@ class DeploymentMonitorImplementation
 
   constructor(source: DeploymentSource | undefined, options: InternalMonitorOptions) {
     super()
-    this.#checkTimeout = options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT
+    this.#checkTimeout = milliseconds(options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT)
     this.#environment = options.environment ?? createBrowserEnvironment()
     this.#defaultIsCurrent = options.isCurrent ?? ((running, target) => running.id === target.id)
     this.#isCurrent = this.#defaultIsCurrent
@@ -250,17 +253,20 @@ class DeploymentMonitorImplementation
     }
   }
 
-  override subscribe(
+  override subscribe<const T extends string = never>(
     listener: (state: DeploymentStatus) => void,
-    options: DeploymentSubscriberOptions = {}
+    { checkInterval, ...options }: DeploymentSubscriberOptions<T> = {}
   ): () => void {
+    const interval =
+      checkInterval === undefined ? {} : { checkInterval: milliseconds(checkInterval) }
+
     if (this.#destroyed) {
       return () => {
         // A destroyed monitor has no subscription to remove.
       }
     }
 
-    return super.subscribe(listener, options)
+    return super.subscribe(listener, { ...options, ...interval })
   }
 
   protected override onSubscribe(): void {
@@ -440,9 +446,9 @@ class ReloadGuard {
   }
 }
 
-export function createDeploymentMonitor(
+export function createDeploymentMonitor<const T extends string = never>(
   source?: DeploymentSource,
-  options: DeploymentMonitorOptions = {}
+  options: DeploymentMonitorOptions<T> = {}
 ): DeploymentMonitor {
   return new DeploymentMonitorImplementation(source, options)
 }

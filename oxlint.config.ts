@@ -100,8 +100,8 @@ const timeImports = {
   message: "Import shared time definitions through @sanely/core/time.",
 }
 
-// Ratelimit reads its periods with @sanely/duration, which it depends on at run time.
-const ratelimitImports = {
+// Ratelimit and skew read lengths of time with @sanely/duration, which they depend on at run time.
+const durationImports = {
   group: [...timeImports.group, "!@sanely/duration"],
   message:
     "Import shared time definitions through @sanely/core/time, and time expressions through @sanely/duration.",
@@ -114,8 +114,8 @@ const workspaceImports: Record<string, { group: string[]; message: string }> = {
   },
   cron: timeImports,
   duration: timeImports,
-  ratelimit: ratelimitImports,
-  skew: timeImports,
+  ratelimit: durationImports,
+  skew: durationImports,
 }
 
 function packageImports(name: string) {
@@ -311,7 +311,7 @@ export default defineConfig({
     //                                                <- limiter
     //
     // These rules follow the generic `src/lib` rules above, because a later override replaces the
-    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` and `ratelimitImports` for that reason. A
+    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` and `durationImports` for that reason. A
     // folder without a rule of its own may import nothing else in lib. The last rule lets tests
     // cross these lines.
     {
@@ -322,7 +322,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/**"],
                 message:
@@ -344,7 +344,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/**"],
                 message: "options and expiring-map import nothing else in lib.",
@@ -362,7 +362,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/**", "!#lib/options/**"],
                 message: "algorithms import only options.",
@@ -380,7 +380,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**"],
                 message: "The store contract imports only algorithms.",
@@ -398,7 +398,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**", "!#lib/store/**"],
                 message: "transitions import only algorithms and the store contract.",
@@ -416,7 +416,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/stores/**", "#lib/limiter/**"],
                 message:
@@ -435,7 +435,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              ratelimitImports,
+              durationImports,
               {
                 group: ["#lib/stores/**", "#lib/transitions/**"],
                 message:
@@ -454,7 +454,7 @@ export default defineConfig({
     // protocol, then the runtime, then integrations. Adapters import only the protocol and
     // `adapters/shared.ts`, and an integration never imports an adapter. These rules follow the
     // generic `src/lib` rules above, because a later override replaces the rule options of an
-    // earlier one. Each rule repeats `timeImports` for that reason. The last rule lets tests cross
+    // earlier one. Each rule repeats `durationImports` for that reason. The last rule lets tests cross
     // these lines.
     {
       files: ["packages/skew/src/lib/protocol/**/*.ts"],
@@ -467,7 +467,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
-              timeImports,
+              durationImports,
               {
                 group: ["#lib/runtime/**", "#integrations/**", "#adapters/**"],
                 message: "protocol imports nothing else in skew.",
@@ -488,7 +488,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
-              timeImports,
+              durationImports,
               {
                 group: ["#integrations/**", "#adapters/**"],
                 message: "runtime imports only the protocol.",
@@ -509,7 +509,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
-              timeImports,
+              durationImports,
               {
                 group: ["#adapters/**"],
                 message: "An integration never imports an adapter.",
@@ -530,7 +530,7 @@ export default defineConfig({
                 group: ["#index.ts"],
                 message: "skew code must not import the public entry point.",
               },
-              timeImports,
+              durationImports,
               {
                 group: [
                   "#lib/**",

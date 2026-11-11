@@ -1,3 +1,4 @@
+import { InvalidTimeExpressionError } from "@sanely/duration"
 import { describe, expect, it, onTestFinished, vi } from "vitest"
 import type { Deployment, DeploymentSource } from "#lib/protocol/types.ts"
 import { DEFAULT_CHECK_TIMEOUT, createDeploymentMonitor } from "#lib/runtime/monitor.ts"
@@ -82,6 +83,35 @@ async function loadStalePageAndReload(environment: FakeEnvironment) {
 }
 
 describe("deployment monitor", () => {
+  it("reads checkTimeout and checkInterval given as time expressions", async () => {
+    const environment = new FakeEnvironment()
+    const monitor = createDeploymentMonitor(
+      { resolveTarget: neverSettles, running: { id: "running" } },
+      { checkTimeout: "2s", environment }
+    )
+    const unsubscribe = monitor.subscribe(noop, { checkInterval: "1m", checkOnSubscribe: false })
+    onTestFinished(unsubscribe)
+
+    void monitor.check()
+    await Promise.resolve()
+
+    expect(environment.timeoutDelays).toStrictEqual([2000])
+    expect(environment.intervalDelays).toStrictEqual([60_000])
+  })
+
+  it("rejects a string that is not a time expression", () => {
+    const environment = new FakeEnvironment()
+    const source = { resolveTarget: neverSettles, running: { id: "running" } }
+    const monitor = createDeploymentMonitor(source, { environment })
+
+    expect(() => createDeploymentMonitor(source, { checkTimeout: "soon" as "1s" })).toThrow(
+      InvalidTimeExpressionError
+    )
+    expect(() => monitor.subscribe(noop, { checkInterval: "soon" as "1m" })).toThrow(
+      InvalidTimeExpressionError
+    )
+  })
+
   it("starts with stable unknown state for the running deployment", () => {
     expect.assertions(2)
     // Newer Node.js versions, such as 26, define a global `sessionStorage`. Remove it, so the

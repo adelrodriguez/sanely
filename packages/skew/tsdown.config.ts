@@ -9,8 +9,11 @@ export default defineConfig({
   deps: {
     alwaysBundle: ["@sanely/core/time"],
     onlyBundle: [],
-    // The adapters import their framework peers, so peers are the only external imports.
-    onlyImport: Object.keys(packageJson.peerDependencies),
+    // The runtime imports its dependencies, and the adapters import their framework peers.
+    onlyImport: [
+      ...Object.keys(packageJson.dependencies),
+      ...Object.keys(packageJson.peerDependencies),
+    ],
   },
   dts: true,
   entry: [

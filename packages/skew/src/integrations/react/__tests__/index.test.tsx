@@ -44,6 +44,11 @@ function SourceStatus({
   return <output>{deployment.status}</output>
 }
 
+function MinuteStatus({ source }: { readonly source: DeploymentSource }) {
+  const deployment = useDeploymentStatus({ checkInterval: "1m", checkOnSubscribe: false, source })
+  return <output>{deployment.status}</output>
+}
+
 function InlineStatus({ source }: { readonly source: DeploymentSource }) {
   const deployment = useDeploymentStatus({ checkInterval: 20_000, source })
   return <output>{deployment.status}</output>
@@ -170,6 +175,22 @@ describe("react deployment integration", () => {
     })
 
     expect(calls).toBe(1)
+  })
+
+  it("reads a checkInterval given as a time expression", () => {
+    setupDom()
+    const setInterval = vi.spyOn(globalThis, "setInterval")
+    onTestFinished(() => {
+      setInterval.mockRestore()
+    })
+    const source: DeploymentSource = {
+      resolveTarget: () => Promise.resolve({ id: "running" }),
+      running: { id: "running" },
+    }
+
+    render(<MinuteStatus source={source} />)
+
+    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 60_000)
   })
 
   it("uses the isCurrent predicate supplied to the hook", async () => {
