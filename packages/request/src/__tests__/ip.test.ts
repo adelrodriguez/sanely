@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest"
 import type { IpOptions, IpPlatform, RequestLike } from "#index.ts"
-import { ip } from "#index.ts"
+import { ip, parseProxies } from "#index.ts"
 
-// Calls `ip` without a platform unless the options name one.
-function find(request: RequestLike, options: Partial<IpOptions> = {}) {
-  return ip(request, { platform: "none", ...options })
+interface FindOptions {
+  readonly platform?: IpOptions["platform"]
+  readonly proxies?: readonly string[]
+}
+
+// Calls `ip` without a platform unless the options name one, parsing the proxies first.
+function find(request: RequestLike, { platform = "none", proxies = [] }: FindOptions = {}) {
+  return ip(request, { platform, proxies: parseProxies(proxies) })
 }
 
 function headers(entries: Record<string, string>): RequestLike {
@@ -169,11 +174,16 @@ describe("ip", () => {
     expect(find({ headers: { "X-Forwarded-For": "1.1.1.1" } })).toBe("1.1.1.1")
   })
 
-  it("throws a TypeError for a proxy that is not an address or a range", () => {
-    for (const proxy of ["", "proxy", "1.1.1.1/33", "::/129", "1.1.1.1/8/8", "1.1.1.1/a"]) {
-      expect(() => find(headers({}), { proxies: [proxy] })).toThrow(TypeError)
+  it.each(["", "proxy", "10.0.0.0/33", "::/129", "1.1.1.1/8/8", "1.1.1.1/a"])(
+    "parseProxies throws a TypeError naming the entry %o",
+    (entry) => {
+      expect(() => parseProxies(["10.0.0.0/8", entry])).toThrow(
+        new TypeError(
+          `Invalid proxy ${JSON.stringify(entry)}: expected an IP address or CIDR range`
+        )
+      )
     }
-  })
+  )
 })
 
 describe("ip from X-Forwarded-For", () => {
@@ -286,10 +296,10 @@ describe("ip with a platform", () => {
     const options: IpOptions = { platform: "cloudflare" }
 
     expect(
-      find(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "abcd::" }), options)
+      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "abcd::" }), options)
     ).toBe("abcd::")
     expect(
-      find(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
+      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
     ).toBe("1.1.1.1")
   })
 

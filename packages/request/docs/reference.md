@@ -11,10 +11,10 @@ function ip(request: RequestLike, options: IpOptions): string | undefined
 Returns the IP address of the client that sent the request, or `undefined` when the request carries no public address.
 
 ```ts
-import { ip } from "@sanely/request"
+import { ip, parseProxies } from "@sanely/request"
 
 ip(request, { platform: "cloudflare" }) // "203.0.113.9"
-ip(request, { platform: "none", proxies: ["10.0.0.0/8"] }) // "2606:4700::1"
+ip(request, { platform: "none", proxies: parseProxies(["10.0.0.0/8"]) }) // "2606:4700::1"
 ip(new Request("http://localhost"), { platform: "none" }) // undefined
 ```
 
@@ -33,7 +33,7 @@ With a platform:
 `ip` skips these addresses:
 
 - Private, loopback, link-local, documentation, benchmarking, and reserved addresses from the IANA special-purpose registries.
-- Addresses that match an entry in `proxies`.
+- Addresses inside `proxies`.
 - Text that is not an IPv4 or IPv6 address. IPv4 octets with a leading zero are rejected, because some parsers read them as octal.
 
 In a header that lists several addresses, such as `X-Forwarded-For` or `Forwarded`, `ip` reads from the right. Each proxy appends the address it received the request from, so the rightmost addresses come from proxies you control, and a client can write anything on the left.
@@ -54,14 +54,32 @@ CloudFront sends `CloudFront-Viewer-Address` only when an origin request policy 
 
 ### `IpOptions`
 
-| Option     | Type                   | Default  | Description                                                                                           |
-| ---------- | ---------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `platform` | `IpPlatform \| "none"` | Required | The platform the app runs on, or `"none"`. With a platform, `ip` reads only that platform's headers.  |
-| `proxies`  | `readonly string[]`    | `[]`     | Addresses and CIDR ranges of your own proxies, such as `"10.0.0.0/8"`. `ip` skips matching addresses. |
+| Option     | Type                   | Default  | Description                                                                                          |
+| ---------- | ---------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `platform` | `IpPlatform \| "none"` | Required | The platform the app runs on, or `"none"`. With a platform, `ip` reads only that platform's headers. |
+| `proxies`  | `Proxies`              | None     | Your own proxies, from `parseProxies`. `ip` skips their addresses.                                   |
 
-`ip` throws a `TypeError` when `platform` is not `"none"` or a known platform, such as when it comes from an unset environment variable. It also throws one when an entry in `proxies` is not an IP address or a CIDR range.
+`ip` throws a `TypeError` when `platform` is not `"none"` or a known platform, such as when it comes from an unset environment variable.
 
 `platform` is required so that a missing setting fails loudly instead of trusting headers that a client can forge.
+
+## `parseProxies`
+
+```ts
+function parseProxies(entries: readonly string[]): Proxies
+```
+
+Parses the addresses and CIDR ranges of the proxies in front of the app, such as `"10.0.0.0/8"` or `"198.51.100.7"`. Call it once at startup and pass the result to `ip` as `proxies`.
+
+```ts
+import { ip, parseProxies } from "@sanely/request"
+
+const proxies = parseProxies(process.env.PROXIES?.split(",") ?? [])
+
+ip(request, { platform: "none", proxies })
+```
+
+`parseProxies` throws a `TypeError` that names the first entry that is not an IP address or a CIDR range, so a typo stops the app at startup instead of failing every request. `ip` accepts only the `Proxies` value it returns, not a raw array.
 
 ## `geo`
 

@@ -93,22 +93,48 @@ export interface IpOptions {
    */
   readonly platform: IpPlatform | "none"
   /**
-   * Addresses and CIDR ranges of proxies in front of the app, such as `10.0.0.0/8`. `ip` skips them
-   * while it looks for the client.
-   *
-   * @throws {TypeError} When an entry is not an IP address or a CIDR range.
+   * The proxies in front of the app, from `parseProxies`. `ip` skips their addresses while it looks
+   * for the client.
    */
-  readonly proxies?: readonly string[] | undefined
+  readonly proxies?: Proxies | undefined
 }
 
-function parseProxy(text: string) {
-  const range = parseRange(text)
-  if (!range)
-    throw new TypeError(
-      `Invalid proxy ${JSON.stringify(text)}: expected an IP address or CIDR range`
-    )
+// Only this module has the key, so `parseProxies` is the only way to make `Proxies`.
+const RANGES = Symbol("ranges")
 
-  return range
+/**
+ * Trusted proxies that `parseProxies` checked. Pass them to `ip` as `proxies`.
+ */
+export interface Proxies {
+  readonly [RANGES]: readonly Range[]
+}
+
+/**
+ * Parses the addresses and CIDR ranges of the proxies in front of the app, such as `10.0.0.0/8`.
+ * Call it once at startup, so a bad entry fails before the app serves a request.
+ *
+ * @example
+ *   import { ip, parseProxies } from "@sanely/request"
+ *
+ *   const proxies = parseProxies(["10.0.0.0/8", "198.51.100.7"])
+ *
+ *   ip(request, { platform: "none", proxies })
+ *
+ * @throws {TypeError} When an entry is not an IP address or a CIDR range.
+ */
+export function parseProxies(entries: readonly string[]): Proxies {
+  const ranges = entries.map((entry) => {
+    const range = parseRange(entry)
+    if (!range) {
+      throw new TypeError(
+        `Invalid proxy ${JSON.stringify(entry)}: expected an IP address or CIDR range`
+      )
+    }
+
+    return range
+  })
+
+  return { [RANGES]: ranges }
 }
 
 function parseClient(candidate: unknown, proxies: readonly Range[]) {
@@ -129,12 +155,12 @@ function parseClient(candidate: unknown, proxies: readonly Range[]) {
  *   import { ip } from "@sanely/request"
  *
  *   ip(request, { platform: "vercel" }) // "203.0.113.9"
- *   ip(request, { platform: "none", proxies: ["10.0.0.0/8"] }) // "198.51.100.7"
+ *   ip(request, { platform: "none", proxies: parseProxies(["10.0.0.0/8"]) }) // "198.51.100.7"
  *
  * @returns The client's address, or `undefined` when the request has no public address.
  */
 export function ip(request: RequestLike, options: IpOptions): string | undefined {
-  const proxies = (options.proxies ?? []).map((text) => parseProxy(text))
+  const proxies = options.proxies?.[RANGES] ?? []
   const fromHeaders = (sources: readonly Source[]) =>
     sources.flatMap((source) => {
       const value = readHeader(request, source.header)

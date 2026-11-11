@@ -7,9 +7,10 @@ import type {
   Geo,
   GeoPlatform,
   IpPlatform,
+  Proxies,
   RegionCode,
 } from "#index.ts"
-import { geo, ip } from "#index.ts"
+import { geo, ip, parseProxies } from "#index.ts"
 
 declare const request: Request
 declare const incoming: IncomingMessage
@@ -21,8 +22,14 @@ describe("ip", () => {
   })
 
   it("accepts a Fetch request and a Node.js request", () => {
-    ip(request, { platform: "vercel", proxies: ["10.0.0.0/8"] })
+    ip(request, { platform: "vercel", proxies: parseProxies(["10.0.0.0/8"]) })
     ip(incoming, { platform: "none" })
+  })
+
+  it("takes proxies only from parseProxies, so a bad entry fails at startup", () => {
+    expectTypeOf(parseProxies(["10.0.0.0/8"])).toEqualTypeOf<Proxies>()
+    // @ts-expect-error -- raw strings must go through parseProxies first.
+    ip(request, { platform: "none", proxies: ["10.0.0.0/8"] })
   })
 
   it("requires a platform, or an explicit none", () => {
@@ -30,7 +37,7 @@ describe("ip", () => {
     // @ts-expect-error -- a missing platform must not silently trust forgeable headers.
     ip(request)
     // @ts-expect-error -- a missing platform must not silently trust forgeable headers.
-    ip(request, { proxies: [] })
+    ip(request, { proxies: parseProxies([]) })
   })
 
   it("accepts only known platforms", () => {

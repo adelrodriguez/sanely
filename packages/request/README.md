@@ -25,10 +25,14 @@ geo(request, options).country // "US"
 
 Set `platform` to the platform the app runs on. `ip` then reads only that platform's headers, which a client cannot forge. With `platform: "none"`, `ip` reads the connection and falls back to the common forwarding headers, such as `X-Forwarded-For`, which a client can forge unless a proxy in front of the app replaces them.
 
-Behind your own proxies or load balancers, list their addresses so that `ip` skips them:
+Behind your own proxies or load balancers, list their addresses so that `ip` skips them. Parse the list once at startup, so a bad entry fails before the app serves a request:
 
 ```ts
-ip(request, { platform: "none", proxies: ["10.0.0.0/8", "198.51.100.7"] })
+import { ip, parseProxies } from "@sanely/request"
+
+const proxies = parseProxies(["10.0.0.0/8", "198.51.100.7"])
+
+ip(request, { platform: "none", proxies })
 ```
 
 ## Documentation
