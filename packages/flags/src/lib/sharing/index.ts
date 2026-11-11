@@ -348,7 +348,15 @@ function startSharedCall<TIdentity extends Subject>(
       throw normalizeError(error)
     }
   )
-  const call: PendingResolution = { flagKey: context.flag.key, promise, shared }
+  const accepted = promise.then((decision) => accept(decision, context.flag))
+  void accepted.catch(() => null)
+  const call: PendingResolution = {
+    accepted,
+    flag: context.flag,
+    flagKey: context.flag.key,
+    promise,
+    shared,
+  }
   state.pending.set(key, call)
   const settle = () => {
     shared.release()
@@ -359,16 +367,14 @@ function startSharedCall<TIdentity extends Subject>(
   void promise.then(settle, settle)
   if (write) {
     const { generation, store } = write
-    const storeDecision = (decision: unknown): null => {
-      try {
-        const { decision: accepted } = accept(decision, context.flag)
-        writeThrough(config, context, store, generation, key, accepted)
-      } catch {
-        // Each evaluation reports its own invalid decision. The call only skips storing it.
-      }
-      return null
-    }
-    void promise.then(storeDecision, () => null)
+    // Each evaluation reports its own invalid decision. The call only skips storing it.
+    void accepted.then(
+      ({ decision }) => {
+        writeThrough(config, context, store, generation, key, decision)
+        return null
+      },
+      () => null
+    )
   }
   return call
 }
@@ -438,5 +444,11 @@ export async function resolveDecision<TIdentity extends Subject>(
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
-  return { ...accept(await raceWithSignal(() => call.promise, signal), flag), source: "provider" }
+  // An evaluation of the definition that started the call reuses its parse. Another definition with
+  // the same evaluation key can have another payload parser, so it parses for itself.
+  const resolution =
+    flag === call.flag
+      ? await raceWithSignal(() => call.accepted, signal)
+      : accept(await raceWithSignal(() => call.promise, signal), flag)
+  return { ...resolution, source: "provider" }
 }

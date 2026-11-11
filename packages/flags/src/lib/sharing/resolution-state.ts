@@ -1,3 +1,5 @@
+import type { Decision } from "#lib/definition/decision.ts"
+import type { Flag } from "#lib/definition/index.ts"
 import type { Subject } from "#lib/identity/index.ts"
 import type { SharedSignal } from "#lib/shared/signals.ts"
 
@@ -6,6 +8,12 @@ import type { SharedSignal } from "#lib/shared/signals.ts"
  * evaluation that waits for it joins `shared`, and the call stops only when all of them have left.
  */
 export type PendingResolution = {
+  /**
+   * The call's decision checked and parsed once for `flag`, the definition that started the call.
+   * An evaluation of that definition reuses it, so its payload parser runs once.
+   */
+  accepted: Promise<{ decision: Decision; payload: unknown }>
+  flag: Flag
   flagKey: string
   promise: Promise<unknown>
   shared: SharedSignal

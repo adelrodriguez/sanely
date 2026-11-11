@@ -484,6 +484,23 @@ describe("first-class cache", () => {
     expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
+  test("runs the payload parser once for a stored provider decision", async () => {
+    const parse = vi.fn((payload: unknown) => payload)
+    const parsed = flag.variant("parsed", ["light", "dark"], "light", { payload: parse })
+    const flags = createFlags({
+      cache: { store: { get: () => Promise.resolve(null), set: () => Promise.resolve() } },
+      identify,
+      provider: defineProvider({
+        decideOne: () => ({ payload: 1, type: "variant", variant: "dark" }),
+        name: "test",
+      }),
+    })
+
+    expect(await flags.details(parsed)).toMatchObject({ payload: 1, source: "provider" })
+    await flushBackground()
+    expect(parse).toHaveBeenCalledTimes(1)
+  })
+
   test("treats a stored decision whose payload the parser rejects as a miss", async () => {
     const counted = flag.variant("counted", ["light", "dark"], "light", {
       payload: (payload) => {
