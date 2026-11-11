@@ -30,8 +30,12 @@ export type StateStoreOptions = {
 export function stateStore({ clear, update }: StateStoreOptions): Store {
   return {
     clear,
+    // The arithmetic and the saved state use whole milliseconds, as the Redis scripts do.
     consume: ({ algorithm, cost, key }) =>
-      update(key, (saved, now) => transition(algorithm, parseState(saved, now), cost, now)),
+      update(key, (saved, clock) => {
+        const now = Math.floor(clock)
+        return transition(algorithm, parseState(saved, now), cost, now)
+      }),
   }
 }
 

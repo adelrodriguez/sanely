@@ -81,6 +81,22 @@ describe("stateStore", () => {
     }
   })
 
+  // A database clock can carry fractions of a millisecond, such as an epoch from Postgres.
+  it("keeps counting when the store's clock has fractions of a millisecond", async () => {
+    let now = 1000.5
+    const store = jsonStore(new Map(), () => now)
+    const algorithm = tokenBucket({ capacity: 2, interval: 1000, refillRate: 1 })
+
+    await store.consume({ algorithm, cost: 1, key: "k" })
+    now = 1000.75
+
+    expect(await store.consume({ algorithm, cost: 1, key: "k" })).toMatchObject({
+      now: 1000,
+      remaining: 0,
+      success: true,
+    })
+  })
+
   it("saves nothing for a denial or a read", async () => {
     const rows = new Map<string, string>()
     const store = jsonStore(rows)
