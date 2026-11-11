@@ -146,7 +146,8 @@ function patternPools(pattern: unknown, custom: ReadonlyMap<string, WordList>): 
   })
 }
 
-// Default pools keep one identity per word count, so their word groups are built once.
+// Default pools keep one identity per common word count, so their word groups are built once.
+const CACHED_WORD_COUNTS = 16
 const segmentPoolsByCount = new Map<number, WordList[]>()
 
 function segmentPools(segments: unknown): WordList[] {
@@ -155,7 +156,7 @@ function segmentPools(segments: unknown): WordList[] {
   if (cached) return cached
 
   const pools = [defaultPools.prefix, ...Array.from({ length: count - 1 }, () => defaultPools.noun)]
-  segmentPoolsByCount.set(count, pools)
+  if (count <= CACHED_WORD_COUNTS) segmentPoolsByCount.set(count, pools)
   return pools
 }
 

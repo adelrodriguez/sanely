@@ -1,6 +1,6 @@
 import type { WordList } from "#lib/lists/index.ts"
 import { InvalidOptionError, NotEnoughWordsError } from "./errors"
-import { groupWords, shortestFill } from "./groups"
+import { groupWords, hasEnoughWords, shortestFill } from "./groups"
 import { type GenerateOptions, resolveSettings } from "./options"
 
 function randomIndex(random: () => unknown, length: number) {
@@ -33,6 +33,24 @@ function drawFrom(pool: WordList, random: () => unknown) {
 }
 
 /**
+ * Checks whether the positions from `start` onward can take distinct words that are not in `used`,
+ * within `budget` letters.
+ */
+type Fits = (start: number, used: ReadonlySet<string>, budget: number) => boolean
+
+function fitter(pools: readonly WordList[], maxLength: number | undefined): Fits {
+  // Positions are filled in order, so the earlier positions use at most `index` words. With no
+  // length limit, a pool with more words than that always has an unused word left, so any choice
+  // keeps the rest of the name possible and no search is needed.
+  if (maxLength === undefined && pools.every((pool, index) => pool.length > index)) {
+    return () => true
+  }
+
+  const groups = groupWords(pools)
+  return (start, used, budget) => shortestFill(groups, start, pools.length, used) <= budget
+}
+
+/**
  * Generate a random name, such as `"amber-fox"`.
  *
  * By default, the name has two words. The first word is an adjective or a color, and the later
@@ -56,18 +74,17 @@ function drawFrom(pool: WordList, random: () => unknown) {
  */
 export function generate<const N extends string = never>(options: GenerateOptions<N> = {}): string {
   const { maxLength, pools, random, separator } = resolveSettings(options)
-  const groups = groupWords(pools)
+  if (!hasEnoughWords(pools)) throw new NotEnoughWordsError("unique")
+
+  const fits = fitter(pools, maxLength)
   const used = new Set<string>()
-  const shortest = (start: number) => shortestFill(groups, start, pools.length, used)
   let budget =
     maxLength === undefined
       ? Number.POSITIVE_INFINITY
       : maxLength - separator.length * (pools.length - 1)
 
-  const minimum = shortest(0)
-
-  if (minimum > budget) {
-    throw new NotEnoughWordsError(minimum === Number.POSITIVE_INFINITY ? "unique" : "maxLength")
+  if (!fits(0, used, budget)) {
+    throw new NotEnoughWordsError(fits(0, used, Number.POSITIVE_INFINITY) ? "maxLength" : "unique")
   }
 
   const words: string[] = []
@@ -75,10 +92,10 @@ export function generate<const N extends string = never>(options: GenerateOption
     if (used.has(word) || word.length > budget) return false
 
     used.add(word)
-    const fits = word.length + shortest(index + 1) <= budget
+    const result = fits(index + 1, used, budget - word.length)
     used.delete(word)
 
-    return fits
+    return result
   }
 
   for (const [index, pool] of pools.entries()) {

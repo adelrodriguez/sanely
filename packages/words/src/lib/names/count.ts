@@ -1,4 +1,4 @@
-import { groupWords } from "./groups"
+import { groupWords, hasEnoughWords } from "./groups"
 import { type CountOptions, resolvePools } from "./options"
 
 /**
@@ -18,6 +18,8 @@ import { type CountOptions, resolvePools } from "./options"
  */
 export function count<const N extends string = never>(options: CountOptions<N> = {}): number {
   const pools = resolvePools(options)
+  if (!hasEnoughWords(pools)) return 0
+
   const groups = groupWords(pools)
   const memo = new Map<string, number>()
   // How many words of each group the earlier positions used.

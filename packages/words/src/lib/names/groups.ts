@@ -13,6 +13,14 @@ export interface Group {
 const cache = new WeakMap<readonly WordList[], readonly Group[]>()
 
 /**
+ * Check whether the pools hold at least one distinct word for each position. When they do not, no
+ * name exists, and the check avoids a search that grows with the number of positions.
+ */
+export function hasEnoughWords(pools: readonly WordList[]): boolean {
+  return new Set([...new Set(pools)].flat()).size >= pools.length
+}
+
+/**
  * Split the words of a name's positions into groups that share the same positions.
  *
  * A name has few positions, so a few groups cover thousands of words. Counting and fitting names

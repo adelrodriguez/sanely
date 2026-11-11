@@ -58,6 +58,10 @@ describe("count", () => {
     ).toBe(2)
   })
 
+  it("returns 0 for more words than the lists hold", () => {
+    expect(count({ segments: 5000 })).toBe(0)
+  })
+
   it("returns 0 when the lists hold too few distinct words", () => {
     expect(count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] })).toBe(0)
   })

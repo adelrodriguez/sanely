@@ -136,6 +136,21 @@ describe("generate", () => {
     })
   })
 
+  it("generates a long default name quickly", () => {
+    const start = performance.now()
+    const words = generate({ segments: 1000 }).split("-")
+
+    expect(new Set(words).size).toBe(1000)
+    expect(performance.now() - start).toBeLessThan(500)
+  })
+
+  it("rejects more words than the lists hold before searching", () => {
+    const start = performance.now()
+
+    expect(() => generate({ segments: 5000 })).toThrow(new NotEnoughWordsError("unique"))
+    expect(performance.now() - start).toBeLessThan(500)
+  })
+
   it("throws NotEnoughWordsError when the lists hold too few distinct words", () => {
     expect(() => generate({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] })).toThrow(
       new NotEnoughWordsError("unique")
