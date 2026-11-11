@@ -98,11 +98,9 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
       } catch (error) {
         const resolved = this.#resolveFailure(error)
 
+        // `executeRunSync` rejects any retry policy that could wait, so every retry here is
+        // immediate.
         if (resolved instanceof RetryDirective) {
-          if (resolved.delay > 0) {
-            throw new Panic("RUN_SYNC_ASYNC_RETRY_POLICY")
-          }
-
           currentAttempt += 1
           continue
         }
