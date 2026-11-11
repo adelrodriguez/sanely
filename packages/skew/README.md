@@ -4,19 +4,34 @@
   <p align="center">
     <strong>Know when an open tab runs an old deployment.</strong>
   </p>
+
+  <p align="center">
+    <a href="https://www.npmjs.com/package/@sanely/skew"><img src="https://img.shields.io/npm/v/@sanely/skew" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
+  </p>
 </div>
 
 A browser tab can stay open for days while you deploy many times. The package tells the tab when a newer deployment is live, so your app can ask the user to reload. The package never reloads the page by itself.
 
 At build time, an adapter writes the deployment ID into the page and into `/_deployment-check/deployment.json`. In the browser, the package fetches that file when the tab becomes visible, when the network comes back, and every 5 minutes. If the IDs differ, the status is `stale`.
 
-## Quick start
+## Features
 
-`@sanely/skew` supports Vite 5 or later, Next.js 15 or later, and React 18 or later.
+- **Adapters for Vite and Next.js.** At build time, an adapter writes the deployment ID into the page and into the descriptor that the browser fetches.
+- **Timely checks.** The monitor checks when the tab becomes visible, when the network comes back, and on an interval that takes a time expression such as `"5m"`. In a Vite build, it also checks as soon as a lazy chunk fails to load.
+- **React hook.** `useDeploymentStatus` returns the status and a `reload` function for your update notice.
+- **No reload loops.** A reload guard blocks repeated reloads when a CDN still serves the old page.
+- **No external dependencies.** The only runtime dependency is [`@sanely/duration`](../duration).
+
+## Install
 
 ```sh
 npm install @sanely/skew
 ```
+
+The package supports Vite 5 or later, Next.js 15 or later, and React 18 or later. It needs Node.js 24 or later.
+
+## Get started
 
 Add the adapter to `vite.config.ts`:
 
@@ -79,6 +94,14 @@ Explanation:
 
 - [How `@sanely/skew` detects a stale client](docs/explanation/how-skew-detects-a-stale-client.md)
 
-To work on the package itself, read [CONTRIBUTING.md](CONTRIBUTING.md).
+## Contributing
+
+Read the [contributor guide](CONTRIBUTING.md) before changing the package.
+
+## Acknowledgments
 
 Made with [🥐 `pastry`](https://github.com/adelrodriguez/pastry).
+
+## License
+
+MIT. See [LICENSE](../../LICENSE).

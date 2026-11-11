@@ -4,6 +4,11 @@
   <p align="center">
     <strong>Type-safe feature flags for TypeScript applications.</strong>
   </p>
+
+  <p align="center">
+    <a href="https://www.npmjs.com/package/@sanely/flags"><img src="https://img.shields.io/npm/v/@sanely/flags" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
+  </p>
 </div>
 
 <p align="center">
@@ -102,7 +107,9 @@ Explanation:
 
 - [About flag evaluation](docs/explanation/about-flag-evaluation.md)
 
-To work on the package, read [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, read [SECURITY.md](SECURITY.md).
+## Contributing
+
+Read the [contributor guide](CONTRIBUTING.md) before changing the package. To report a vulnerability, read [SECURITY.md](SECURITY.md).
 
 ## License
 
