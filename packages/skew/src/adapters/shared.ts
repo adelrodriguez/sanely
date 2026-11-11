@@ -55,7 +55,6 @@ export function resolveDeploymentId(option?: DeploymentIdOption): string {
     return resolved
   }
 
-  // eslint-disable-next-line no-console -- A failed explicit strategy must be visible in the build log.
   console.warn(
     `[deployment-check] Could not resolve a deployment ID from ${describeStrategy(option)}. This build uses a random ID.`
   )

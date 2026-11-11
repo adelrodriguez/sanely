@@ -20,7 +20,6 @@ export function readEmbed(): DeploymentEmbed | undefined {
 
   if (!checkIsEmbed(embed)) {
     if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console -- Invalid build-time data must be visible in development.
       console.warn("[deployment-check] Ignored a malformed deployment embed.")
     }
 
