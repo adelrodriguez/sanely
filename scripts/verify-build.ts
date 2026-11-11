@@ -1,7 +1,7 @@
 // Packs the package in the current directory, installs the tarball in a temporary consumer, and
-// checks that the consumer can load the entry point and type-check against its declarations. The
-// consumer installs each workspace dependency from its own tarball, because npm may not have the
-// version that the packed package names.
+// checks that the consumer can load each entry point that Node can resolve and type-check against
+// its declarations. The consumer installs each workspace dependency from its own tarball, because
+// npm may not have the version that the packed package names.
 //
 // Usage, from a package directory after a build: node ../../scripts/verify-build.ts
 
@@ -35,6 +35,19 @@ function exportTargets(value: unknown): string[] {
   return []
 }
 
+// Node loads an export through these conditions. An export without them, such as one only for
+// workerd, has no Node consumer, so its package checks it in its own runtime instead.
+const nodeConditions = ["node", "import", "default"]
+
+function loadsInNode(target: unknown) {
+  return (
+    typeof target === "string"
+    || (typeof target === "object"
+      && target !== null
+      && nodeConditions.some((condition) => condition in target))
+  )
+}
+
 function readManifest() {
   const manifest: unknown = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"))
 
@@ -59,9 +72,9 @@ function readManifest() {
     throw new Error("Expected a package export map")
   }
   const name = manifest.name
-  const specifiers = Object.keys(manifest.exports).map((subpath) =>
-    subpath === "." ? name : `${name}${subpath.slice(1)}`
-  )
+  const specifiers = Object.entries(manifest.exports)
+    .filter(([, target]) => loadsInNode(target))
+    .map(([subpath]) => (subpath === "." ? name : `${name}${subpath.slice(1)}`))
 
   const dependencies =
     "dependencies" in manifest
