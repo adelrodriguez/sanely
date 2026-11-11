@@ -1,4 +1,4 @@
-export const transportation: readonly string[] = [
+export const transportation: readonly string[] = Object.freeze([
   "aircraft",
   "airline",
   "airliner",
@@ -120,4 +120,4 @@ export const transportation: readonly string[] = [
   "wheelbarrow",
   "yacht",
   "zeppelin",
-]
+])

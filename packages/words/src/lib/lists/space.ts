@@ -1,4 +1,4 @@
-export const space: readonly string[] = [
+export const space: readonly string[] = Object.freeze([
   "aperture",
   "apogee",
   "asteroid",
@@ -75,4 +75,4 @@ export const space: readonly string[] = [
   "wormhole",
   "zenith",
   "zodiac",
-]
+])

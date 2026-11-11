@@ -1,4 +1,4 @@
-export const architecture: readonly string[] = [
+export const architecture: readonly string[] = Object.freeze([
   "abacus",
   "aisle",
   "alcove",
@@ -133,4 +133,4 @@ export const architecture: readonly string[] = [
   "wainscot",
   "wall",
   "window",
-]
+])

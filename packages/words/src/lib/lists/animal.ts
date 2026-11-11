@@ -1,4 +1,4 @@
-export const animal: readonly string[] = [
+export const animal: readonly string[] = Object.freeze([
   "aardvark",
   "abalone",
   "albatross",
@@ -269,4 +269,4 @@ export const animal: readonly string[] = [
   "yak",
   "zebra",
   "zebu",
-]
+])

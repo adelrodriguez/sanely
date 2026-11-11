@@ -1,4 +1,4 @@
-export const fashion: readonly string[] = [
+export const fashion: readonly string[] = Object.freeze([
   "accessory",
   "apparel",
   "attire",
@@ -110,4 +110,4 @@ export const fashion: readonly string[] = [
   "wedge",
   "wool",
   "wrap",
-]
+])

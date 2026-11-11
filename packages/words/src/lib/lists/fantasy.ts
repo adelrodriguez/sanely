@@ -1,4 +1,4 @@
-export const fantasy: readonly string[] = [
+export const fantasy: readonly string[] = Object.freeze([
   "ambrosia",
   "amulet",
   "atlas",
@@ -48,4 +48,4 @@ export const fantasy: readonly string[] = [
   "wizard",
   "yeti",
   "zephyr",
-]
+])

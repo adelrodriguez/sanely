@@ -1,4 +1,4 @@
-export const profession: readonly string[] = [
+export const profession: readonly string[] = Object.freeze([
   "accountant",
   "acrobat",
   "advisor",
@@ -215,4 +215,4 @@ export const profession: readonly string[] = [
   "woodworker",
   "writer",
   "zoologist",
-]
+])

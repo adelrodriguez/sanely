@@ -1,4 +1,4 @@
-export const nature: readonly string[] = [
+export const nature: readonly string[] = Object.freeze([
   "acacia",
   "acorn",
   "agate",
@@ -195,4 +195,4 @@ export const nature: readonly string[] = [
   "woodland",
   "yucca",
   "zinnia",
-]
+])

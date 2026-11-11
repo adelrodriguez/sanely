@@ -1,4 +1,4 @@
-export const music: readonly string[] = [
+export const music: readonly string[] = Object.freeze([
   "accordion",
   "adagio",
   "allegro",
@@ -134,4 +134,4 @@ export const music: readonly string[] = [
   "xylophone",
   "yodel",
   "zither",
-]
+])

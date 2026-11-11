@@ -1,4 +1,4 @@
-export const food: readonly string[] = [
+export const food: readonly string[] = Object.freeze([
   "almond",
   "apple",
   "apricot",
@@ -210,4 +210,4 @@ export const food: readonly string[] = [
   "yam",
   "yogurt",
   "zucchini",
-]
+])

@@ -1,4 +1,4 @@
-export const history: readonly string[] = [
+export const history: readonly string[] = Object.freeze([
   "academia",
   "achievement",
   "advancement",
@@ -86,4 +86,4 @@ export const history: readonly string[] = [
   "tradition",
   "university",
   "vellum",
-]
+])

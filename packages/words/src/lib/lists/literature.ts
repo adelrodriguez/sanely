@@ -1,4 +1,4 @@
-export const literature: readonly string[] = [
+export const literature: readonly string[] = Object.freeze([
   "allegory",
   "alliteration",
   "allusion",
@@ -150,4 +150,4 @@ export const literature: readonly string[] = [
   "vignette",
   "voice",
   "wordplay",
-]
+])

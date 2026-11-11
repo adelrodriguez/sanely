@@ -30,7 +30,7 @@ A pattern or `omit` builds new pools, and its groups, on each call.
 
 ## Word lists
 
-Each built-in list is a module in `src/lib/lists/` that exports a `readonly string[]`.
+Each built-in list is a module in `src/lib/lists/` that exports a frozen `readonly string[]`, so no caller can change a list that other callers share.
 `lists/index.ts` collects them into the frozen `lists` record, and `Category` derives from its keys.
 To add a list, add its module and its entry in `lists`. Tests check that every list holds distinct lowercase words.
 

@@ -11,8 +11,12 @@ describe("lists", () => {
     }
   })
 
-  it("cannot be changed", () => {
+  it("cannot be changed, including each list", () => {
     expect(Object.isFrozen(lists)).toBe(true)
+
+    for (const words of Object.values(lists)) {
+      expect(Object.isFrozen(words)).toBe(true)
+    }
   })
 })
 

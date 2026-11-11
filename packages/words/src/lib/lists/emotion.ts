@@ -1,4 +1,4 @@
-export const emotion: readonly string[] = [
+export const emotion: readonly string[] = Object.freeze([
   "acceptance",
   "admiration",
   "adoration",
@@ -93,4 +93,4 @@ export const emotion: readonly string[] = [
   "wonder",
   "zeal",
   "zest",
-]
+])

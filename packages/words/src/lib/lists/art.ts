@@ -1,4 +1,4 @@
-export const art: readonly string[] = [
+export const art: readonly string[] = Object.freeze([
   "abstract",
   "acanthus",
   "acrylic",
@@ -139,4 +139,4 @@ export const art: readonly string[] = [
   "watercolor",
   "weaving",
   "woodcut",
-]
+])

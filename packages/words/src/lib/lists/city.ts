@@ -1,4 +1,4 @@
-export const city: readonly string[] = [
+export const city: readonly string[] = Object.freeze([
   "amsterdam",
   "athens",
   "atlanta",
@@ -72,4 +72,4 @@ export const city: readonly string[] = [
   "warsaw",
   "zagreb",
   "zurich",
-]
+])

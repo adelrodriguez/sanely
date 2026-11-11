@@ -1,4 +1,4 @@
-export const color: readonly string[] = [
+export const color: readonly string[] = Object.freeze([
   "alabaster",
   "amaranth",
   "amber",
@@ -128,4 +128,4 @@ export const color: readonly string[] = [
   "yellow",
   "zinc",
   "zircon",
-]
+])

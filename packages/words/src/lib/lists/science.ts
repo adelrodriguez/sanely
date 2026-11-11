@@ -1,4 +1,4 @@
-export const science: readonly string[] = [
+export const science: readonly string[] = Object.freeze([
   "acceleration",
   "allele",
   "alloy",
@@ -151,4 +151,4 @@ export const science: readonly string[] = [
   "volume",
   "wavelength",
   "zoology",
-]
+])

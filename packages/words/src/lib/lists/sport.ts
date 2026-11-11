@@ -1,4 +1,4 @@
-export const sport: readonly string[] = [
+export const sport: readonly string[] = Object.freeze([
   "archery",
   "athlete",
   "backstroke",
@@ -101,4 +101,4 @@ export const sport: readonly string[] = [
   "windsurfing",
   "workout",
   "yoga",
-]
+])

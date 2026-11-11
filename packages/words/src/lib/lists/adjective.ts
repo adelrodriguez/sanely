@@ -1,4 +1,4 @@
-export const adjective: readonly string[] = [
+export const adjective: readonly string[] = Object.freeze([
   "able",
   "active",
   "admirable",
@@ -342,4 +342,4 @@ export const adjective: readonly string[] = [
   "zestful",
   "zesty",
   "zippy",
-]
+])
