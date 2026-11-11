@@ -60,12 +60,19 @@ type FreshRecord = {
   started: Map<string, number>
 }
 
-class FreshMarks {
+export class FreshMarks {
   #epoch = 0
   #starts = 0
   // Only subjects that `invalidate` or `clear` marked have a record, and a record leaves once
   // nothing is marked or in flight, so reads without marks keep nothing.
   readonly #records = new Map<string, FreshRecord>()
+  // A cleared subject keeps its record, and its slots vary with the key fields, so each record keeps
+  // only its latest fresh reads. A dropped slot reads fresh once more, never stale.
+  readonly #maxSlots: number
+
+  constructor(maxSlots: number) {
+    this.#maxSlots = maxSlots
+  }
 
   mark(subject: string, slots: Iterable<string>): void {
     this.#epoch += 1
@@ -105,7 +112,14 @@ class FreshMarks {
     for (const slot of slots) {
       if (record.started.get(slot) !== fresh.start) continue
       record.started.delete(slot)
-      record.read.set(slot, Math.max(record.read.get(slot) ?? 0, fresh.epoch))
+      const epoch = Math.max(record.read.get(slot) ?? 0, fresh.epoch)
+      // Deleting first moves the slot to the end, so the oldest read leaves first.
+      record.read.delete(slot)
+      record.read.set(slot, epoch)
+      for (const oldest of record.read.keys()) {
+        if (record.read.size <= this.#maxSlots) break
+        record.read.delete(oldest)
+      }
       if ((record.marked.get(slot) ?? 0) <= fresh.epoch) record.marked.delete(slot)
     }
     if (record.all === 0 && record.marked.size === 0 && record.started.size === 0) {
@@ -423,7 +437,7 @@ export function createFlagCache(
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
   return {
     buckets: new Map(),
-    fresh: new FreshMarks(),
+    fresh: new FreshMarks(maxEntries),
     maxEntries,
     pendingTtl,
     snapshot: snapshotState(snapshot, getChangeClock(flags)),
