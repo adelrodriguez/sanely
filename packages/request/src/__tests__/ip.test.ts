@@ -42,6 +42,7 @@ const NOT_GLOBAL = [
   ["IPv6 documentation", "2001:db8::"],
   ["unique local", "fc02::"],
   ["IPv6 link local", "fe80::"],
+  ["6a44 relay anycast", "192.88.99.2"],
   ["IPv4 multicast", "224.0.0.1"],
   ["IPv6 multicast", "ff02::1"],
   ["reserved IPv6 a000::/3", "abcd::"],

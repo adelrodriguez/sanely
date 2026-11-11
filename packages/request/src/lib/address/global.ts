@@ -18,6 +18,7 @@ const BLOCKS: ReadonlyArray<readonly [cidr: string, global: boolean]> = [
   ["192.0.0.10/32", true], // TURN anycast
   ["192.0.0.0/24", false], // IETF protocol assignments
   ["192.0.2.0/24", false], // Documentation
+  ["192.88.99.2/32", false], // 6a44 relay anycast
   ["192.168.0.0/16", false], // Private use
   ["198.18.0.0/15", false], // Benchmarking
   ["198.51.100.0/24", false], // Documentation
