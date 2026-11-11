@@ -133,6 +133,8 @@ describe("deployment monitor", () => {
   it.each([
     ["1.1h", 3_960_000],
     ["4.1m", 246_000],
+    ["1.100000000000000000h", 3_960_000],
+    ["256.0000075h", 921_600_027],
   ] as const)(
     "reads %s as %i ms though decimal arithmetic misses the whole number",
     async (expression, expected) => {

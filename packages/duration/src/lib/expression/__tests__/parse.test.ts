@@ -6,21 +6,27 @@ import { parse, safeParse } from "#lib/expression/parse.ts"
 
 const aliases = UNITS.flatMap((unit) => unit.aliases)
 
+// Each token is `digits * 10 ** power`. A segment's exact value is that number times the unit's
+// milliseconds, and parse rounds it once.
 const numberTokenArbitrary = fc.oneof(
-  fc.integer({ max: 999, min: 0 }).map((value) => ({ token: String(value), value })),
+  fc
+    .integer({ max: 999, min: 0 })
+    .map((value) => ({ digits: value, power: 0, token: String(value) })),
   fc
     .record({
       fractional: fc.integer({ max: 999, min: 0 }),
       whole: fc.integer({ max: 99, min: 0 }),
     })
-    .map(({ fractional, whole }) => {
-      const token = `${whole}.${String(fractional).padStart(3, "0")}`
-      return { token, value: Number(token) }
-    }),
-  fc.integer({ max: 999, min: 1 }).map((fractional) => {
-    const token = `.${String(fractional).padStart(3, "0")}`
-    return { token, value: Number(token) }
-  }),
+    .map(({ fractional, whole }) => ({
+      digits: whole * 1000 + fractional,
+      power: -3,
+      token: `${whole}.${String(fractional).padStart(3, "0")}`,
+    })),
+  fc.integer({ max: 999, min: 1 }).map((fractional) => ({
+    digits: fractional,
+    power: -3,
+    token: `.${String(fractional).padStart(3, "0")}`,
+  })),
   fc
     .record({
       coefficient: fc.integer({ max: 99, min: 1 }),
@@ -28,11 +34,17 @@ const numberTokenArbitrary = fc.oneof(
       exponentSign: fc.constantFrom("", "+", "-"),
       marker: fc.constantFrom("e", "E"),
     })
-    .map(({ coefficient, exponent, exponentSign, marker }) => {
-      const token = `${coefficient}${marker}${exponentSign}${exponent}`
-      return { token, value: Number(token) }
-    })
+    .map(({ coefficient, exponent, exponentSign, marker }) => ({
+      digits: coefficient,
+      power: exponentSign === "-" ? -exponent : exponent,
+      token: `${coefficient}${marker}${exponentSign}${exponent}`,
+    }))
 )
+
+function exactMilliseconds(number: { digits: number; power: number }, unitMs: number): number {
+  const scaled = number.digits * unitMs
+  return number.power < 0 ? scaled / 10 ** -number.power : scaled * 10 ** number.power
+}
 
 const segmentArbitrary = fc
   .tuple(fc.constantFrom(...UNITS), numberTokenArbitrary, fc.constantFrom("", " ", "  ", "\t"))
@@ -48,7 +60,7 @@ const segmentArbitrary = fc
         )
         .filter((casing) => findUnit(casing) !== undefined)
         .map((casing) => ({
-          expected: number.value * unit.ms,
+          expected: exactMilliseconds(number, unit.ms),
           text: `${number.token}${whitespace}${casing}`,
         }))
     )
@@ -296,6 +308,30 @@ describe("parse", () => {
   it.each(["- 1h", "+ 1h", "-"])("should reject a detached leading sign: %j", (value) => {
     expect(() => parse(value)).toThrow(
       new InvalidTimeExpressionError(value, "a sign must be attached to the first number")
+    )
+  })
+
+  it.each([
+    ["1.1h", 3_960_000],
+    ["1.001s", 1001],
+    ["4.1m", 246_000],
+    ["-1.1h", -3_960_000],
+    ["1.1h 1.001s", 3_961_001],
+    ["1.1e1s", 11_000],
+    ["1.5e-3s", 1.5],
+    ["0.5ms", 0.5],
+    ["1.100000000000000000h", 3_960_000],
+    ["1000000000000000000e-18h", 3_600_000],
+    ["256.0000075h", 921_600_027],
+  ])("should read the decimal %j as exactly %j ms", (value, expected) => {
+    expect(parse(value)).toBe(expected)
+  })
+
+  it("should read every whole number of thousandths of an hour exactly", () => {
+    fc.assert(
+      fc.property(fc.integer({ max: 1_000_000, min: 0 }), (thousandths) => {
+        expect(parse(`${thousandths / 1000}h`)).toBe(thousandths * 3600)
+      })
     )
   })
 
