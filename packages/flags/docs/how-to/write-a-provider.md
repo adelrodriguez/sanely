@@ -95,7 +95,7 @@ const provider = defineProvider({
 })
 ```
 
-Call `notify(keys)` with the changed flag keys, or `notify()` when any flag may have changed. The package drops the stored decisions and running provider calls of those flags, and calls the reader's `subscribe` listeners.
+Call `notify(keys)` with the changed flag keys, or `notify()` when any flag may have changed. The package drops the running provider calls of those flags, deletes their stored decisions when the store has `deleteFlags`, and calls the reader's `subscribe` listeners.
 
 ## Name the provider
 

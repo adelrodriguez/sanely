@@ -62,12 +62,12 @@ switch (details.source) {
 
 When `source` is `"default"`, `error` is an `EvaluationError`. Narrow it by its `_tag`:
 
-| `_tag`                     | Meaning                                                               |
-| -------------------------- | --------------------------------------------------------------------- |
-| `"IdentityNotFoundError"`  | No identity was found.                                                |
-| `"InvalidDecisionError"`   | The decision does not fit the flag. `reason` says why.                |
-| `"ProviderFailedError"`    | The provider threw. `provider` names it, and `cause` holds the error. |
-| `"EvaluationTimeoutError"` | The deadline passed.                                                  |
-| `"EvaluationAbortedError"` | The caller's signal aborted.                                          |
+| `_tag`                     | Meaning                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------- |
+| `"IdentityNotFoundError"`  | No identity was found.                                                             |
+| `"InvalidDecisionError"`   | The decision does not fit the flag. `problem` says how, and `reason` describes it. |
+| `"ProviderFailedError"`    | The provider threw. `provider` names it, and `cause` holds the error.              |
+| `"EvaluationTimeoutError"` | The deadline passed.                                                               |
+| `"EvaluationAbortedError"` | The caller's signal aborted.                                                       |
 
 `details` never rejects, so no call site needs a `try` block.
