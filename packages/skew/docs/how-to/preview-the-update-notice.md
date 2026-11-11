@@ -1,19 +1,21 @@
 # How to preview the update notice in development
 
-The adapters do nothing in `vite dev` and `next dev`, so your update notice never appears there. To see it, give the hook a static source in development.
+The adapters do nothing in `vite dev` and `next dev`, so your update notice never appears there. To see it, give the hook a monitor with a fixed running deployment and target in development.
 
-1. Create the source at module scope, so that all renders share one monitor:
+1. Create a monitor at module scope. In development, give it a running deployment and a target with different IDs:
 
    ```tsx
-   import { createStaticSource } from "@sanely/skew"
+   import { createDeploymentMonitor } from "@sanely/skew"
    import { useDeploymentStatus } from "@sanely/skew/react"
 
-   const developmentSource = import.meta.env.DEV
-     ? createStaticSource({ id: "dev-running" }, { id: "dev-target" })
-     : undefined
+   const monitor = createDeploymentMonitor(
+     import.meta.env.DEV
+       ? { running: { id: "dev-running" }, target: () => Promise.resolve({ id: "dev-target" }) }
+       : {}
+   )
 
    export function UpdateNotice() {
-     const deployment = useDeploymentStatus({ source: developmentSource })
+     const deployment = useDeploymentStatus(monitor)
 
      if (deployment.status !== "stale") {
        return null
@@ -27,12 +29,12 @@ The adapters do nothing in `vite dev` and `next dev`, so your update notice neve
 
 2. Start the development server. The notice appears after the first check, because the two IDs are different.
 
-3. To see the `current` state, give both arguments the same ID:
+3. To see the `current` state, give the target the running ID:
 
    ```ts
-   createStaticSource({ id: "dev" }, { id: "dev" })
+   { running: { id: "dev" }, target: () => Promise.resolve({ id: "dev" }) }
    ```
 
-In a production build, `developmentSource` is `undefined`, and the hook uses the embed.
+In a production build, the monitor gets no options and reads the embed.
 
 Each `reload()` in development reloads the page, and the page shows `stale` again. The reload guard allows two reloads and blocks the third, so `reloadStatus` becomes `"blocked"`. Use this to check how your notice shows the blocked state.

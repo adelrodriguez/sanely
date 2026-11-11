@@ -52,4 +52,4 @@ globalThis.__DEPLOYMENT_CHECK__ = {
 | `running.builtAt` | `string` | No       | The build time of the running deployment, as an ISO 8601 string.      |
 | `endpoint`        | `string` | No       | The descriptor URL. Defaults to `/_deployment-check/deployment.json`. |
 
-`readEmbed()` returns `undefined` for an embed that does not match this shape.
+The monitor ignores an embed that does not match this shape, and logs a warning outside production.

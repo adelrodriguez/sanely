@@ -40,15 +40,15 @@ Each word below belongs to one kind of text. Use it only there.
 
 **Endpoint.** The URL of the descriptor. A **local endpoint** is a path on the app origin, and the adapter writes the descriptor for it. An **external endpoint** is an absolute or protocol-relative URL, and another service serves the descriptor.
 
-**`DeploymentSource`.** The object that connects a source of deployments to the runtime: `{ running, resolveTarget(signal) }`. `resolveTarget` must reach a service that the running deployment does not control.
+**Target resolver.** The function that finds the target deployment for a check. It must reach a service that the running deployment does not control. By default, it fetches the descriptor from the endpoint in the embed. Do not call it a "source".
 
 ## Runtime
 
-**Monitor** (`DeploymentMonitor`). The headless runtime. It schedules checks, runs them, holds the state, and has `check()` and `reload()`. The package keeps one shared monitor for each `DeploymentSource`. Components subscribe to a monitor. They do not own it, and no provider component exists.
+**Monitor** (`DeploymentMonitor`). The headless runtime. It schedules checks, runs them, holds the state, and has `check()` and `reload()`. A monitor owns its whole configuration: the running deployment, the target resolver, the schedule, and `isCurrent`. A page uses one monitor. Components subscribe to it. They do not configure it or own it, and no provider component exists.
 
-**Registry.** The module-level map from a `DeploymentSource` to its shared monitor. `getMonitor` and `getDefaultMonitor` read it.
+**Default monitor.** The monitor that the React hook uses when it gets none. It reads the embed, and no caller can reach it.
 
-**Subscriber.** A listener on a monitor, with its own `DeploymentSubscriberOptions`. The monitor combines the options of all subscribers.
+**Subscriber.** A listener on a monitor. The first subscriber starts the monitor's schedule, and the last one to leave stops it. A subscriber has no options.
 
 **Check.** One resolution of the target and one `isCurrent` comparison. A check never rejects. A failure goes into `error`.
 
@@ -58,4 +58,4 @@ Each word below belongs to one kind of text. Use it only there.
 
 **Reload guard.** The part of `reload()` that stops reload loops. It records each reload request in session storage and blocks a request after two reloads that land on the same running deployment. `reloadStatus` is `"unprotected"` when session storage is unavailable or throws.
 
-**Inert.** The state of a monitor with no source, for example in development. An inert monitor reports `"unknown"` and never checks.
+**Inert.** The state of a monitor with no running deployment, for example in development. An inert monitor reports `"unknown"` and never checks.

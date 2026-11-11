@@ -4,94 +4,93 @@ The core package: the protocol and the headless runtime. Its only runtime depend
 
 ## Monitors
 
-### `createDeploymentMonitor(source?, options?)`
+### `createDeploymentMonitor(options?)`
 
 ```ts
 function createDeploymentMonitor<const T extends string>(
-  source?: DeploymentSource,
   options?: DeploymentMonitorOptions<T>
 ): DeploymentMonitor
 ```
 
-Creates an independent monitor. The registry does not hold it, so `getMonitor` and the React hook never return it. Without `source`, the monitor is inert: its status stays `"unknown"` and it never checks.
+Creates a monitor. Without options, the monitor reads the running deployment and the endpoint from the embed. Without a running deployment, from the embed or from `running`, the monitor is inert: its status stays `"unknown"`, it never checks, and it logs one warning outside production.
+
+Each call creates a separate monitor with its own schedule and requests. Create a monitor once, at module scope.
+
+```ts
+export const monitor = createDeploymentMonitor({ checkInterval: "1m" })
+```
 
 `DeploymentMonitorOptions`:
 
-| Option         | Type                  | Default                   | Description                                                                                                                            |
-| -------------- | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `checkTimeout` | `number \| string`    | `DEFAULT_CHECK_TIMEOUT`   | Milliseconds or a time expression, such as `"10s"`, before a check stops with a timeout error. Must be finite. You cannot turn it off. |
-| `environment`  | `RuntimeEnvironment`  | The browser environment   | Timers, events, storage, and reload. Replace it in tests or in a runtime that is not a browser.                                        |
-| `isCurrent`    | `IsDeploymentCurrent` | Exact deployment ID match | The comparison that applies when no subscriber sets `isCurrent`.                                                                       |
+| Option             | Type                                                   | Default                             | Description                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target`           | `string \| TargetResolver`                             | The endpoint in the embed           | A descriptor URL, which the monitor reads with `fetchDescriptor`, or a function that resolves the target. Without an endpoint in the embed, the URL is `"/_deployment-check/deployment.json"`. |
+| `running`          | `Deployment`                                           | The running deployment in the embed | The deployment that produced this page. Set it for a preview or a test.                                                                                                                        |
+| `isCurrent`        | `(running: Deployment, target: Deployment) => boolean` | Exact deployment ID match           | Decides whether the running deployment is current for a target. Must be pure.                                                                                                                  |
+| `checkInterval`    | `number \| string`                                     | `300000`                            | Milliseconds or a time expression, such as `"5m"`, between checks while the page is visible. Values below `10000` change to `10000`, with a warning.                                           |
+| `checkTimeout`     | `number \| string`                                     | `30000`                             | Milliseconds or a time expression, such as `"10s"`, before a check stops with a timeout error. Must be finite. You cannot turn it off.                                                         |
+| `checkOnReconnect` | `boolean`                                              | `true`                              | Check when the browser comes back online.                                                                                                                                                      |
+| `checkOnSubscribe` | `boolean`                                              | `true`                              | Check when the first subscriber attaches.                                                                                                                                                      |
+| `checkOnVisible`   | `boolean`                                              | `true`                              | Check when the page becomes visible or the browser restores it from the back-forward cache.                                                                                                    |
+| `environment`      | `RuntimeEnvironment`                                   | The browser environment             | Timers, events, storage, and reload. Replace it in tests or in a runtime that is not a browser.                                                                                                |
 
-### `getDefaultMonitor()`
-
-```ts
-function getDefaultMonitor(): DeploymentMonitor
-```
-
-Returns the shared monitor for the embed. The registry creates it on the first call. If the page has no valid embed, the monitor is inert and logs one warning outside production.
-
-### `getMonitor(source)`
-
-```ts
-function getMonitor(source: DeploymentSource): DeploymentMonitor
-```
-
-Returns the shared monitor for `source`. Each source object has one monitor. After you call `destroy()` on it, the next call returns a new monitor.
-
-### `DEFAULT_CHECK_TIMEOUT`
-
-`30000`. The default value of `checkTimeout`, in milliseconds.
+`checkInterval` and `checkTimeout` take milliseconds or a time expression from `@sanely/duration`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from `@sanely/duration` first. `createDeploymentMonitor` throws `InvalidTimeExpressionError` for a string that is not a time expression.
 
 ## `DeploymentMonitor`
 
-| Member                          | Description                                                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getState()`                    | Returns the current `DeploymentStatus`.                                                                                                       |
-| `subscribe(listener, options?)` | Adds a listener and returns a function that removes it. `options` is a `DeploymentSubscriberOptions`.                                         |
-| `check()`                       | Starts a check, or joins the check in progress. Resolves with the new state. Never rejects.                                                   |
-| `reload()`                      | Requests a reload through the reload guard.                                                                                                   |
-| `destroy()`                     | Stops the schedule, cancels a check in progress, and removes all listeners. After `destroy()`, `subscribe`, `check`, and `reload` do nothing. |
+| Member                | Description                                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getState()`          | Returns the current `DeploymentStatus`.                                                                                                                          |
+| `subscribe(listener)` | Adds a listener and returns a function that removes it. The first subscriber starts the schedule. The last unsubscribe stops it and cancels a check in progress. |
+| `check()`             | Starts a check, or joins the check in progress. Resolves with the new state. Never rejects.                                                                      |
+| `reload()`            | Requests a reload through the reload guard.                                                                                                                      |
 
-`DeploymentSubscriberOptions` has `checkInterval`, `checkOnReconnect`, `checkOnSubscribe`, `checkOnVisible`, and `isCurrent`. The [React reference](./react.md#options) gives their types and defaults.
-
-`checkTimeout` and `checkInterval` take milliseconds or a time expression from `@sanely/duration`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from `@sanely/duration` first. `createDeploymentMonitor` and `subscribe` throw `InvalidTimeExpressionError` for a string that is not a time expression.
+```ts
+const unsubscribe = monitor.subscribe((state) => {
+  if (state.status === "stale") showUpdateBanner(state.target.id)
+})
+```
 
 ## `DeploymentStatus`
 
-| Field          | Type                                | Description                                                                                                                                                |
-| -------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`       | `"unknown" \| "current" \| "stale"` | The result of the last successful check. `"unknown"` until the first check succeeds.                                                                       |
-| `checkStatus`  | `CheckStatus`                       | `"checking"` while a check is in progress. Otherwise `"idle"`.                                                                                             |
-| `error`        | `Error \| null`                     | The error from the last failed check. A successful check sets it to `null`.                                                                                |
-| `running`      | `Deployment`                        | The running deployment.                                                                                                                                    |
-| `target`       | `Deployment \| null`                | The target from the last successful check. `null` only when `status` is `"unknown"`.                                                                       |
-| `checkedAt`    | `Date \| null`                      | The time of the last successful check. `null` only when `status` is `"unknown"`.                                                                           |
-| `reloadStatus` | `ReloadStatus`                      | `"ready"`, `"blocked"`, or `"unprotected"`. See [the reload guard](../explanation/how-skew-detects-a-stale-client.md#the-reload-guard-stops-reload-loops). |
-| `check`        | `() => Promise<DeploymentStatus>`   | The same as `DeploymentMonitor.check()`.                                                                                                                   |
-| `reload`       | `() => void`                        | The same as `DeploymentMonitor.reload()`.                                                                                                                  |
+| Field          | Type                                    | Description                                                                                                                                   |
+| -------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`       | `"unknown" \| "current" \| "stale"`     | The result of the last successful check. `"unknown"` until the first check succeeds.                                                          |
+| `checkStatus`  | `"checking" \| "idle"`                  | `"checking"` while a check is in progress. Otherwise `"idle"`.                                                                                |
+| `error`        | `Error \| null`                         | The error from the last failed check. A successful check sets it to `null`.                                                                   |
+| `running`      | `Deployment`                            | The running deployment.                                                                                                                       |
+| `target`       | `Deployment \| null`                    | The target from the last successful check. `null` only when `status` is `"unknown"`.                                                          |
+| `checkedAt`    | `Date \| null`                          | The time of the last successful check. `null` only when `status` is `"unknown"`.                                                              |
+| `reloadStatus` | `"ready" \| "blocked" \| "unprotected"` | The state of the reload guard. See [the reload guard](../explanation/how-skew-detects-a-stale-client.md#the-reload-guard-stops-reload-loops). |
+| `check`        | `() => Promise<DeploymentStatus>`       | The same as `DeploymentMonitor.check()`.                                                                                                      |
+| `reload`       | `() => void`                            | The same as `DeploymentMonitor.reload()`.                                                                                                     |
 
 `DeploymentStatus` is a discriminated union on `status`. When you check that `status` is not `"unknown"`, TypeScript narrows `target` to `Deployment` and `checkedAt` to `Date`.
 
 A failed check changes only `checkStatus` and `error`. `status`, `target`, and `checkedAt` keep their last values.
 
-## Sources
+## Targets
 
-### `createHttpSource(running, endpoint, init?)`
+### `fetchDescriptor(url, init?)`
 
 ```ts
-function createHttpSource(
-  running: Deployment,
-  endpoint: string,
-  init?: HttpSourceInit
-): DeploymentSource
+function fetchDescriptor(
+  url: string,
+  init?: Omit<RequestInit, "cache" | "signal"> & { fetch?: typeof fetch }
+): TargetResolver
 ```
 
-Creates a source that fetches the descriptor from `endpoint` and parses it.
+Returns a `TargetResolver` that fetches the descriptor from `url` and parses it. Each request sets `cache: "no-store"` and the monitor's abort signal. Use `init` for headers, credentials, and a custom `fetch`.
 
-`HttpSourceInit` is `RequestInit` without `cache` and `signal`, plus an optional `fetch` function. The source always sets `cache: "no-store"` and its own abort signal. Use `init` for headers, credentials, and a custom `fetch`.
+```ts
+createDeploymentMonitor({
+  target: fetchDescriptor("https://deployments.example.com/current.json", {
+    credentials: "include",
+  }),
+})
+```
 
-The source throws a `TargetResolutionError` in these cases:
+The resolver throws a `TargetResolutionError` in these cases:
 
 | Reason                                                 | Cause                                                            |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
@@ -100,32 +99,13 @@ The source throws a `TargetResolutionError` in these cases:
 | `not-json`                                             | The `Content-Type` header is missing or does not contain `json`. |
 | `invalid-json`, `unsupported-version`, `invalid-shape` | `parseDescriptor` rejected the body.                             |
 
-### `createEmbeddedSource()`
+### `TargetResolver`
 
 ```ts
-function createEmbeddedSource(): DeploymentSource | undefined
+type TargetResolver = (signal: AbortSignal) => Promise<Deployment>
 ```
 
-Reads the embed and returns an HTTP source for its running deployment and endpoint. The endpoint is `DEFAULT_DESCRIPTOR_ENDPOINT` when the embed has none. Returns `undefined` when the page has no valid embed.
-
-### `createStaticSource(running, target)`
-
-```ts
-function createStaticSource(running: Deployment, target: Deployment): DeploymentSource
-```
-
-Creates a source that always resolves to `target`. Use it in development, previews, and tests.
-
-### `DeploymentSource`
-
-```ts
-interface DeploymentSource {
-  readonly running: Deployment
-  resolveTarget(signal: AbortSignal): Promise<Deployment>
-}
-```
-
-The contract between a source and the monitor. `resolveTarget` must reach a service that the running deployment does not control. Stop the work when `signal` aborts.
+Resolves the target deployment. It must reach a service that the running deployment does not control. Stop the work when `signal` aborts. A rejection becomes the state's `error`.
 
 ## Protocol
 
@@ -133,35 +113,29 @@ The contract between a source and the monitor. `resolveTarget` must reach a serv
 
 Returns the descriptor JSON for `deployment`. See the [descriptor reference](./descriptor.md).
 
+```ts
+serializeDescriptor({ id: "abc123" }) // '{"v":1,"id":"abc123"}'
+```
+
 ### `parseDescriptor(text)`
 
 Parses descriptor JSON and returns a `Deployment`. Throws `TargetResolutionError` with reason `invalid-json`, `unsupported-version`, or `invalid-shape`.
 
-### `readEmbed()`
-
-Returns the embed from `globalThis.__DEPLOYMENT_CHECK__`, or `undefined` if the embed is missing or malformed. Logs a warning for a malformed embed outside production.
-
-### `DEFAULT_DESCRIPTOR_ENDPOINT`
-
-`"/_deployment-check/deployment.json"`.
+```ts
+parseDescriptor('{"v":1,"id":"abc123"}') // { id: "abc123" }
+```
 
 ### `TargetResolutionError`
 
-An `Error` with `name` set to `"TargetResolutionError"` and a `reason` of type `TargetResolutionErrorReason`. `cause` holds the original error, the `Response`, or the text that failed to parse.
+An `Error` with `name` set to `"TargetResolutionError"` and a `reason` of type `TargetResolutionErrorReason`. `cause` holds the original error, the `Response`, the text that failed to parse, or `{ checkTimeout }` for a timeout.
+
+A check that takes longer than `checkTimeout` records a `TargetResolutionError` with reason `"timeout"`.
 
 ## Types
 
-| Type                          | Description                                                                                                            |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `Deployment`                  | `{ id: string; builtAt?: Date }`.                                                                                      |
-| `IsDeploymentCurrent`         | `(running: Deployment, target: Deployment) => boolean`. Must be pure.                                                  |
-| `CheckStatus`                 | `"checking" \| "idle"`.                                                                                                |
-| `ReloadStatus`                | `"blocked" \| "ready" \| "unprotected"`.                                                                               |
-| `TargetResolutionErrorReason` | `"network" \| "http-status" \| "not-json" \| "invalid-json" \| "unsupported-version" \| "invalid-shape"`.              |
-| `DescriptorV1`                | The descriptor wire format. See the [descriptor reference](./descriptor.md).                                           |
-| `DeploymentEmbed`             | The embed format. See the [descriptor reference](./descriptor.md#embed).                                               |
-| `RuntimeEnvironment`          | Timers that use `TimerHandle`, `addEventListener`, `removeEventListener`, `isVisible`, `now`, `reload`, and `storage`. |
-| `RuntimeEvent`                | `{ persisted?: boolean }`.                                                                                             |
-| `RuntimeEventType`            | `"online" \| "pageshow" \| "visibilitychange"`.                                                                        |
-| `RuntimeStorage`              | `getItem`, `setItem`, and `removeItem`, with the same signatures as Web Storage.                                       |
-| `TimerHandle`                 | `number \| ReturnType<typeof setTimeout>`. The value that the environment timers return and clear.                     |
+| Type                          | Description                                                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Deployment`                  | `{ id: string; builtAt?: Date }`.                                                                                                                                         |
+| `TargetResolutionErrorReason` | `"network" \| "http-status" \| "not-json" \| "invalid-json" \| "unsupported-version" \| "invalid-shape" \| "timeout"`.                                                    |
+| `DescriptorV1`                | The descriptor wire format. See the [descriptor reference](./descriptor.md).                                                                                              |
+| `RuntimeEnvironment`          | Timers, `addEventListener`, `removeEventListener`, `isVisible`, `now`, `reload`, and `storage`, which has the Web Storage methods `getItem`, `setItem`, and `removeItem`. |
