@@ -2,7 +2,7 @@
 
 import { setTimeout as sleep } from "node:timers/promises"
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
-import { Component, type ReactNode, StrictMode, Suspense } from "react"
+import { Component, type ReactNode, StrictMode, Suspense, useLayoutEffect } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -465,6 +465,32 @@ describe("React integration", () => {
     })
     expect(await screen.findByText("true:dark")).toBeTruthy()
     expect(decide).toHaveBeenCalledTimes(5)
+  })
+
+  it("re-renders a reader whose flag a layout effect invalidates before it subscribes", async () => {
+    const { decideOne, flags, state } = makeFlags()
+    const snapshot: FlagSnapshot = {
+      distinctId: "core",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    function InvalidateOnLayout() {
+      const cache = useFlagCache()
+      useLayoutEffect(() => {
+        state.value = false
+        cache.invalidate([beta])
+      }, [cache])
+      return null
+    }
+    await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+        <InvalidateOnLayout />
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("false")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(1)
   })
 
   it("re-renders readers on invalidate after React resubscribes them", async () => {

@@ -596,9 +596,13 @@ export function useFlagCache(): FlagCacheControls {
   const context = useFlagsContext()
   return useMemo(() => {
     const { cache, identityKey: key } = context
+    // A store that a render made but that React has not subscribed yet is only in `stores`, and
+    // a layout effect can drop its entry before the subscription. Bumping it too makes React's
+    // subscription check see the change.
+    const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     const drop = (bucket: Bucket) => {
       bucket.entries.delete(key)
-      for (const store of bucket.active) {
+      for (const store of storesOf(bucket)) {
         if (store.key === key) store.bump()
       }
     }
@@ -607,7 +611,7 @@ export function useFlagCache(): FlagCacheControls {
         cache.snapshot?.entries.clear()
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
-          for (const store of bucket.active) store.bump()
+          for (const store of storesOf(bucket)) store.bump()
         }
       },
       invalidate(flags) {
