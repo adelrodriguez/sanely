@@ -1,4 +1,4 @@
-import { INERT_KEYS } from "#lib/core/contract.ts"
+import { CLIENT_HELPER_KEYS, INERT_KEYS } from "#lib/core/contract.ts"
 
 export function createRecursiveProxy(
   callback: (opts: { path: readonly string[]; args: readonly unknown[] }) => unknown,
@@ -24,10 +24,8 @@ export function createRecursiveProxy(
 
         const nextPath = [...path, key]
 
-        // `$`-prefixed helpers (`$path`, `$input`, `$with`, ...) are accessed directly
-        // as properties, so we invoke the callback immediately.
         if (key.startsWith("$")) {
-          return callback({ args: [], path: nextPath })
+          return CLIENT_HELPER_KEYS.has(key) ? callback({ args: [], path: nextPath }) : undefined
         }
 
         // For all other keys, keep recursing and treat the final value as

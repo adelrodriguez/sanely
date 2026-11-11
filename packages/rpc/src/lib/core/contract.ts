@@ -61,6 +61,13 @@ export function isChannel(node: ContractTree | Channel): node is Channel {
  */
 export const INERT_KEYS: ReadonlySet<string> = new Set(["then", "toJSON"])
 
+export const CLIENT_HELPER_KEYS: ReadonlySet<string> = new Set([
+  "$with",
+  "$path",
+  "$input",
+  "$output",
+])
+
 /**
  * Identity at the type level. At runtime it rejects keys the client proxy claims as syntax
  * (`$`-helpers), the leaf brand (`_kind`), and the {@link INERT_KEYS} — so a contract cannot define
@@ -68,7 +75,12 @@ export const INERT_KEYS: ReadonlySet<string> = new Set(["then", "toJSON"])
  */
 export function defineContract<Tree extends ContractTree>(tree: Tree): Tree {
   for (const { key, path } of walk(tree)) {
-    if (key.startsWith("$") || key === "_kind" || INERT_KEYS.has(key)) {
+    if (
+      CLIENT_HELPER_KEYS.has(key)
+      || key.startsWith("$")
+      || key === "_kind"
+      || INERT_KEYS.has(key)
+    ) {
       throw new SetupError({ code: "reserved-key", key, path })
     }
 

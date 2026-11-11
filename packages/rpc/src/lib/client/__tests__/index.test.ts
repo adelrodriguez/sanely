@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest"
+import { describe, expect, expectTypeOf, test, vi } from "vitest"
 import * as z from "zod"
 import { createClient } from "#lib/client/index.ts"
 import { defineContract, channel } from "#lib/core/contract.ts"
@@ -36,6 +36,21 @@ function createTestClient() {
 }
 
 describe("createClient", () => {
+  test("keeps unknown dollar properties inert on every client node", async () => {
+    const transport = vi.fn()
+    const client = createClient(contract, transport)
+    const values = [client, client.localFiles, client.localFiles.open].flatMap(
+      (node): unknown[] => [Reflect.get(node, "$$typeof"), Reflect.get(node, "$foo")]
+    )
+    // Observe any promises returned by the broken proxy so the regression fails on its result.
+    await Promise.allSettled(values)
+
+    for (const value of values) {
+      expect(value).toBeUndefined()
+    }
+    expect(transport).not.toHaveBeenCalled()
+  })
+
   test("round-trips a leaf with an output schema", async () => {
     const { client } = createTestClient()
 
