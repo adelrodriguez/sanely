@@ -889,6 +889,36 @@ function stubDescriptorFetch(id: string) {
 }
 
 describe("monitor defaults", () => {
+  it("shares recorded reloads between monitors on one browser page", async () => {
+    expect.assertions(2)
+
+    const storage = new MemoryStorage()
+    const reload = vi.fn()
+    vi.stubGlobal("sessionStorage", storage)
+    vi.stubGlobal("location", { reload })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+    vi.resetModules()
+    const { createDeploymentMonitor: createFreshMonitor } = await import(
+      "#lib/runtime/monitor.ts"
+    )
+    const options = {
+      running: { id: "A" },
+      target: () => Promise.resolve({ id: "B" }),
+    }
+
+    for (const monitor of [createFreshMonitor(options), createFreshMonitor(options)]) {
+      await monitor.check()
+      monitor.reload()
+    }
+
+    expect(reload).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(storage.getItem("deployment-check:reload") ?? "null")).toMatchObject({
+      attempts: 0,
+    })
+  })
+
   it("reads the running deployment and the endpoint from the embed", async () => {
     expect.assertions(3)
 
