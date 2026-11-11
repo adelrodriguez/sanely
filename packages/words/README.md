@@ -42,7 +42,7 @@ generate({ pattern: ["color", "animal"] }) // "teal-otter"
 generate({ lists: { fruit: ["apple", "pear"] }, pattern: ["fruit", "animal"] }) // "pear-otter"
 generate({ maxLength: 10 }) // "tan-heron"
 
-count() // 674_245
+count() // 1_084_149
 ```
 
 ## Documentation

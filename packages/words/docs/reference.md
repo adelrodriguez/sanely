@@ -63,9 +63,9 @@ Returns the number of distinct names that `generate` can return with the same `s
 ```ts
 import { count } from "@sanely/words"
 
-count() // 674_245
-count({ segments: 3 }) // 1_519_748_230
-count({ pattern: ["color", "animal"] }) // 26_190
+count() // 1_084_149
+count({ segments: 3 }) // 2_489_125_744
+count({ pattern: ["color", "animal"] }) // 34_830
 count({ lists: { fruit: ["apple"] }, pattern: ["fruit", "fruit"] }) // 0
 ```
 
@@ -89,13 +89,13 @@ generate({ lists: { pets }, pattern: ["color", "pets"] })
 
 | Category         | Words |
 | ---------------- | ----- |
-| `adjective`      | 202   |
+| `adjective`      | 343   |
 | `animal`         | 270   |
 | `architecture`   | 134   |
 | `art`            | 140   |
 | `city`           | 73    |
-| `color`          | 97    |
-| `emotion`        | 68    |
+| `color`          | 129   |
+| `emotion`        | 94    |
 | `fantasy`        | 49    |
 | `fashion`        | 111   |
 | `food`           | 211   |
@@ -105,7 +105,7 @@ generate({ lists: { pets }, pattern: ["color", "pets"] })
 | `nature`         | 196   |
 | `profession`     | 216   |
 | `science`        | 152   |
-| `space`          | 49    |
+| `space`          | 76    |
 | `sport`          | 102   |
 | `transportation` | 121   |
 

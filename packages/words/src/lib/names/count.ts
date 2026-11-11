@@ -8,8 +8,8 @@ import { type CountOptions, resolvePools } from "./options"
  * is approximate.
  *
  * @example
- *   count() // 674_245
- *   count({ pattern: ["color", "animal"] }) // 26_190
+ *   count() // 1_084_149
+ *   count({ pattern: ["color", "animal"] }) // 34_830
  *
  * @param options - The lists to draw from, as for `generate`
  *
