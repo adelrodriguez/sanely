@@ -20,9 +20,11 @@ const exportPaths = [
   packageJson.types,
   ...targets.flatMap((target) => Object.values(target)),
 ]
-const specifiers = Object.keys(packageJson.exports).map(
-  (subpath) => `${packageJson.name}${subpath.slice(1)}`
-)
+// The Durable Object store resolves only with the `workerd` condition, so Node cannot load it.
+// `test:compat:workerd` loads it in workerd instead.
+const specifiers = Object.entries(packageJson.exports)
+  .filter(([, target]) => "import" in target)
+  .map(([subpath]) => `${packageJson.name}${subpath.slice(1)}`)
 
 function run(command: string, arguments_: string[], cwd: string) {
   execFileSync(command, arguments_, { cwd, stdio: "inherit" })
@@ -37,7 +39,7 @@ try {
   }
 
   // `tsdown.config.ts` builds every file in `src/stores/`, so each built store needs an export.
-  const exported = new Set(targets.map((target) => target.import))
+  const exported = new Set<string>(targets.flatMap((target) => Object.values(target)))
   const unexported = readdirSync(join(packageRoot, "dist/stores"))
     .filter((file) => file.endsWith(".js"))
     .map((file) => `./dist/stores/${file}`)

@@ -10,7 +10,7 @@ The same reason excludes key-value abstractions such as unstorage drivers. They 
 
 ## The store's clock decides
 
-Each instance of an application has its own clock, and clocks drift. If each instance computed window boundaries from its own clock, two instances could disagree about which window a request belongs to. The Redis scripts read the time with `TIME`, so every instance uses the clock of the server. `retryAfter` is also measured on the store's clock.
+Each instance of an application has its own clock, and clocks drift. If each instance computed window boundaries from its own clock, two instances could disagree about which window a request belongs to. The Redis scripts read the time with `TIME`, so every instance uses the clock of the server. A Durable Object reads its own clock, so every Worker uses the clock of the object. `retryAfter` is also measured on the store's clock.
 
 ## The three algorithms
 
@@ -46,10 +46,10 @@ Limiters are definitions, and plain functions run them. Middleware for a framewo
 
 ## Compared with other libraries
 
-|                         | `@sanely/ratelimit`        | hono-rate-limiter        | rate-limiter-flexible |
-| ----------------------- | -------------------------- | ------------------------ | --------------------- |
-| Stores                  | Redis, Valkey, Bun, memory | Memory, Redis, unstorage | Many                  |
-| Algorithms              | Fixed, sliding, bucket     | Fixed                    | Fixed                 |
-| Counts across instances | Yes                        | Not with memory          | Yes                   |
-| Atomic in every store   | Yes                        | Not with unstorage       | Yes                   |
-| Framework integrations  | None, by design            | Hono                     | None                  |
+|                         | `@sanely/ratelimit`                         | hono-rate-limiter        | rate-limiter-flexible |
+| ----------------------- | ------------------------------------------- | ------------------------ | --------------------- |
+| Stores                  | Redis, Valkey, Bun, Durable Objects, memory | Memory, Redis, unstorage | Many                  |
+| Algorithms              | Fixed, sliding, bucket                      | Fixed                    | Fixed                 |
+| Counts across instances | Yes                                         | Not with memory          | Yes                   |
+| Atomic in every store   | Yes                                         | Not with unstorage       | Yes                   |
+| Framework integrations  | None, by design                             | Hono                     | None                  |

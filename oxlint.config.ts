@@ -453,6 +453,16 @@ export default defineConfig({
       files: ["packages/ratelimit/src/**/__tests__/**"],
       rules: { "no-restricted-imports": "off" },
     },
+    // These files declare the `cloudflare:workers` and `cloudflare:test` modules, and a declaration of
+    // a module that does not exist is valid only in a script file. The override is temporary: inline
+    // disable comments do not suppress file-scope rules (oxc-project/oxc#21072).
+    {
+      files: [
+        "packages/ratelimit/src/lib/stores/durable-object/cloudflare-workers.d.ts",
+        "packages/ratelimit/src/lib/stores/durable-object/__tests__/env.d.ts",
+      ],
+      rules: { "import/unambiguous": "off" },
+    },
     // Imports in `packages/skew/src` point one way: the
     // protocol, then the runtime, then integrations. Adapters import only the protocol and
     // `adapters/shared.ts`, and an integration never imports an adapter. These rules follow the

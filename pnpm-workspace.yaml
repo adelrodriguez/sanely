@@ -13,6 +13,7 @@ catalog:
 
 allowBuilds:
   esbuild: true
+  workerd: true
 
 minimumReleaseAgeExclude:
   - adamantite
