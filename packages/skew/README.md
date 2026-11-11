@@ -86,7 +86,7 @@ How-to guides:
 Reference:
 
 - [`@sanely/skew/react`](docs/reference/react.md)
-- [`@sanely/skew`](docs/reference/core.md): monitors, sources, and types
+- [`@sanely/skew`](docs/reference/core.md): monitors, target resolvers, and types
 - [`@sanely/skew/vite` and `@sanely/skew/next`](docs/reference/adapters.md)
 - [Descriptor and embed formats](docs/reference/descriptor.md)
 
