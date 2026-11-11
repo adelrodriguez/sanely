@@ -149,6 +149,13 @@ function BetaAndTheme() {
   return <span>{`${betaValue}:${themeValue}`}</span>
 }
 
+const third = flag.boolean("third", false)
+
+function BetaAndThird() {
+  const [betaValue, thirdValue] = useFlags([beta, third])
+  return <span>{`${betaValue}:${thirdValue}`}</span>
+}
+
 function ThemeAndBeta() {
   const [themeValue, betaValue] = useFlags([theme, beta])
   return <span>{`${themeValue}:${betaValue}`}</span>
@@ -631,6 +638,120 @@ describe("React integration", () => {
     })
     expect(await screen.findByText("false")).toBeTruthy()
     expect(await screen.findByText("false:dark")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh when a newer refresh voids an older refresh's write", async () => {
+    // Each provider call waits until the test answers it, in the order the calls start.
+    const answers: Array<(value: boolean) => void> = []
+    let value = true
+    const held = { on: false }
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: defineProvider({
+        decideOne: (item: Flag) => {
+          if (item.kind === "variant") return decision.variant("dark")
+          if (!held.on) return decision.boolean(value)
+          return new Promise((resolve) => {
+            answers.push((answer) => {
+              resolve(decision.boolean(answer))
+            })
+          })
+        },
+        name: "held",
+      }),
+    })
+    await flags.get(beta)
+    const other = flag.boolean("other", false)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    value = false
+    held.on = true
+    controls().invalidate([beta])
+    // A and B both read beta fresh. B's fresh read voids A's write ticket.
+    const first = controls().prefetch([beta])
+    const second = controls().prefetch([beta, other])
+    await sleep(5)
+    answers.shift()?.(false)
+    await first
+    // C reads while B is still in flight.
+    held.on = false
+    const later = controls().prefetch([beta, third])
+    await sleep(5)
+    for (const answer of answers.splice(0)) answer(false)
+    await Promise.all([second, later])
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <BetaAndThird />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:false")).toBeTruthy()
+  })
+
+  it("keeps a flag fresh when the newer of two refreshes fails", async () => {
+    // Held provider calls, by flag key, in the order they start.
+    const held = new Map<string, Array<(answer: boolean | Error) => void>>()
+    let value = true
+    const holding = { on: false }
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: defineProvider({
+        decideOne: (item: Flag) => {
+          if (item.kind === "variant") return decision.variant("dark")
+          if (!holding.on) return decision.boolean(value)
+          return new Promise((resolve, reject) => {
+            const calls = held.get(item.key) ?? []
+            calls.push((answer) => {
+              if (answer instanceof Error) reject(answer)
+              else resolve(decision.boolean(answer))
+            })
+            held.set(item.key, calls)
+          })
+        },
+        name: "held",
+      }),
+    })
+    const answer = (flagKey: string, result: boolean | Error) =>
+      held.get(flagKey)?.shift()?.(result)
+    await flags.get(beta)
+    const other = flag.boolean("other", false)
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(<FlagsProvider flags={flags}>{capture}</FlagsProvider>)
+
+    value = false
+    holding.on = true
+    controls().invalidate([beta])
+    // B's fresh read voids A's store write, then B fails, so the store still holds true.
+    const first = controls().prefetch([beta])
+    const second = controls().prefetch([beta, other])
+    await sleep(5)
+    answer("beta", false)
+    answer("beta", new Error("provider down"))
+    answer("other", false)
+    await Promise.all([first, second])
+    holding.on = false
+
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags}>
+          {capture}
+          <Suspense fallback="loading">
+            <ThemeAndBeta />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("dark:false")).toBeTruthy()
   })
 
   it("reads fresh when it prefetches a snapshot flag after clear", async () => {

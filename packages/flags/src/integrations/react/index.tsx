@@ -162,11 +162,17 @@ type SnapshotState = {
  * no component has read yet also reads fresh. Each mark is an epoch: a flag reads fresh while its
  * latest mark, or the latest `clear`, is newer than its latest fresh read for that identity.
  */
+type FreshRead = { epoch: number; start: number }
+
 class FreshMarks {
   #cleared = 0
   #epoch = 0
+  #starts = 0
   readonly #marked = new Map<string, Map<string, number>>()
   readonly #read = new Map<string, Map<string, number>>()
+  // The latest fresh read started for each flag. Only that read retires the flag's mark, because a
+  // newer fresh read voids the store write of an older one.
+  readonly #started = new Map<string, Map<string, number>>()
 
   mark(identity: string, flagKeys: Iterable<string>): void {
     this.#epoch += 1
@@ -180,26 +186,34 @@ class FreshMarks {
   }
 
   /**
-   * The current epoch when an evaluation of `flags` for `identity` must read fresh, and otherwise
-   * `undefined`. It records nothing, so another list that reads the same flags while this read is
-   * in flight also reads fresh.
+   * Starts a fresh read when an evaluation of `flags` for `identity` must read fresh, and returns
+   * `undefined` otherwise. It retires no mark, so another list that reads the same flags while this
+   * read is in flight also reads fresh.
    */
-  stale(identity: string, flags: readonly Flag[]): number | undefined {
+  begin(identity: string, flags: readonly Flag[]): FreshRead | undefined {
     const marked = epochsOf(this.#marked, identity)
     const read = epochsOf(this.#read, identity)
     const stale = flags.some(
       ({ key }) => Math.max(this.#cleared, marked.get(key) ?? 0) > (read.get(key) ?? 0)
     )
-    return stale ? this.#epoch : undefined
+    if (!stale) return undefined
+    this.#starts += 1
+    const started = epochsOf(this.#started, identity)
+    for (const { key } of flags) started.set(key, this.#starts)
+    return { epoch: this.#epoch, start: this.#starts }
   }
 
   /**
-   * Records a fresh read of `flags` that started at `epoch` and succeeded. Marks made after it
-   * started still apply.
+   * Retires the marks of `flags` that `fresh` stored, when it is still the latest fresh read of
+   * each flag. Marks made after it started still apply.
    */
-  read(identity: string, flags: readonly Flag[], epoch: number): void {
+  read(identity: string, flags: readonly Flag[], fresh: FreshRead): void {
     const read = epochsOf(this.#read, identity)
-    for (const { key } of flags) read.set(key, Math.max(read.get(key) ?? 0, epoch))
+    const started = epochsOf(this.#started, identity)
+    for (const { key } of flags) {
+      if (started.get(key) !== fresh.start) continue
+      read.set(key, Math.max(read.get(key) ?? 0, fresh.epoch))
+    }
   }
 }
 
@@ -404,20 +418,20 @@ function storeEntry(
     }, 0)
     return null
   }
-  const freshEpoch = cache.fresh.stale(key, bucket.flags)
-  const fresh = freshEpoch !== undefined
+  const freshRead = cache.fresh.begin(key, bucket.flags)
+  const fresh = freshRead !== undefined
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
       if (bucket.entries.get(key) === entry) bucket.entries.delete(key)
     }, 0)
   })
   void entry.promise.then(settle, settle)
-  if (freshEpoch !== undefined) {
+  if (freshRead !== undefined) {
     // Only a flag that the provider answered has a fresh stored decision. Another keeps its mark.
     void entry.promise.then(
       (results) => {
         const answered = bucket.flags.filter((_, index) => results[index]?.source === "provider")
-        cache.fresh.read(key, answered, freshEpoch)
+        cache.fresh.read(key, answered, freshRead)
         return null
       },
       () => null
