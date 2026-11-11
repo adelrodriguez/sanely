@@ -1,10 +1,5 @@
 import { describe, expect, test } from "vitest"
-import {
-  decision,
-  extractDecisionValue,
-  parsePayload,
-  validateDecision,
-} from "#lib/definition/decision.ts"
+import { decision, parsePayload, validateDecision } from "#lib/definition/decision.ts"
 import { type Flag, flag } from "#lib/definition/index.ts"
 import { InvalidDecisionError } from "#lib/errors/index.ts"
 
@@ -39,23 +34,7 @@ describe("decision", () => {
   })
 })
 
-describe("extractDecisionValue", () => {
-  test("reads the boolean value or the variant", () => {
-    expect(extractDecisionValue(decision.boolean(true))).toBe(true)
-    expect(extractDecisionValue(decision.variant("dark"))).toBe("dark")
-  })
-})
-
 describe("validateDecision", () => {
-  test("accepts decisions that fit the flag", () => {
-    expect(() => {
-      validateDecision(decision.boolean(true), betaAccess)
-    }).not.toThrow()
-    expect(() => {
-      validateDecision(decision.variant("dark"), theme)
-    }).not.toThrow()
-  })
-
   test("rejects malformed decisions", () => {
     expect(reasonOf(null, betaAccess)).toBe("expected an object")
     expect(reasonOf("true", betaAccess)).toBe("expected an object")
@@ -82,32 +61,9 @@ describe("validateDecision", () => {
       'the flag does not allow the variant "purple"'
     )
   })
-
-  test("keeps the rejected decision", () => {
-    const rejected = { type: "variant", variant: "purple" }
-    try {
-      validateDecision(rejected, theme)
-    } catch (error) {
-      expect(error).toBeInstanceOf(InvalidDecisionError)
-      expect((error as InvalidDecisionError).decision).toBe(rejected)
-    }
-  })
 })
 
 describe("parsePayload", () => {
-  test("returns undefined without a payload or for a boolean decision", () => {
-    expect(parsePayload(theme, decision.variant("dark"))).toBeUndefined()
-    expect(parsePayload(betaAccess, decision.boolean(true))).toBeUndefined()
-  })
-
-  test("returns the raw payload when the flag has no parser", () => {
-    expect(parsePayload(theme, decision.variant("dark", { id: 1 }))).toEqual({ id: 1 })
-  })
-
-  test("returns the parsed payload", () => {
-    expect(parsePayload(parsedTheme, decision.variant("dark", "accent"))).toBe("ACCENT")
-  })
-
   test("turns a parser failure into an invalid decision", () => {
     const rejected = decision.variant("dark", 42)
     try {

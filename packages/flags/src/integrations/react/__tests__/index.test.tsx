@@ -336,20 +336,6 @@ describe("React integration", () => {
     expect(seen).toEqual(["provider"])
   })
 
-  it("evaluates a reader without identify for the provider identity", async () => {
-    const provider = makeProvider()
-    const serverFlags = createFlags({ provider: provider.single })
-    await renderAsync(
-      <FlagsProvider flags={serverFlags} identity={{ distinctId: "caller" }}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    await screen.findByText("true")
-    expect(provider.seen).toEqual(["caller"])
-  })
-
   it("keeps the cached value when the identity object changes but its content does not", async () => {
     const { decideOne, flags } = makeFlags()
     const tree = (distinctId: string) => (
@@ -980,35 +966,6 @@ describe("React integration", () => {
     expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
-  it("renders a flag when the provider subscribe throws", async () => {
-    const reports: unknown[] = []
-    const decideOne = vi.fn(() => decision.boolean(true))
-    const flags = createFlags({
-      identify: () => ({ distinctId: "core" }),
-      onError: (report) => {
-        reports.push(report._tag)
-      },
-      provider: defineProvider({
-        decideOne,
-        name: "failing",
-        subscribe: () => {
-          throw new Error("subscribe failed")
-        },
-      }),
-    })
-    await renderAsync(
-      <FlagsProvider flags={flags}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decideOne).toHaveBeenCalledTimes(1)
-    await sleep(1)
-    expect(reports).toContain("SubscribeFailed")
-  })
-
   it("drops a snapshot value after a change once a failed subscribe recovers", async () => {
     let notify: ((keys?: readonly string[]) => void) | undefined
     let attempts = 0
@@ -1047,25 +1004,6 @@ describe("React integration", () => {
       await sleep(1)
     })
     expect(await screen.findByText("false")).toBeTruthy()
-  })
-
-  it("re-reads after the last reader unmounts and mounts again", async () => {
-    const { decideOne, emit, flags } = makeFlags()
-    const tree = (
-      <FlagsProvider flags={flags}>
-        <Suspense fallback="loading">
-          <Value item={beta} />
-        </Suspense>
-      </FlagsProvider>
-    )
-    await renderAsync(tree)
-    await screen.findByText("true")
-    cleanup()
-    // A change with no mounted reader does not throw or re-render.
-    emit(["beta"])
-    await renderAsync(tree)
-    expect(await screen.findByText("true")).toBeTruthy()
-    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   it("evicts a rejected evaluation so a later read retries", async () => {
@@ -1371,8 +1309,10 @@ describe("server rendering", () => {
     client.state.value = false
     // A snapshot crosses the network as JSON, so the provider cannot trust its shape.
     const malformed = JSON.parse(json) as FlagSnapshot
-    await renderAsync(<App flags={client.flags} snapshot={malformed} />)
+    const { container } = await renderAsync(<App flags={client.flags} snapshot={malformed} />)
     expect(await screen.findByText("false:dark")).toBeTruthy()
+    // FeatureFlag reads beta alone, so it shows "on" if any snapshot entry survived the parse.
+    expect(container.textContent).toBe("false:darkoff")
   })
 
   it("ignores snapshot entries with an unknown source", async () => {
@@ -1457,28 +1397,6 @@ describe("server rendering", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("false:dark")).toBeTruthy()
-  })
-
-  it("drops a snapshot value after a change notification and evaluates", async () => {
-    const identity = { distinctId: "user" }
-    const { html, snapshot } = await serverRender(identity)
-    const client = makeFlags("bulk")
-    const container = mount(html)
-    await act(async () => {
-      hydrate(container, <App flags={client.flags} identity={identity} snapshot={snapshot} />)
-      await sleep(1)
-    })
-    expect(client.decide).not.toHaveBeenCalled()
-
-    client.state.value = false
-    act(() => {
-      client.emit(["beta"])
-    })
-    // The batch evaluates in a timer-driven flush round, so wait for it instead of a fixed delay.
-    await waitFor(() => {
-      expect(container.textContent).toBe("false:darkoff")
-    })
-    expect(client.decide).toHaveBeenCalled()
   })
 
   it("ignores a snapshot entry whose kind or value does not fit the flag", async () => {

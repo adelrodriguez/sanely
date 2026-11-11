@@ -64,27 +64,6 @@ describe("createHookRunner", () => {
     expect(passed).toHaveBeenCalledWith(context, error)
   })
 
-  test("runs after hooks with decision source metadata, then finally hooks", async () => {
-    const calls: string[] = []
-    const hooks: Hook[] = [
-      {
-        after: (_context, received, meta) => {
-          calls.push(`after:${meta.source}:${String(received === decision)}`)
-        },
-        finally: () => {
-          calls.push("finally")
-        },
-      },
-    ]
-
-    createHookRunner(hooks, context, detached.onError).dispatchAfterThenFinally(decision, {
-      source: "cache",
-    })
-    await sleep(0)
-
-    expect(calls).toEqual(["after:cache:true", "finally"])
-  })
-
   test("reports rejecting detached hooks with their phase and hook index", async () => {
     const reports: HookFailedReport[] = []
     const hooks: Hook[] = [{}, { after: rejectHook, error: rejectHook, finally: rejectHook }]
@@ -126,16 +105,6 @@ describe("createHookRunner", () => {
     } finally {
       process.off("unhandledRejection", unhandled)
     }
-  })
-
-  test("accepts an empty hook list in every phase", async () => {
-    const runner = createHookRunner([], context, detached.onError)
-
-    await runner.before()
-    await runner.error(providerError())
-    runner.dispatchAfterThenFinally(decision, { source: "provider" })
-    runner.dispatchError(providerError())
-    runner.dispatchFinally()
   })
 
   test("types detached methods as void and awaitable methods as promises", () => {

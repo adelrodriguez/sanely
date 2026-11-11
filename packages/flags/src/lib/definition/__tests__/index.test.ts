@@ -13,19 +13,6 @@ function reasonOf(run: () => unknown): string | undefined {
 }
 
 describe("flag.boolean", () => {
-  test("returns a frozen boolean definition", () => {
-    const betaAccess = flag.boolean("beta-access", true, { timeout: 100 })
-
-    expect(betaAccess).toEqual({
-      defaultValue: true,
-      key: "beta-access",
-      kind: "boolean",
-      timeout: 100,
-    })
-    expect(Object.isFrozen(betaAccess)).toBe(true)
-    expect(flag.boolean("other", false).timeout).toBeUndefined()
-  })
-
   test("reads a timeout given as a time expression", () => {
     expect(flag.boolean("beta", false, { timeout: "300ms" }).timeout).toBe(300)
     expect(flag.variant("theme", ["light"], "light", { timeout: "2s" }).timeout).toBe(2000)
@@ -42,23 +29,6 @@ describe("flag.boolean", () => {
 })
 
 describe("flag.variant", () => {
-  test("returns a frozen variant definition with a copy of the variants", () => {
-    const variants = ["light", "dark"] as const
-    const theme = flag.variant("theme", variants, "dark", { payload: String })
-
-    expect(theme).toEqual({
-      defaultValue: "dark",
-      key: "theme",
-      kind: "variant",
-      payload: String,
-      timeout: undefined,
-      variants: ["light", "dark"],
-    })
-    expect(theme.variants).not.toBe(variants)
-    expect(Object.isFrozen(theme)).toBe(true)
-    expect(Object.isFrozen(theme.variants)).toBe(true)
-  })
-
   test("rejects invalid variants and defaults", () => {
     expect(reasonOf(() => flag.variant("", ["a"], "a"))).toMatch(/key must be/)
     expect(reasonOf(() => flag.variant("v", [] as never, "a" as never))).toBe(

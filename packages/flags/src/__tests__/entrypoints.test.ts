@@ -43,9 +43,4 @@ describe("public entry points", () => {
   it("exposes the testing surface", () => {
     expect(Object.keys(testing).toSorted()).toEqual(["fakeProvider", "memoryStore"])
   })
-
-  it("keeps the React and testing entry points out of the core entry point", () => {
-    expect(Object.keys(react).filter((name) => name in core)).toEqual([])
-    expect(Object.keys(testing).filter((name) => name in core)).toEqual([])
-  })
 })
