@@ -1,5 +1,5 @@
 import { InvalidDecisionError } from "#lib/errors/index.ts"
-import type { Flag } from "./index"
+import { byKind, type Flag } from "./index"
 
 /**
  * A provider's answer for one flag. `payload` is the raw variant payload, before the flag's parser
@@ -41,29 +41,31 @@ export function validateDecision(decision: unknown, flag: Flag): asserts decisio
     throw invalid(decision, "expected an object")
   }
   const type: unknown = Reflect.get(decision, "type")
-  if (type === "boolean") {
-    if (typeof Reflect.get(decision, "value") !== "boolean") {
-      throw invalid(decision, "a boolean decision needs a boolean value")
-    }
-    if (flag.kind !== "boolean") {
-      throw invalid(decision, "expected a variant decision but received a boolean decision")
-    }
-    return
+  if (type === "boolean" && typeof Reflect.get(decision, "value") !== "boolean") {
+    throw invalid(decision, "a boolean decision needs a boolean value")
   }
-  if (type === "variant") {
-    const variant: unknown = Reflect.get(decision, "variant")
-    if (typeof variant !== "string") {
-      throw invalid(decision, "a variant decision needs a string variant")
-    }
-    if (flag.kind !== "variant") {
-      throw invalid(decision, "expected a boolean decision but received a variant decision")
-    }
-    if (!flag.variants.includes(variant)) {
-      throw invalid(decision, `the flag does not allow the variant "${variant}"`)
-    }
-    return
+  const variant: unknown = Reflect.get(decision, "variant")
+  if (type === "variant" && typeof variant !== "string") {
+    throw invalid(decision, "a variant decision needs a string variant")
   }
-  throw invalid(decision, 'type must be "boolean" or "variant"')
+  if (type !== "boolean" && type !== "variant") {
+    throw invalid(decision, 'type must be "boolean" or "variant"')
+  }
+  byKind(flag, {
+    boolean: () => {
+      if (type !== "boolean") {
+        throw invalid(decision, `expected a boolean decision but received a ${type} decision`)
+      }
+    },
+    variant: (variantFlag) => {
+      if (type !== "variant") {
+        throw invalid(decision, `expected a variant decision but received a ${type} decision`)
+      }
+      if (typeof variant !== "string" || !variantFlag.variants.includes(variant)) {
+        throw invalid(decision, `the flag does not allow the variant "${String(variant)}"`)
+      }
+    },
+  })
 }
 
 /**
@@ -71,14 +73,19 @@ export function validateDecision(decision: unknown, flag: Flag): asserts decisio
  * payload. Throws `InvalidDecisionError` when the parser throws.
  */
 export function parsePayload(flag: Flag, decision: Decision): unknown {
-  if (decision.type !== "variant" || decision.payload === undefined || flag.kind !== "variant") {
+  // A boolean flag carries no payload. A variant flag may have a parser.
+  const parser = byKind<((payload: unknown) => unknown) | false | undefined>(flag, {
+    boolean: () => false,
+    variant: ({ payload }) => payload,
+  })
+  if (parser === false || decision.type !== "variant" || decision.payload === undefined) {
     return undefined
   }
-  if (!flag.payload) {
+  if (!parser) {
     return decision.payload
   }
   try {
-    return flag.payload(decision.payload)
+    return parser(decision.payload)
   } catch (error) {
     throw new InvalidDecisionError(
       { decision, reason: "the payload parser rejected the payload" },

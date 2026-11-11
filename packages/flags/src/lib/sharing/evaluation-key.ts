@@ -1,3 +1,4 @@
+import { byKind } from "#lib/definition/index.ts"
 import { anonymous, type EvaluationContext, type Subject } from "#lib/identity/index.ts"
 
 /**
@@ -23,7 +24,7 @@ export function getEvaluationKey<TIdentity extends Subject>(
     provider,
     flag.key,
     flag.kind,
-    flag.kind === "variant" ? flag.variants : undefined,
+    byKind(flag, { boolean: () => null, variant: ({ variants }) => variants }),
     typeof distinctId,
     String(distinctId),
   ])

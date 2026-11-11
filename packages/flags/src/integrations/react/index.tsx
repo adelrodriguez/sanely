@@ -11,8 +11,16 @@ import {
 } from "react"
 import type { ChangeListener } from "#lib/changes/index.ts"
 import type { DecisionSource } from "#lib/definition/decision.ts"
-import type { Flag, FlagValue, FlagValues, VariantFlag } from "#lib/definition/index.ts"
 import type { FlagReader, FlagSnapshot, FlagSnapshotEntry } from "#lib/flags/index.ts"
+import {
+  type BooleanFlag,
+  byKind,
+  type Flag,
+  type FlagValue,
+  type FlagValues,
+  isFlagKind,
+  type VariantFlag,
+} from "#lib/definition/index.ts"
 import { IdentityNotFoundError } from "#lib/errors/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import {
@@ -376,10 +384,11 @@ function snapshotEntry(cache: FlagCache, flag: Flag): FlagSnapshotEntry | undefi
     snapshot.entries.delete(flag.key)
     return undefined
   }
-  const valid =
-    flag.kind === "boolean"
-      ? typeof entry.value === "boolean"
-      : typeof entry.value === "string" && flag.variants.includes(entry.value)
+  const { value } = entry
+  const valid = byKind(flag, {
+    boolean: () => typeof value === "boolean",
+    variant: ({ variants }) => typeof value === "string" && variants.includes(value),
+  })
   return valid ? entry : undefined
 }
 
@@ -440,7 +449,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isSnapshotEntry(entry: unknown): entry is FlagSnapshotEntry {
   return (
     isRecord(entry)
-    && (entry.kind === "boolean" || entry.kind === "variant")
+    && isFlagKind(entry.kind)
     && SNAPSHOT_SOURCES.has(entry.source)
     && (typeof entry.value === "boolean" || typeof entry.value === "string")
   )
@@ -615,15 +624,16 @@ type FeatureFlagBase<TFlag extends Flag> = {
   loading?: ReactNode
 }
 
-export type FeatureFlagProps<TFlag extends Flag> =
-  TFlag extends VariantFlag<infer TVariant, infer _TPayload>
+export type FeatureFlagProps<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? FeatureFlagBase<TFlag> & { match?: never }
+  : TFlag extends VariantFlag<infer TVariant, infer _TPayload>
     ? FeatureFlagBase<TFlag> & {
         /**
          * The variant that renders the children.
          */
         match: TVariant
       }
-    : FeatureFlagBase<TFlag> & { match?: never }
+    : never
 
 function FlagSlot({
   children,

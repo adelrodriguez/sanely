@@ -1,8 +1,8 @@
 import type { ChangeListener } from "#lib/changes/index.ts"
-import type { Decision } from "#lib/definition/decision.ts"
 import type { Flag, FlagValue } from "#lib/definition/index.ts"
 import type { Identity, Anonymous } from "#lib/identity/index.ts"
 import type { DecisionStore } from "#lib/sharing/index.ts"
+import { type Decision, decision } from "#lib/definition/decision.ts"
 import { defineProvider, type Provider } from "#lib/provider/index.ts"
 
 type FakeEntry<TFlag extends Flag> = readonly [
@@ -22,12 +22,10 @@ export type FakeProvider = Provider<Identity | Anonymous> & {
   set<TFlag extends Flag>(flag: TFlag, value: FlagValue<TFlag>, payload?: unknown): void
 }
 
+// The value's own type picks the decision, so a value of the wrong type for its flag reaches the
+// reader as a mismatched decision, which validation rejects.
 function toDecision(value: boolean | string, payload: unknown): Decision {
-  return typeof value === "boolean"
-    ? { type: "boolean", value }
-    : payload === undefined
-      ? { type: "variant", variant: value }
-      : { payload, type: "variant", variant: value }
+  return typeof value === "boolean" ? decision.boolean(value) : decision.variant(value, payload)
 }
 
 /**

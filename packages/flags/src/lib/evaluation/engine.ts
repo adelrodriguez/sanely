@@ -1,4 +1,4 @@
-import type { Flag, FlagValue, VariantFlag } from "#lib/definition/index.ts"
+import type { BooleanFlag, Flag, FlagValue, VariantFlag } from "#lib/definition/index.ts"
 import type { EvaluationContext, IdentitySource, Subject } from "#lib/identity/index.ts"
 import type { DecideOptions, ProviderCalls } from "#lib/provider/index.ts"
 import type { MaybePromise } from "#lib/shared/utils.ts"
@@ -14,15 +14,16 @@ import { createEvaluationSignal, raceWithSignal } from "#lib/shared/signals.ts"
 import { resolveDecision, type Sharing } from "#lib/sharing/index.ts"
 import { createHookRunner, type Hook, type HookFailedReport } from "./hooks"
 
-type PayloadDetails<TFlag extends Flag> =
-  TFlag extends VariantFlag<string, infer TPayload>
+type PayloadDetails<TFlag extends Flag> = TFlag extends BooleanFlag
+  ? unknown
+  : TFlag extends VariantFlag<string, infer TPayload>
     ? {
         /**
          * The parsed payload. Present only when a successful variant decision has one.
          */
         readonly payload?: TPayload
       }
-    : unknown
+    : never
 
 /**
  * The result of one evaluation: the value, where it came from, and why it fell back to the default
