@@ -96,27 +96,6 @@ describe("disposer shim", () => {
       expect(calls).toEqual(["second", "first"])
     })
 
-    it("returns used resources and disposes them only when the stack is disposed", () => {
-      const calls: string[] = []
-      const stack = new InternalDisposableStack()
-      const missing = undefined
-
-      const resource: DisposableLike = {
-        [DISPOSE]() {
-          calls.push("resource")
-        },
-      }
-
-      expect(stack.use(resource)).toBe(resource)
-      expect(stack.use(null)).toBeNull()
-      stack.use(missing)
-      expect(calls).toEqual([])
-
-      stack.dispose()
-
-      expect(calls).toEqual(["resource"])
-    })
-
     it("runs cleanups once when disposed more than once", () => {
       let cleanupCalls = 0
       const stack = new InternalDisposableStack()
@@ -131,12 +110,9 @@ describe("disposer shim", () => {
       expect(cleanupCalls).toBe(1)
     })
 
-    it("throws a TypeError for non-disposable resources and non-function cleanups", () => {
+    it("throws a TypeError for a cleanup that is not a function", () => {
       const stack = new InternalDisposableStack()
 
-      expect(() => {
-        stack.use({} as never)
-      }).toThrow(new TypeError("Object not disposable"))
       expect(() => {
         stack.defer(123 as never)
       }).toThrow(new TypeError("123 is not a function"))
@@ -201,27 +177,14 @@ describe("disposer shim", () => {
       expect(inner.suppressed).toBe(thirdError)
     })
 
-    it("fails fast before reading a sync disposer from an already disposed stack", () => {
+    it("throws a ReferenceError for a cleanup deferred on an already disposed stack", () => {
       const stack = new InternalDisposableStack()
-      let getterCalls = 0
-      const resource = {}
-
-      Object.defineProperty(resource, DISPOSE, {
-        get() {
-          getterCalls += 1
-          return () => null
-        },
-      })
 
       stack.dispose()
 
       expect(() => {
-        stack.use(resource as unknown as Disposable)
-      }).toThrow(new ReferenceError("DisposableStack already disposed"))
-      expect(() => {
         stack.defer(() => null)
       }).toThrow(new ReferenceError("DisposableStack already disposed"))
-      expect(getterCalls).toBe(0)
     })
   })
 

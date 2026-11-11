@@ -81,19 +81,6 @@ function checkCanRegister(disposed: boolean, name: string) {
   }
 }
 
-function resolveSyncDisposer(value: Disposable | DisposableLike): SyncDisposer {
-  const candidate = value as DisposableLike
-  const disposer = candidate[DISPOSE]
-
-  if (typeof disposer !== "function") {
-    throw new TypeError("Object not disposable")
-  }
-
-  return () => {
-    disposer.call(value)
-  }
-}
-
 function resolveAsyncDisposer(
   value: AsyncDisposable | Disposable | MaybeDisposable
 ): AsyncDisposerFn {
@@ -127,19 +114,6 @@ export class InternalDisposableStack implements Disposable {
       throw new TypeError(`${String(fn)} is not a function`)
     }
     this.#stack.push(fn)
-  }
-
-  use<T extends Disposable | DisposableLike>(value: T): T
-  use(value: null): null
-  use(value: undefined): undefined
-  use(value: Disposable | DisposableLike | null | undefined) {
-    if (value === null || value === undefined) {
-      return value
-    }
-
-    checkCanRegister(this.#disposed, "DisposableStack")
-    this.#stack.push(resolveSyncDisposer(value))
-    return value
   }
 
   dispose(): void {
