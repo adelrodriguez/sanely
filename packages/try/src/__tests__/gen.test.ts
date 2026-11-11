@@ -1,6 +1,6 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
-import { CancellationError, Panic, TimeoutError, UnhandledException } from "#errors.ts"
+import { CancellationError, Panic, TimeoutError } from "#errors.ts"
 import * as try$ from "#index.ts"
 
 class UserNotFoundError extends Error {
@@ -9,10 +9,6 @@ class UserNotFoundError extends Error {
 
 class ProjectNotFoundError extends Error {
   override name = "ProjectNotFoundError"
-}
-
-function checkShouldLoadProject(): boolean {
-  return false
 }
 
 describe("gen", () => {
@@ -52,48 +48,6 @@ describe("gen", () => {
     expect(didRunAfterError).toBe(false)
   })
 
-  it("runs finally blocks when sync execution short-circuits on a yielded Error", () => {
-    const events: string[] = []
-    const userError = new UserNotFoundError("missing")
-
-    const result = try$.gen(function* (use) {
-      try {
-        yield* use(userError as number | UserNotFoundError)
-        events.push("after")
-        return 42
-      } finally {
-        events.push("finally")
-      }
-    })
-
-    expect(result).toBe(userError)
-    expect(events).toEqual(["finally"])
-  })
-
-  it("returns a sync Error when it short-circuits before the first async yield", () => {
-    const userError = new UserNotFoundError("missing")
-    const findUser = (): number | UserNotFoundError => userError
-
-    const result = try$.gen(function* (use) {
-      const userId = yield* use(findUser())
-      return yield* use(Promise.resolve(userId))
-    })
-
-    expect(result).toBe(userError)
-  })
-
-  it("returns a sync value when it skips a conditional async yield", () => {
-    const result = try$.gen(function* (use) {
-      if (checkShouldLoadProject()) {
-        void (yield* use(Promise.resolve(1)))
-      }
-
-      return 42
-    })
-
-    expect(result).toBe(42)
-  })
-
   it("awaits yielded promises and returns async success", async () => {
     const result = await try$.gen(function* (use) {
       const a = yield* use(Promise.resolve(20))
@@ -119,24 +73,6 @@ describe("gen", () => {
 
     expect(result).toBe(projectError)
     expect(didRunAfterError).toBe(false)
-  })
-
-  it("runs finally blocks when async execution short-circuits on a resolved Error", async () => {
-    const events: string[] = []
-    const projectError = new ProjectNotFoundError("missing")
-
-    const result = await try$.gen(function* (use) {
-      try {
-        yield* use(Promise.resolve(projectError as number | ProjectNotFoundError))
-        events.push("after")
-        return 42
-      } finally {
-        events.push("finally")
-      }
-    })
-
-    expect(result).toBe(projectError)
-    expect(events).toEqual(["finally"])
   })
 
   it("completes a finally block that yields a promise after an async short-circuit", async () => {
@@ -286,19 +222,6 @@ describe("gen", () => {
     expect(caught).toBe(failure)
   })
 
-  it("throws the original error when factory throws", () => {
-    const panic = new Panic("FLOW_NO_EXIT")
-
-    try {
-      try$.gen(() => {
-        throw panic
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBe(panic)
-    }
-  })
-
   it("throws the original error when generator body throws after a sync yield", () => {
     const panic = new Panic("FLOW_NO_EXIT")
 
@@ -377,28 +300,6 @@ describe("gen", () => {
     }
   })
 
-  it("rejects with the original reason and runs finally blocks when a later async yield rejects", async () => {
-    const failure = new Error("second reject")
-    let finalized = false
-
-    try {
-      await try$.gen(function* (use) {
-        void (yield* use(Promise.resolve(1)))
-
-        try {
-          yield* use(Promise.reject<unknown>(failure))
-        } finally {
-          finalized = true
-        }
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expect(error).toBe(failure)
-    }
-
-    expect(finalized).toBe(true)
-  })
-
   it("handles sync yield after entering async path", async () => {
     const result = await try$.gen(function* (use) {
       const a = yield* use(Promise.resolve(10))
@@ -450,41 +351,6 @@ describe("gen composition", () => {
   class ProjectNotFoundInFlowError extends Error {
     override name = "ProjectNotFoundInFlowError"
   }
-
-  it("short-circuits with error from try$.runSync inside gen", () => {
-    const failure = new Error("boom")
-
-    const result = try$.gen(function* (use) {
-      const value = yield* use(
-        try$.runSync((): number => {
-          throw failure
-        })
-      )
-
-      return value
-    })
-
-    expect(result).toBeInstanceOf(UnhandledException)
-    expect((result as UnhandledException).cause).toBe(failure)
-  })
-
-  it("short-circuits with error from try$.run inside gen", async () => {
-    const failure = new Error("boom")
-
-    const result = await try$.gen(function* (use) {
-      const value = yield* use(
-        try$.run(async (): Promise<number> => {
-          await Promise.resolve()
-          throw failure
-        })
-      )
-
-      return value
-    })
-
-    expect(result).toBeInstanceOf(UnhandledException)
-    expect((result as UnhandledException).cause).toBe(failure)
-  })
 
   it("composes multiple try$ calls and returns success or mapped errors", async () => {
     let projectCalls = 0

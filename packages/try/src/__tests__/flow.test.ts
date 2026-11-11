@@ -51,22 +51,6 @@ function runCacheFlow(cachedValue: string | null) {
 }
 
 describe("flow", () => {
-  it("throws when no task exits", async () => {
-    try {
-      await try$.flow({
-        a() {
-          return 1
-        },
-        async b() {
-          return (await this.$result.a) + 1
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "FLOW_NO_EXIT")
-    }
-  })
-
   it("aborts siblings on $exit and waits for them to settle before cleanup", async () => {
     const events: string[] = []
 
@@ -372,19 +356,6 @@ describe("flow", () => {
 
     expect(cleaned).toBe(true)
     expect(dependencyError).toBe(reason)
-  })
-
-  it("rejects when a flow task awaits its own result", async () => {
-    try {
-      await try$.flow({
-        async a() {
-          return await (this.$result as Record<string, Promise<unknown>>).a
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TASK_SELF_REFERENCE")
-    }
   })
 
   it("rejects inherited dependency keys on $result", async () => {

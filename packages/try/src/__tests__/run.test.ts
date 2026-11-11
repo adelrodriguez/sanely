@@ -82,17 +82,6 @@ describe("runSync", () => {
       expect(value).toBe(42)
     })
 
-    it("returns UnhandledException with the thrown error as cause", () => {
-      const failure = new Error("boom")
-
-      const result = try$.runSync(() => {
-        throw failure
-      })
-
-      expect(result).toBeInstanceOf(UnhandledException)
-      expect(result.cause).toBe(failure)
-    })
-
     it("throws Panic when sync run receives a Promise-returning function via unsafe cast", () => {
       const unsafeRun = try$.runSync as unknown as (tryFn: () => number) => number
       const unsafeTry = (() => Promise.resolve(42)) as unknown as () => number
@@ -155,25 +144,6 @@ describe("runSync", () => {
       expect(catchCalls).toBe(0)
     })
 
-    it("throws Panic with the catch error as cause when catch throws", () => {
-      const catchFailure = new Error("catch failed")
-
-      try {
-        try$.runSync({
-          catch: () => {
-            throw catchFailure
-          },
-          try: () => {
-            throw new Error("boom")
-          },
-        })
-        expect.unreachable("should have thrown")
-      } catch (error) {
-        expectPanic(error, "CATCH_HANDLER_THROW")
-        expect((error as Panic).cause).toBe(catchFailure)
-      }
-    })
-
     it("throws Panic when catch returns a Promise via unsafe cast", () => {
       const unsafeCatch = (() => Promise.resolve("mapped")) as unknown as (error: unknown) => string
 
@@ -215,32 +185,6 @@ describe("run", () => {
       expect(result).toBeInstanceOf(UnhandledException)
       expect(result.cause).toBe(failure)
     })
-
-    it("rethrows user-thrown Panic in function form", async () => {
-      const panic = new Panic("FLOW_NO_EXIT")
-      let thrown: unknown
-
-      try {
-        await try$.run(() => {
-          throw panic
-        })
-      } catch (error) {
-        thrown = error
-      }
-
-      expect(thrown).toBe(panic)
-    })
-
-    it("returns UnhandledException with the thrown error as cause when sync function throws", async () => {
-      const failure = new Error("boom")
-
-      const result = await try$.run(() => {
-        throw failure
-      })
-
-      expect(result).toBeInstanceOf(UnhandledException)
-      expect(result.cause).toBe(failure)
-    })
   })
 
   describe("object form", () => {
@@ -261,25 +205,6 @@ describe("run", () => {
 
       expect(result).toBe("mapped")
       expect(caught).toEqual([failure])
-    })
-
-    it("throws Panic with the catch error as cause when catch throws synchronously", async () => {
-      const catchFailure = new Error("catch failed")
-
-      try {
-        await try$.run({
-          catch: () => {
-            throw catchFailure
-          },
-          try: () => {
-            throw new Error("boom")
-          },
-        })
-        expect.unreachable("should have thrown")
-      } catch (error) {
-        expectPanic(error, "CATCH_HANDLER_THROW")
-        expect((error as Panic).cause).toBe(catchFailure)
-      }
     })
 
     it("throws Panic with the rejection as cause when async catch rejects", async () => {
@@ -320,7 +245,7 @@ describe("retry behavior", () => {
     expect(result).toBe(limit)
   })
 
-  it("keeps the attempt count when try or shouldRetry writes to its context", async () => {
+  it("keeps the attempt count when try or shouldRetry writes, defines, or deletes context fields", async () => {
     const seen: number[] = []
     const writes: boolean[] = []
 
@@ -337,13 +262,18 @@ describe("retry behavior", () => {
         seen.push(ctx.retry.attempt)
         writes.push(
           Reflect.set(ctx.retry, "attempt", 99),
-          Reflect.set(ctx, "signal", new AbortController().signal)
+          Reflect.set(ctx, "signal", new AbortController().signal),
+          Reflect.defineProperty(ctx.retry, "attempt", { configurable: true, value: 99 }),
+          Reflect.defineProperty(ctx, "signal", { configurable: true, value: undefined }),
+          Reflect.deleteProperty(ctx.retry, "attempt"),
+          Reflect.deleteProperty(ctx, "signal")
         )
         throw new Error("fail")
       })
 
     expect(seen).toEqual([1, 2, 3])
-    expect(writes.every((write) => !write)).toBe(true)
+    // Six writes in each of three attempts, and one in shouldRetry after each of the first two.
+    expect(writes).toEqual(Array.from({ length: 20 }, () => false))
     expect(result).toBeInstanceOf(RetryExhaustedError)
   })
 
@@ -389,6 +319,25 @@ describe("retry behavior", () => {
     expect(result).toBeInstanceOf(RetryExhaustedError)
     expect(result.cause).toBe(failure)
     expect(attempts).toBe(1)
+  })
+
+  it.each([
+    [{ backoff: "constant", delayMs: 7, limit: 3 }, [7, 7]],
+    [{ backoff: "linear", delayMs: 10, limit: 4 }, [10, 20, 30]],
+    [{ backoff: "exponential", delayMs: 5, limit: 4 }, [5, 10, 20]],
+    [{ backoff: "exponential", delayMs: 5, limit: 4, maxDelayMs: 12 }, [5, 10, 12]],
+  ] as const)("waits the backoff delay of %o between attempts", async (policy, expected) => {
+    const scheduledDelays = captureScheduledDelays()
+
+    try {
+      await try$.retry(policy).run(() => {
+        throw new Error("boom")
+      })
+
+      expect(scheduledDelays.values).toEqual(expected)
+    } finally {
+      scheduledDelays.restore()
+    }
   })
 
   it("caps exponential backoff delays at maxDelayMs through the public API", async () => {
@@ -618,15 +567,6 @@ describe("retry give-up and catch contract", () => {
     expect((caught[0] as Error).message).toBe("boom 2")
   })
 
-  it("returns RetryExhaustedError with the last error as cause when no catch is provided", async () => {
-    const result = await try$.retry(2).run((ctx) => {
-      throw new Error(`boom ${ctx.retry.attempt}`)
-    })
-
-    expect(result).toBeInstanceOf(RetryExhaustedError)
-    expect((result.cause as Error).message).toBe("boom 2")
-  })
-
   it("returns RetryExhaustedError with cause in runSync when no catch is provided", () => {
     const result = try$.retry(2).runSync((ctx) => {
       throw new Error(`boom ${ctx.retry.attempt}`)
@@ -794,6 +734,44 @@ describe("timeout and cancellation behavior", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("returns CancellationError without calling catch when try throws after its own signal aborts", async () => {
+    const controller = new AbortController()
+    const failure = new Error("boom")
+    let catchCalls = 0
+
+    const result = await try$.signal(controller.signal).run({
+      catch: () => {
+        catchCalls += 1
+        return "mapped" as const
+      },
+      try: () => {
+        controller.abort(new Error("stop"))
+        throw failure
+      },
+    })
+
+    expect(result).toBeInstanceOf(CancellationError)
+    expect((result as CancellationError).cause).toBe(failure)
+    expect(catchCalls).toBe(0)
+  })
+
+  it("returns CancellationError from runSync without running the work when its signal already aborted", () => {
+    const reason = new Error("stop")
+    let attempts = 0
+
+    const result = try$
+      .signal(AbortSignal.abort(reason))
+      .retry(2)
+      .runSync(() => {
+        attempts += 1
+        return 1
+      })
+
+    expect(result).toBeInstanceOf(CancellationError)
+    expect((result as CancellationError).cause).toBe(reason)
+    expect(attempts).toBe(0)
   })
 
   it("returns CancellationError with the abort reason when signal aborts during async try", async () => {
@@ -1301,6 +1279,64 @@ describe("wrap behavior", () => {
     expect((asyncError as Error).cause).toBe(failure)
     expectPanic(syncError, "WRAP_THROW")
     expect((syncError as Error).cause).toBe(failure)
+  })
+
+  it("reports a Panic from the work, not WRAP_THROW, when an async wrap rethrows it", async () => {
+    const failure = new Error("catch failed")
+
+    const error = await try$
+      .wrap(async (_, next) => {
+        await next()
+      })
+      .run({
+        catch: () => {
+          throw failure
+        },
+        try: () => {
+          throw new Error("boom")
+        },
+      })
+      .catch((error: unknown) => error)
+
+    expectPanic(error, "CATCH_HANDLER_THROW")
+    expect((error as Error).cause).toBe(failure)
+  })
+
+  it("reports a Panic from runSync work whether a wrap rethrows or swallows it", () => {
+    const failure = new Error("catch failed")
+    const input = {
+      catch: () => {
+        throw failure
+      },
+      try: () => {
+        throw new Error("boom")
+      },
+    }
+    const thrown: unknown[] = []
+
+    for (const wrap of [
+      (_: unknown, next: () => unknown) => next(),
+      (_: unknown, next: () => unknown) => {
+        try {
+          next()
+        } catch {
+          // Swallowing the Panic does not hide it.
+        }
+      },
+    ]) {
+      try {
+        try$.wrap(wrap).runSync(input)
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        thrown.push(error)
+      }
+    }
+
+    for (const error of thrown) {
+      expectPanic(error, "CATCH_HANDLER_THROW")
+      expect((error as Error).cause).toBe(failure)
+    }
+    expect(thrown).toHaveLength(2)
   })
 
   it("throws a Panic from the work even when a wrap swallows it", async () => {

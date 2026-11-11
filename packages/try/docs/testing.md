@@ -4,7 +4,7 @@ Public API suites and benchmarks live in `src/__tests__/` and import the public 
 They cover result unions, policy chains, task graphs, composition, and disposal across domains.
 
 Direct module suites live in adjacent `__tests__/` folders and match their source filenames.
-The retry-helper, utility, and execution-guard cases have separate suites in their owning domains.
+The retry-option normalization and abort-listener cases have separate suites in their owning domains.
 The disposal suite lives with `lib/disposal/index.ts`. Repository-script tests stay in `scripts/__tests__/`.
 
 Public type assertions live in `src/__tests__/types.test-d.ts` and use Vitest's `expectTypeOf`.

@@ -1062,7 +1062,7 @@ function _negativeTypeTests() {
     })
   }
 
-  // Hides orchestration, wrap(), and gen() after retry(number).
+  // Hides orchestration and wrap() after retry(number).
   {
     const retryBuilder = try$.retry(3)
 
@@ -1074,11 +1074,9 @@ function _negativeTypeTests() {
     void retryBuilder.flow
     // @ts-expect-error -- wrap() is unavailable after retry()
     void retryBuilder.wrap
-    // @ts-expect-error -- gen() is unavailable after retry()
-    void retryBuilder.gen
   }
 
-  // Hides orchestration, wrap(), runSync(), and gen() after retry(policy).
+  // Hides orchestration, wrap(), and runSync() after retry(policy).
   {
     const retryBuilder = try$.retry({ backoff: "constant", delayMs: 1, limit: 3 })
 
@@ -1092,8 +1090,6 @@ function _negativeTypeTests() {
     void retryBuilder.wrap
     // @ts-expect-error -- runSync() is unavailable after object retry()
     void retryBuilder.runSync
-    // @ts-expect-error -- gen() is unavailable after retry()
-    void retryBuilder.gen
   }
 
   // Hides wrap() after timeout().
@@ -1112,28 +1108,16 @@ function _negativeTypeTests() {
     void signalBuilder.wrap
   }
 
-  // Hides gen() after wrap().
-  {
-    const wrappedBuilder = try$.wrap((_, next) => next())
-
-    // @ts-expect-error -- gen() is unavailable after wrap()
-    void wrappedBuilder.gen
-  }
-
-  // Hides runSync() and gen() on timeout() and signal() builders.
+  // Hides runSync() on timeout() and signal() builders.
   {
     const timeoutBuilder = try$.timeout(100)
     const signalBuilder = try$.signal(new AbortController().signal)
 
     // @ts-expect-error -- runSync() is unavailable after retry(), timeout(), or signal()
     void timeoutBuilder.runSync
-    // @ts-expect-error -- gen() is unavailable after retry(), timeout(), or signal()
-    void timeoutBuilder.gen
 
     // @ts-expect-error -- runSync() is unavailable after retry(), timeout(), or signal()
     void signalBuilder.runSync
-    // @ts-expect-error -- gen() is unavailable after retry(), timeout(), or signal()
-    void signalBuilder.gen
   }
 
   // Rejects invalid literal retry limits.

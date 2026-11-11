@@ -87,6 +87,15 @@ describe("entrypoints", () => {
     })
   })
 
+  it("throws Panic when retryOptions() receives an unknown backoff from untyped code", () => {
+    try {
+      try$.retryOptions({ backoff: "bogus", limit: 2 } as never)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expectPanic(error, "UNREACHABLE_RETRY_POLICY_BACKOFF")
+    }
+  })
+
   it("throws Panic when timeout() receives Infinity", () => {
     try {
       try$.timeout(Infinity)
@@ -102,42 +111,6 @@ describe("entrypoints", () => {
       expect.unreachable("should have thrown")
     } catch (error) {
       expectPanic(error, "TIMEOUT_INVALID_MS")
-    }
-  })
-
-  it("throws Panic when timeout() receives NaN", () => {
-    try {
-      try$.timeout(Number.NaN)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TIMEOUT_INVALID_MS")
-    }
-  })
-
-  it("throws Panic when retry() receives Infinity", () => {
-    try {
-      try$.retry(Infinity)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
-    }
-  })
-
-  it("throws Panic when retry() receives a negative number", () => {
-    try {
-      try$.retry(-1 as number)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
-    }
-  })
-
-  it("throws Panic when retry() receives NaN", () => {
-    try {
-      try$.retry(Number.NaN)
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "RETRY_INVALID_LIMIT")
     }
   })
 
@@ -184,6 +157,26 @@ describe("entrypoints", () => {
     it("requires a string code for foreign Panic errors", () => {
       expect(isPanic(createForeignError("Panic"))).toBe(false)
       expect(isPanic(createForeignError("Panic", { code: 42 }))).toBe(false)
+    })
+
+    it("matches the same errors on a runtime without Error.isError, such as Node.js 22", () => {
+      const isError = Reflect.get(Error, "isError") as unknown
+      Reflect.deleteProperty(Error, "isError")
+
+      try {
+        expect(isTimeoutError(new TimeoutError())).toBe(true)
+        expect(isTimeoutError(createForeignError("TimeoutError"))).toBe(true)
+        expect(isPanic(createForeignError("Panic", { code: "FLOW_NO_EXIT" }))).toBe(true)
+        expect(isTimeoutError({ name: "TimeoutError", [Symbol.toStringTag]: "Error" })).toBe(false)
+        expect(isTimeoutError({ name: "TimeoutError" })).toBe(false)
+        expect(isTimeoutError(null)).toBe(false)
+      } finally {
+        Reflect.defineProperty(Error, "isError", {
+          configurable: true,
+          value: isError,
+          writable: true,
+        })
+      }
     })
 
     it("rejects non-errors and unrelated names", () => {

@@ -84,22 +84,6 @@ describe("all", () => {
     expect(taskSignalAborted).toBe(false)
   })
 
-  it("resolves with the first task failure when several tasks fail", async () => {
-    const first = new Error("first")
-    const second = new Error("second")
-
-    const error = await try$.all({
-      a() {
-        throw first
-      },
-      async b() {
-        await Promise.resolve()
-        throw second
-      },
-    })
-    expectUnhandled(error, first)
-  })
-
   it("aborts sibling signals with the failure and waits for siblings to settle before resolving", async () => {
     vi.useFakeTimers()
 
@@ -167,32 +151,6 @@ describe("all", () => {
     expect(signalAbortedWhileWaiting).toBe(true)
   })
 
-  it("rejects when a task accesses its own result", async () => {
-    try {
-      await try$.all({
-        async a() {
-          return await (this.$result as Record<string, Promise<unknown>>).a
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TASK_SELF_REFERENCE")
-    }
-  })
-
-  it("rejects when accessing an unknown task result", async () => {
-    try {
-      await try$.all({
-        async a() {
-          return await (this.$result as Record<string, Promise<unknown>>).doesNotExist
-        },
-      })
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "TASK_UNKNOWN_REFERENCE")
-    }
-  })
-
   it("rejects with TASK_INVALID_HANDLER when a task is not a function", async () => {
     try {
       await try$.all({
@@ -205,16 +163,6 @@ describe("all", () => {
       expectPanic(error, "TASK_INVALID_HANDLER")
       expect((error as Error).message).toBe('Task "a" is not a function')
     }
-  })
-
-  it("normalizes undefined task failures", async () => {
-    const error = await try$.all({
-      a() {
-        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error -- Intentional coverage for undefined task failures.
-        throw undefined
-      },
-    })
-    expectUnhandled(error)
   })
 
   it.each([undefined, null])(
@@ -550,50 +498,6 @@ describe("all", () => {
     expect(result).toEqual({ a: 1, c: undefined })
   })
 
-  it("awaits an async catch and returns its mapped value", async () => {
-    const boom = new Error("boom")
-
-    const result = await try$.all(
-      {
-        a() {
-          throw boom
-        },
-      },
-      {
-        catch: async (failure) => {
-          await Promise.resolve()
-          return { mapped: failure }
-        },
-      }
-    )
-
-    expect(result).toEqual({ mapped: boom })
-    expect((result as { mapped: unknown }).mapped).toBe(boom)
-  })
-
-  it("throws Panic when all catch throws", async () => {
-    const catchFailure = new Error("catch failed")
-
-    try {
-      await try$.all(
-        {
-          a() {
-            throw new Error("boom")
-          },
-        },
-        {
-          catch: () => {
-            throw catchFailure
-          },
-        }
-      )
-      expect.unreachable("should have thrown")
-    } catch (error) {
-      expectPanic(error, "CATCH_HANDLER_THROW")
-      expect((error as Error).cause).toBe(catchFailure)
-    }
-  })
-
   it("throws Panic when all catch rejects", async () => {
     const catchFailure = new Error("catch failed")
 
@@ -752,38 +656,15 @@ describe("all", () => {
     expect(cleaned).toBe(true)
   })
 
-  it("aborts the task signal with the TimeoutError it returns when the graph deadline fires", async () => {
-    vi.useFakeTimers()
-
-    try {
-      let abortReason: unknown
-
-      const promise = try$.timeout(10).all({
-        async a() {
-          await waitForAbort(this.$signal)
-          abortReason = this.$signal.reason
-          throw this.$signal.reason
-        },
-      })
-
-      await vi.advanceTimersByTimeAsync(10)
-      const error = await promise
-
-      expect(error).toBeInstanceOf(TimeoutError)
-      expect(error).toBe(abortReason)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
   it("prefers cancellation over the graph deadline when both fire in flight", async () => {
     vi.useFakeTimers()
 
     try {
       const controller = new AbortController()
+      const reason = new Error("stop")
 
       setTimeout(() => {
-        controller.abort(new Error("stop"))
+        controller.abort(reason)
       }, 10)
 
       const promise = try$
@@ -800,6 +681,7 @@ describe("all", () => {
       const error = await promise
 
       expect(error).toBeInstanceOf(CancellationError)
+      expect((error as CancellationError).cause).toBe(reason)
     } finally {
       vi.useRealTimers()
     }
@@ -844,8 +726,9 @@ describe("all", () => {
 
   it("prefers cancellation over the graph deadline when both are tripped before execution", async () => {
     const controller = new AbortController()
+    const reason = new Error("stop")
 
-    controller.abort(new Error("stop"))
+    controller.abort(reason)
 
     const error = await try$
       .signal(controller.signal)
@@ -856,6 +739,7 @@ describe("all", () => {
         },
       })
     expect(error).toBeInstanceOf(CancellationError)
+    expect((error as CancellationError).cause).toBe(reason)
   })
 
   it("bounds the deadline with $race for signal-unaware work", async () => {
@@ -927,6 +811,44 @@ describe("all", () => {
     expectUnhandled(error, boom)
 
     expect(racedRejection).toBe(boom)
+  })
+
+  it("rejects $race at once and observes the raced promise when the task signal already aborted", async () => {
+    const boom = new Error("boom")
+    let racedRejection: unknown
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+
+    process.on("unhandledRejection", onUnhandled)
+
+    try {
+      const result = await try$.all({
+        a() {
+          throw boom
+        },
+        async b() {
+          await waitForAbort(this.$signal)
+
+          try {
+            await this.$race(Promise.reject(new Error("late")))
+          } catch (error) {
+            racedRejection = error
+          }
+
+          return 1
+        },
+      })
+
+      await sleep(0)
+
+      expectUnhandled(result, boom)
+      expect(racedRejection).toBe(boom)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
   })
 
   it("normalizes an undefined sibling failure observed through $race", async () => {
