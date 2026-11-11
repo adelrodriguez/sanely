@@ -134,6 +134,38 @@ function createServingPeer(options: { onHidden?: (error: unknown) => void } = {}
   return { client, running, sent, server, signals }
 }
 
+// Two call-only sessions on the same end, as two features that each connect to one port.
+function createSharedCallers() {
+  const [serverWire, callerWire] = createWirePair()
+  const signals = new Map<string, AbortSignal>()
+  const echoContract = defineContract({
+    echo: channel({ input: z.string(), output: z.string() }),
+  })
+  const router = createRouter(echoContract, {
+    echo: async ({ input, signal }) => {
+      signals.set(input, signal)
+
+      // "hang" settles only when its caller cancels it.
+      if (input === "hang") {
+        await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("stopped"))
+          })
+        })
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, input === "slow" ? 20 : 0)
+      })
+      return input
+    },
+  })
+
+  connect(serverWire, { router })
+
+  return { first: connect(callerWire), second: connect(callerWire), signals }
+}
+
 describe("connect", () => {
   test("round-trips in both directions over one pipe", async () => {
     const { api, push } = createConnectedPeers()
@@ -368,7 +400,7 @@ describe("connect", () => {
     await expect(closed).resolves.toBeInstanceOf(ChannelError)
   })
 
-  test("ignores requests without a numeric id or string path", async () => {
+  test("ignores requests without a numeric id, a string path, or a session id", async () => {
     const [serverWire, peerWire] = createWirePair()
     const seen: unknown[] = []
     let calls = 0
@@ -383,8 +415,23 @@ describe("connect", () => {
     peerWire.onMessage((data) => {
       seen.push(data)
     })
-    peerWire.send({ id: "1", kind: "req", path: "math.add", payload: { a: 1, b: 2 } })
-    peerWire.send({ id: 2, kind: "req", path: ["math", "add"], payload: { a: 1, b: 2 } })
+    peerWire.send({
+      id: "1",
+      kind: "req",
+      path: "math.add",
+      payload: { a: 1, b: 2 },
+      rpc: 1,
+      sid: "p",
+    })
+    peerWire.send({
+      id: 2,
+      kind: "req",
+      path: ["math", "add"],
+      payload: { a: 1, b: 2 },
+      rpc: 1,
+      sid: "p",
+    })
+    peerWire.send({ id: 3, kind: "req", path: "math.add", payload: { a: 1, b: 2 }, rpc: 1 })
     await new Promise((resolve) => {
       setTimeout(resolve, 0)
     })
@@ -487,38 +534,6 @@ describe("connect", () => {
   })
 
   describe("sessions sharing one wire", () => {
-    // Two call-only sessions on the same end, as two features that each connect to one port.
-    function createSharedCallers() {
-      const [serverWire, callerWire] = createWirePair()
-      const signals = new Map<string, AbortSignal>()
-      const echoContract = defineContract({
-        echo: channel({ input: z.string(), output: z.string() }),
-      })
-      const router = createRouter(echoContract, {
-        echo: async ({ input, signal }) => {
-          signals.set(input, signal)
-
-          // "hang" settles only when its caller cancels it.
-          if (input === "hang") {
-            await new Promise((_resolve, reject) => {
-              signal.addEventListener("abort", () => {
-                reject(new Error("stopped"))
-              })
-            })
-          }
-
-          await new Promise((resolve) => {
-            setTimeout(resolve, input === "slow" ? 20 : 0)
-          })
-          return input
-        },
-      })
-
-      connect(serverWire, { router })
-
-      return { first: connect(callerWire), second: connect(callerWire), signals }
-    }
-
     test("each session settles only with the replies to its own calls", async () => {
       const { first, second } = createSharedCallers()
 
@@ -567,8 +582,17 @@ describe("connect", () => {
       peerWire.onMessage((data) => {
         seen.push(data)
       })
-      // The shape `connect` used before the marker, which another protocol could also produce.
-      peerWire.send({ id: 0, kind: "req", path: "math.add", payload: { a: 1, b: 2 } })
+      // Otherwise well formed: one has no marker, as another protocol could send, and one names a
+      // protocol version this end does not speak.
+      peerWire.send({ id: 0, kind: "req", path: "math.add", payload: { a: 1, b: 2 }, sid: "p" })
+      peerWire.send({
+        id: 1,
+        kind: "req",
+        path: "math.add",
+        payload: { a: 1, b: 2 },
+        rpc: 2,
+        sid: "p",
+      })
       await new Promise((resolve) => {
         setTimeout(resolve, 0)
       })
