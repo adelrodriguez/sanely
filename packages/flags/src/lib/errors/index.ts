@@ -97,22 +97,23 @@ export class FlagDefinitionError extends Error {
 }
 
 /**
+ * The classes of the evaluation errors. `EvaluationError` and `isEvaluationError` both come from
+ * this list, so a new evaluation error needs one entry here and the guard recognizes it.
+ */
+export const evaluationErrors = [
+  EvaluationAbortedError,
+  EvaluationTimeoutError,
+  IdentityNotFoundError,
+  InvalidDecisionError,
+  ProviderFailedError,
+] as const
+
+/**
  * Why an evaluation returned the flag's default value. Evaluations return it in their details and
  * never throw it.
  */
-export type EvaluationError =
-  | EvaluationAbortedError
-  | EvaluationTimeoutError
-  | IdentityNotFoundError
-  | InvalidDecisionError
-  | ProviderFailedError
+export type EvaluationError = InstanceType<(typeof evaluationErrors)[number]>
 
 export function isEvaluationError(error: unknown): error is EvaluationError {
-  return (
-    error instanceof EvaluationAbortedError
-    || error instanceof EvaluationTimeoutError
-    || error instanceof IdentityNotFoundError
-    || error instanceof InvalidDecisionError
-    || error instanceof ProviderFailedError
-  )
+  return evaluationErrors.some((ErrorClass) => error instanceof ErrorClass)
 }
