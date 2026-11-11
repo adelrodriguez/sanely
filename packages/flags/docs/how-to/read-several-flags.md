@@ -32,4 +32,4 @@ The batch resolves the identity once. When the identity fails, every flag return
 
 ## Set the batch deadline
 
-Each flag keeps its own timeout, which starts when the batch starts, so the shared identity resolution counts against it. The batch waits for the identity until the longest flag timeout passes, or with no limit when any flag has no timeout. A flag whose timeout passes first returns its default with an `EvaluationTimeoutError`. See [How to set timeouts and cancel evaluations](./set-timeouts-and-cancel.md).
+Each flag keeps its own timeout, which starts when the `getMany`, `detailsMany`, or `snapshot` call starts, so the shared identity lookup counts against it. The batch waits for the identity until the longest flag timeout passes, or with no limit when any flag has no timeout. A flag whose timeout passes first returns its default with an `EvaluationTimeoutError`. See [How to set timeouts and cancel evaluations](./set-timeouts-and-cancel.md).
