@@ -282,6 +282,7 @@ The three stores run the same Lua scripts, so they count the same way. They work
 - Every check touches a single key, as Redis Cluster requires.
 - Keys expire when their state no longer matters.
 - A client's `keyPrefix` applies to every key that the store writes and clears. The client adds it before the factory `prefix`.
+- ioredis and iovalkey send unanswered commands again after they reconnect, because `autoResendUnfulfilledCommands` defaults to `true`. When the connection drops after the server ran a check, the check runs twice and spends its cost twice. Set `autoResendUnfulfilledCommands: false` on the client to spend at most once. The lost check then ends as a store error.
 
 Each entry point also exports `InvalidReplyError`.
 
