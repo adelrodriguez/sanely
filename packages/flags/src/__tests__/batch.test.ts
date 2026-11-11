@@ -82,7 +82,7 @@ describe("batches", () => {
     const decide = vi.fn(decideAll)
     const decideOne = vi.fn(decideFor)
     const short = flag.boolean("beta", false)
-    const long = flag.boolean("beta", true, { timeoutMs: 1000 })
+    const long = flag.boolean("beta", true, { timeout: 1000 })
 
     const bulk = createFlags({
       cache: { coalesce: false },
@@ -470,7 +470,7 @@ describe("batches", () => {
       hooks: [skewedHook],
       identify: () => user,
       provider: defineProvider({ decide, name: "bulk" }),
-      timeoutMs: 200,
+      timeout: 200,
     })
     const first = flag.boolean("first", false)
     const second = flag.boolean("second", false)
@@ -530,10 +530,10 @@ describe("batches", () => {
         },
         name: "slow",
       }),
-      timeoutMs: 10,
+      timeout: 10,
     })
     const readerTimed = flag.boolean("reader-timed", false)
-    const slow = flag.boolean("slow", false, { timeoutMs: 100 })
+    const slow = flag.boolean("slow", false, { timeout: 100 })
 
     const [readerDetails, slowDetails] = await flags.detailsMany([readerTimed, slow])
 
@@ -553,8 +553,8 @@ describe("batches", () => {
     })
 
     const [capped, roomy] = await flags.detailsMany([
-      flag.boolean("capped", false, { timeoutMs: 10 }),
-      flag.boolean("roomy", false, { timeoutMs: 200 }),
+      flag.boolean("capped", false, { timeout: 10 }),
+      flag.boolean("roomy", false, { timeout: 200 }),
     ])
 
     expect(capped.error).toBeInstanceOf(EvaluationTimeoutError)
@@ -577,7 +577,7 @@ describe("batches", () => {
     })
 
     await flags.getMany([
-      flag.boolean("capped", false, { timeoutMs: 20 }),
+      flag.boolean("capped", false, { timeout: 20 }),
       flag.boolean("unbounded", false),
     ])
 
@@ -606,8 +606,8 @@ describe("batches", () => {
     })
 
     const [fast] = await flags.getMany([
-      flag.boolean("fast", false, { timeoutMs: 50 }),
-      flag.boolean("slow", false, { timeoutMs: 5000 }),
+      flag.boolean("fast", false, { timeout: 50 }),
+      flag.boolean("slow", false, { timeout: 5000 }),
     ])
 
     expect(fast).toBe(true)
@@ -697,9 +697,9 @@ describe("batches", () => {
         },
         provider: defineProvider({ decide, name: "bulk" }),
       })
-      const fast = flag.boolean("fast", false, { timeoutMs: 1 })
-      const slow = flag.boolean("slow", false, { timeoutMs: 1000 })
-      const late = flag.boolean("late", false, { timeoutMs: 1000 })
+      const fast = flag.boolean("fast", false, { timeout: 1 })
+      const slow = flag.boolean("slow", false, { timeout: 1000 })
+      const late = flag.boolean("late", false, { timeout: 1000 })
 
       const pending = flags.detailsMany([fast, slow, late])
       await vi.advanceTimersByTimeAsync(10)

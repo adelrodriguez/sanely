@@ -29,7 +29,7 @@ function createEvaluator(
     onError: undefined,
     provider: providerCalls(defineProvider(definition)),
     sharing: createSharing({ coalesce: false }, detached.changes, detached.onError),
-    timeoutMs: undefined,
+    timeout: undefined,
     ...overrides,
   }
 }
@@ -149,14 +149,14 @@ describe("evaluateMany", () => {
   })
 
   test("times out each flag with its own deadline", async () => {
-    const fast = flag.boolean("fast", false, { timeoutMs: 5 })
+    const fast = flag.boolean("fast", false, { timeout: 5 })
     const decideOne = vi.fn(async (item: Flag) => {
       await sleep(item.key === "fast" ? 30 : 0)
       return decision.boolean(true)
     })
 
     const results = await evaluateMany(
-      createEvaluator({ decideOne, name: "one" }, { timeoutMs: 100 }),
+      createEvaluator({ decideOne, name: "one" }, { timeout: 100 }),
       [fast, betaAccess],
       identifyAs(user),
       caller.signal

@@ -26,7 +26,7 @@ function createEvaluator(overrides: Partial<Evaluator<Identity>> = {}): Evaluato
     onError: undefined,
     provider: { decideOne: () => Promise.resolve(null), name: "test" },
     sharing: createSharing({ coalesce: false }, detached.changes, detached.onError),
-    timeoutMs: undefined,
+    timeout: undefined,
     ...overrides,
   }
 }
@@ -48,10 +48,10 @@ const noDeadline = { signal: undefined }
 
 describe("timeoutOf", () => {
   test("prefers the flag timeout over the reader timeout", () => {
-    const evaluator = createEvaluator({ timeoutMs: 100 })
+    const evaluator = createEvaluator({ timeout: 100 })
 
     expect(timeoutOf(evaluator, betaAccess)).toBe(100)
-    expect(timeoutOf(evaluator, flag.boolean("fast", false, { timeoutMs: 5 }))).toBe(5)
+    expect(timeoutOf(evaluator, flag.boolean("fast", false, { timeout: 5 }))).toBe(5)
   })
 })
 
@@ -154,7 +154,7 @@ describe("evaluate", () => {
 
   test("falls back with EvaluationTimeoutError after the timeout", async () => {
     const details = await evaluate(
-      createEvaluator({ timeoutMs: 5 }),
+      createEvaluator({ timeout: 5 }),
       betaAccess,
       identify,
       neverSettles,
@@ -162,7 +162,7 @@ describe("evaluate", () => {
     )
 
     expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
-    expect(details.error).toMatchObject({ timeoutMs: 5 })
+    expect(details.error).toMatchObject({ timeout: 5 })
   })
 
   test("falls back with EvaluationAbortedError when the caller aborts", async () => {
@@ -205,7 +205,7 @@ describe("evaluate", () => {
     })
 
     const details = await evaluate(
-      createEvaluator({ timeoutMs: 1 }),
+      createEvaluator({ timeout: 1 }),
       betaAccess,
       identify,
       decide,
@@ -281,7 +281,7 @@ describe("evaluate", () => {
     const error = vi.fn(neverSettles)
 
     const details = await evaluate(
-      createEvaluator({ hooks: [{ error }], timeoutMs: 5 }),
+      createEvaluator({ hooks: [{ error }], timeout: 5 }),
       betaAccess,
       identify,
       neverSettles,
@@ -297,7 +297,7 @@ describe("evaluate", () => {
     const error = vi.fn(neverSettles)
 
     const details = await evaluate(
-      createEvaluator({ hooks: [{ error }], timeoutMs: 20 }),
+      createEvaluator({ hooks: [{ error }], timeout: 20 }),
       betaAccess,
       identify,
       () => Promise.reject(new Error("down")),

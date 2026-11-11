@@ -43,6 +43,12 @@ const user: UserIdentity = { distinctId: "u1", plan: "pro" }
   flag.variant("size", ["s", "m"], "l")
   // @ts-expect-error A boolean flag needs a boolean default.
   flag.boolean("beta", "yes")
+  flag.boolean("beta", false, { timeout: "300ms" })
+  flag.variant("size", ["s", "m"], "s", { timeout: 300 })
+  // @ts-expect-error "M" is ambiguous between minutes and months.
+  flag.boolean("beta", false, { timeout: "1M" })
+  // @ts-expect-error A timeout is a time expression, not any string.
+  flag.variant("size", ["s", "m"], "s", { timeout: "soon" })
 }
 
 // ── Providers ───────────────────────────────────────────────────────────────
@@ -88,6 +94,12 @@ const serverFlags = createFlags({ provider: userProvider })
   createFlags({ identify: () => anonymous, provider: userProvider })
   // @ts-expect-error `for` takes the provider's identity.
   serverFlags.for({ distinctId: "u1" })
+  // A reader timeout keeps the reader's identity type.
+  expectTypeOf(createFlags({ provider: userProvider, timeout: "1s" })).toEqualTypeOf<
+    CallerFlags<UserIdentity>
+  >()
+  // @ts-expect-error "M" is ambiguous between minutes and months.
+  createFlags({ provider: userProvider, timeout: "1M" })
   // A reader without `identify` reads only through `for`.
   expectTypeOf(serverFlags).not.toHaveProperty("get")
 
@@ -166,6 +178,13 @@ export function Components() {
         <FeatureFlag flag={theme}>never</FeatureFlag>
       </FlagsProvider>
       <FlagsProvider flags={serverFlags} identity={user}>
+        child
+      </FlagsProvider>
+      <FlagsProvider flags={flags} cache={{ pendingTtl: 30_000, ttl: "5m" }}>
+        child
+      </FlagsProvider>
+      {/* @ts-expect-error A cache ttl is a time expression, not any string. */}
+      <FlagsProvider flags={flags} cache={{ ttl: "soon" }}>
         child
       </FlagsProvider>
       {/* @ts-expect-error A reader without `identify` needs an identity. */}

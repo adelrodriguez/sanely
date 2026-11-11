@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { assertTimeoutMs, flag } from "#lib/definition/index.ts"
+import { flag, parseTimeout } from "#lib/definition/index.ts"
 import { FlagDefinitionError } from "#lib/errors/index.ts"
 
 function reasonOf(run: () => unknown): string | undefined {
@@ -14,16 +14,21 @@ function reasonOf(run: () => unknown): string | undefined {
 
 describe("flag.boolean", () => {
   test("returns a frozen boolean definition", () => {
-    const betaAccess = flag.boolean("beta-access", true, { timeoutMs: 100 })
+    const betaAccess = flag.boolean("beta-access", true, { timeout: 100 })
 
     expect(betaAccess).toEqual({
       defaultValue: true,
       key: "beta-access",
       kind: "boolean",
-      timeoutMs: 100,
+      timeout: 100,
     })
     expect(Object.isFrozen(betaAccess)).toBe(true)
-    expect(flag.boolean("other", false).timeoutMs).toBeUndefined()
+    expect(flag.boolean("other", false).timeout).toBeUndefined()
+  })
+
+  test("reads a timeout given as a time expression", () => {
+    expect(flag.boolean("beta", false, { timeout: "300ms" }).timeout).toBe(300)
+    expect(flag.variant("theme", ["light"], "light", { timeout: "2s" }).timeout).toBe(2000)
   })
 
   test("rejects an invalid key, default, or timeout", () => {
@@ -32,7 +37,7 @@ describe("flag.boolean", () => {
     expect(reasonOf(() => flag.boolean("beta", "yes" as never))).toBe(
       "defaultValue must be a boolean; received yes"
     )
-    expect(reasonOf(() => flag.boolean("beta", false, { timeoutMs: 0 }))).toMatch(/timeoutMs/)
+    expect(reasonOf(() => flag.boolean("beta", false, { timeout: 0 }))).toMatch(/timeout/)
   })
 })
 
@@ -46,7 +51,7 @@ describe("flag.variant", () => {
       key: "theme",
       kind: "variant",
       payload: String,
-      timeoutMs: undefined,
+      timeout: undefined,
       variants: ["light", "dark"],
     })
     expect(theme.variants).not.toBe(variants)
@@ -74,25 +79,26 @@ describe("flag.variant", () => {
     expect(reasonOf(() => flag.variant("v", ["a"], "a", { payload: 1 as never }))).toBe(
       "payload must be a function"
     )
-    expect(reasonOf(() => flag.variant("v", ["a"], "a", { timeoutMs: -1 }))).toMatch(/timeoutMs/)
+    expect(reasonOf(() => flag.variant("v", ["a"], "a", { timeout: -1 }))).toMatch(/timeout/)
   })
 })
 
-describe("assertTimeoutMs", () => {
-  test("accepts undefined and positive finite delays within the timer limit", () => {
-    expect(() => {
-      assertTimeoutMs(flag.boolean("beta", false).timeoutMs)
-    }).not.toThrow()
-    expect(() => {
-      assertTimeoutMs(2_147_483_647)
-    }).not.toThrow()
+describe("parseTimeout", () => {
+  test("reads milliseconds and time expressions within the timer limit", () => {
+    expect(parseTimeout(flag.boolean("beta", false).timeout)).toBeUndefined()
+    expect(parseTimeout(250)).toBe(250)
+    expect(parseTimeout(2_147_483_647)).toBe(2_147_483_647)
+    expect(parseTimeout("500ms")).toBe(500)
+    expect(parseTimeout("1.5s")).toBe(1500)
+    expect(parseTimeout("1m")).toBe(60_000)
   })
 
-  test("rejects other values", () => {
-    for (const value of [0, -1, Number.NaN, Infinity, 2_147_483_648, "10"]) {
-      expect(() => {
-        assertTimeoutMs(value)
-      }).toThrow(FlagDefinitionError)
+  test("rejects other values and names the value it received", () => {
+    for (const value of [0, -1, Number.NaN, Infinity, 2_147_483_648, "0s", "25d", true, {}]) {
+      expect(() => parseTimeout(value)).toThrow(FlagDefinitionError)
     }
+    expect(reasonOf(() => parseTimeout("soon"))).toMatch(/received "soon"$/)
+    expect(reasonOf(() => parseTimeout("1M"))).toMatch(/received "1M"$/)
+    expect(reasonOf(() => parseTimeout(0))).toMatch(/received 0$/)
   })
 })

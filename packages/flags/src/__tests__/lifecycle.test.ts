@@ -1029,8 +1029,8 @@ describe("request coalescing", () => {
         identify,
         provider: defineProvider({ decideOne, name: "test" }),
       })
-      const fast = flag.boolean("beta-access", false, { timeoutMs: 10 })
-      const slow = flag.boolean("beta-access", false, { timeoutMs: 1000 })
+      const fast = flag.boolean("beta-access", false, { timeout: 10 })
+      const slow = flag.boolean("beta-access", false, { timeout: 1000 })
 
       const leader = flags.details(fast)
       await providerStarted.promise
@@ -1312,13 +1312,13 @@ describe("timeouts and fallback", () => {
         decideOne: () => createDeferred<Decision>().promise,
         name: "test",
       }),
-      timeoutMs: 5,
+      timeout: 5,
     })
 
     const details = await flags.details(betaAccess)
     expect(details.source).toBe("default")
     expect(details.error).toBeInstanceOf(EvaluationTimeoutError)
-    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeoutMs: 5 })
+    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeout: 5 })
   })
 
   test("uses the flag's timeout instead of the reader's", async () => {
@@ -1328,10 +1328,10 @@ describe("timeouts and fallback", () => {
         decideOne: () => createDeferred<Decision>().promise,
         name: "test",
       }),
-      timeoutMs: 1000,
+      timeout: 1000,
     })
 
-    const details = await flags.details(flag.boolean("beta-access", false, { timeoutMs: 5 }))
-    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeoutMs: 5 })
+    const details = await flags.details(flag.boolean("beta-access", false, { timeout: 5 }))
+    expect(details.error).toMatchObject({ _tag: "EvaluationTimeoutError", timeout: 5 })
   })
 })

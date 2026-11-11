@@ -23,7 +23,7 @@ const provider = defineProvider({
 describe("createFlags", () => {
   test("validates its options", () => {
     expect(() => createFlags({ provider: {} as never })).toThrow(FlagDefinitionError)
-    expect(() => createFlags({ provider, timeoutMs: 0 })).toThrow(FlagDefinitionError)
+    expect(() => createFlags({ provider, timeout: 0 })).toThrow(FlagDefinitionError)
     expect(() => createFlags({ identify: "user" as never, provider })).toThrow(
       "identify must be a function"
     )
@@ -84,7 +84,7 @@ describe("createFlags", () => {
 
   test("ends a snapshot at the deadline when identify never settles", async () => {
     const { promise: pending } = Promise.withResolvers<Identity>()
-    const flags = createFlags({ identify: () => pending, provider, timeoutMs: 20 })
+    const flags = createFlags({ identify: () => pending, provider, timeout: 20 })
     const aborted = new AbortController()
     aborted.abort(new Error("stop"))
 

@@ -20,6 +20,7 @@ import {
 import {
   FeatureFlag,
   type FlagCacheControls,
+  type FlagCacheOptions,
   FlagsProvider,
   FlagsProviderMissingError,
   useFlag,
@@ -668,12 +669,15 @@ describe("React integration", () => {
     const { flags } = makeFlags()
     const silenced = silenceConsoleError()
     try {
-      for (const cache of [
+      const invalid: Array<FlagCacheOptions<"1s" | "0s">> = [
         { maxEntries: 0 },
         { maxEntries: 1.5 },
-        { pendingTtlMs: 0 },
-        { ttlMs: Number.POSITIVE_INFINITY },
-      ]) {
+        { pendingTtl: 0 },
+        { ttl: Number.POSITIVE_INFINITY },
+        { ttl: "soon" as "1s" },
+        { pendingTtl: "0s" },
+      ]
+      for (const cache of invalid) {
         expect(() =>
           render(
             <FlagsProvider flags={flags} cache={cache}>
@@ -803,14 +807,14 @@ describe("flag cache bounds", () => {
     expect(decideOne).toHaveBeenCalledTimes(4)
   })
 
-  it("expires settled evaluations after ttlMs", async () => {
+  it("expires settled evaluations after ttl", async () => {
     let now = 0
     const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now)
     try {
       const { decideOne, flags } = makeFlags()
       const { capture, controls } = captureCache()
       render(
-        <FlagsProvider flags={flags} cache={{ ttlMs: 100 }}>
+        <FlagsProvider flags={flags} cache={{ ttl: "100ms" }}>
           {capture}
         </FlagsProvider>
       )
@@ -827,7 +831,7 @@ describe("flag cache bounds", () => {
     }
   })
 
-  it("expires a pending evaluation after pendingTtlMs", async () => {
+  it("expires a pending evaluation after pendingTtl", async () => {
     let now = 0
     const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now)
     try {
@@ -843,7 +847,7 @@ describe("flag cache bounds", () => {
       })
       const { capture, controls } = captureCache()
       render(
-        <FlagsProvider flags={flags} cache={{ pendingTtlMs: 100 }}>
+        <FlagsProvider flags={flags} cache={{ pendingTtl: 100 }}>
           {capture}
         </FlagsProvider>
       )
