@@ -17,7 +17,7 @@ async function getUser(id: string) {
   }
 
   if (!row) {
-    throw AppFault.create("NotFoundError", { id })
+    throw AppFault.create("NotFoundError", { resource: "user", id })
   }
 
   return row

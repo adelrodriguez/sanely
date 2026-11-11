@@ -10,6 +10,7 @@ This guide shows you how to declare the errors of your app as fault classes, and
    class ValidationError extends Fault.Tagged("ValidationError")<{ field: string }>() {}
    class NotFoundError extends Fault.Tagged("NotFoundError")<{ resource: string; id: string }>() {}
    class TimeoutError extends Fault.Tagged("TimeoutError")() {}
+   class DatabaseError extends Fault.Tagged("DatabaseError")() {}
    ```
 
    Leave the type argument out when the fault has no fields. Field types must be JSON-safe values. Use a type alias or an inline type for the fields, not an interface.
@@ -19,9 +20,14 @@ This guide shows you how to declare the errors of your app as fault classes, and
    ```ts
    import * as Fault from "@sanely/errors"
 
-   export const AppFault = Fault.registry({ ValidationError, NotFoundError, TimeoutError })
+   export const AppFault = Fault.registry({
+     ValidationError,
+     NotFoundError,
+     TimeoutError,
+     DatabaseError,
+   })
 
-   export type AppError = typeof AppFault.Type // ValidationError | NotFoundError | TimeoutError
+   export type AppError = typeof AppFault.Type // ValidationError | NotFoundError | TimeoutError | DatabaseError
    ```
 
    A key that is not the tag of its class throws `RegistryTagMismatchError`.
