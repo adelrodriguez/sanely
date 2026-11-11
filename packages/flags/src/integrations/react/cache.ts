@@ -78,6 +78,12 @@ export class FreshMarks {
     this.#epoch += 1
     const record = this.#recordOf(subject)
     for (const slot of slots) record.marked.set(slot, this.#epoch)
+    // Each identity object whose key function throws has its own slots. Past the limit, the marks
+    // become a clear of the subject, which still makes every marked slot read fresh.
+    if (record.marked.size > this.#maxSlots) {
+      record.all = this.#epoch
+      record.marked.clear()
+    }
   }
 
   clear(subjects: Iterable<string>): void {
@@ -103,15 +109,22 @@ export class FreshMarks {
   }
 
   /**
-   * Retires the marks of `slots` that `fresh` stored, when it is still the latest fresh read of
-   * each slot. Marks made after it started still apply.
+   * Ends the fresh read `fresh` of `slots`, and retires the marks of the `answered` slots, which
+   * the provider answered and the reader stored, when it is still their latest fresh read. Marks
+   * made after it started still apply, and an unanswered slot keeps its mark.
    */
-  read(subject: string, slots: readonly string[], fresh: FreshRead): void {
+  read(
+    subject: string,
+    slots: readonly string[],
+    fresh: FreshRead,
+    answered: readonly string[]
+  ): void {
     const record = this.#records.get(subject)
     if (!record) return
     for (const slot of slots) {
       if (record.started.get(slot) !== fresh.start) continue
       record.started.delete(slot)
+      if (!answered.includes(slot)) continue
       const epoch = Math.max(record.read.get(slot) ?? 0, fresh.epoch)
       // Deleting first moves the slot to the end, so the oldest read leaves first.
       record.read.delete(slot)
@@ -125,6 +138,14 @@ export class FreshMarks {
     if (record.all === 0 && record.marked.size === 0 && record.started.size === 0) {
       this.#records.delete(subject)
     }
+  }
+
+  /**
+   * How many marks and fresh reads in flight a subject holds, for checking that they stay bounded.
+   */
+  tracked(subject: string): number {
+    const record = this.#records.get(subject)
+    return record ? record.marked.size + record.started.size : 0
   }
 
   #recordOf(subject: string): FreshRecord {
@@ -346,7 +367,8 @@ export function storeEntry(
     }, 0)
     return null
   }
-  const freshRead = cache.fresh.begin(keys.subject, slotsOf(keys, bucket.flags))
+  const slots = slotsOf(keys, bucket.flags)
+  const freshRead = cache.fresh.begin(keys.subject, slots)
   const fresh = freshRead !== undefined
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
@@ -355,14 +377,18 @@ export function storeEntry(
   })
   void entry.promise.then(settle, settle)
   if (freshRead !== undefined) {
-    // Only a flag that the provider answered has a fresh stored decision. Another keeps its mark.
+    // Only a flag that the provider answered has a fresh stored decision. Another keeps its mark,
+    // but every slot ends this fresh read.
     void entry.promise.then(
       (results) => {
         const answered = bucket.flags.filter((_, index) => results[index]?.source === "provider")
-        cache.fresh.read(keys.subject, slotsOf(keys, answered), freshRead)
+        cache.fresh.read(keys.subject, slots, freshRead, slotsOf(keys, answered))
         return null
       },
-      () => null
+      () => {
+        cache.fresh.read(keys.subject, slots, freshRead, [])
+        return null
+      }
     )
   }
   bucket.entries.set(key, entry)
