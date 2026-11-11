@@ -755,6 +755,8 @@ describe("React integration", () => {
     )
     const reader = { ...makeFlags().flags, details } as FlagReader
     const flags: CallerFlags<Identity> = {
+      [Symbol.dispose]: () => null,
+      dispose: () => null,
       for: () => reader,
       subscribe: () => () => null,
     }

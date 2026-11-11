@@ -210,6 +210,18 @@ function indexCacheKey<TIdentity extends Subject>(
 }
 
 /**
+ * Drops the reader's decision memory for good: calls in flight, the key index, and open write
+ * tickets. The reader's later reads skip the store and coalescing, so nothing attaches again.
+ */
+export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdentity>): void {
+  const { state } = config
+  state.disposed = true
+  state.pending.clear()
+  state.keysByFlag.clear()
+  state.writes.generation += 1
+}
+
+/**
  * Adds the listener that invalidates this reader's decision memory to the change broadcaster: it
  * drops in-flight coalesced calls and deletes indexed store entries for the changed flags, and
  * invalidates every pending cache write regardless of which flags changed. Added on the first
@@ -410,7 +422,7 @@ export async function resolveDecision<TIdentity extends Subject>(
     key = undefined
   }
 
-  if (key === undefined || (!store && !coalesce)) {
+  if (key === undefined || state.disposed || (!store && !coalesce)) {
     const decision = await raceWithSignal(() => provider(signal), signal)
     return { ...accept(decision, flag), source: "provider" }
   }

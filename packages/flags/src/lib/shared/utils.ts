@@ -37,3 +37,21 @@ export function normalizeError(error: unknown): Error {
 }
 
 export type MaybePromise<T> = T | Promise<T>
+
+const nativeDispose: unknown = Reflect.get(Symbol, "dispose")
+
+// The key that `using` reads. A runtime without `Symbol.dispose` gets the symbol that TypeScript's
+// `using` helper falls back to.
+const DISPOSE = typeof nativeDispose === "symbol" ? nativeDispose : Symbol.for("Symbol.dispose")
+
+/**
+ * Makes `target` work with `using` by calling `dispose` under the key that `using` reads.
+ */
+export function disposable<TTarget extends object>(
+  target: TTarget,
+  dispose: () => void
+): TTarget & Disposable {
+  Object.defineProperty(target, DISPOSE, { enumerable: true, value: dispose })
+  // The property was just defined under the key that `using` reads, which the type cannot see.
+  return target as TTarget & Disposable
+}

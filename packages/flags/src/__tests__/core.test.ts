@@ -173,7 +173,7 @@ describe("createFlags", () => {
     const identity: RequestIdentity = { distinctId: "user123", plan: "pro" }
 
     expect("get" in serverFlags).toBe(false)
-    expect(Object.keys(serverFlags).toSorted()).toEqual(["for", "subscribe"])
+    expect(Object.keys(serverFlags).toSorted()).toEqual(["dispose", "for", "subscribe"])
     expect(await serverFlags.for(identity).get(betaAccess)).toBe(true)
     expect(await serverFlags.for(identity).getMany([betaAccess])).toEqual([true])
     expect(decideOne).toHaveBeenCalledWith(betaAccess, identity, {

@@ -46,7 +46,7 @@ describe("createFlags", () => {
   test("returns only for and subscribe without identify", async () => {
     const flags = createFlags({ provider })
 
-    expect(Object.keys(flags).toSorted()).toEqual(["for", "subscribe"])
+    expect(Object.keys(flags).toSorted()).toEqual(["dispose", "for", "subscribe"])
     expect(await flags.for({ distinctId: "user-2" }).get(betaAccess)).toBe(false)
     expect(await flags.for(user).getMany([betaAccess])).toEqual([true])
   })

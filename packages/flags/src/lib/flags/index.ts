@@ -15,9 +15,10 @@ import {
 } from "#lib/identity/index.ts"
 import { assertProvider, type Provider, providerCalls } from "#lib/provider/index.ts"
 import { reportInBackground } from "#lib/shared/report.ts"
-import { normalizeError, type MaybePromise } from "#lib/shared/utils.ts"
+import { disposable, normalizeError, type MaybePromise } from "#lib/shared/utils.ts"
 import {
   createSharing,
+  disposeSharing,
   type CacheOptions,
   type StoreFailedReport,
   type SubscribeFailedReport,
@@ -97,7 +98,14 @@ type FlagScope<TIdentity extends Subject> = {
    * any flag may have changed.
    */
   subscribe(listener: ChangeListener): () => void
-}
+  /**
+   * Detaches the reader from its provider and drops its decision memory. Later reads still work,
+   * but they skip the store and coalescing and receive no changes. Calling it again does nothing. A
+   * reader made for one request should be disposed when the request ends, for example with `using
+   * flags = createFlags(...)`.
+   */
+  dispose(): void
+} & Disposable
 
 /**
  * The reader that `createFlags` returns when it has `identify`.
@@ -218,10 +226,15 @@ export function createFlags<TIdentity extends Subject, const T extends string = 
     timeout,
   }
 
-  const scope: FlagScope<TIdentity> = {
+  const dispose = () => {
+    changes?.close()
+    disposeSharing(evaluator.sharing)
+  }
+  const scope: Omit<FlagScope<TIdentity>, typeof Symbol.dispose> = {
+    dispose,
     for: (identity) => createReader(evaluator, identifyAs(identity)),
     subscribe(listener) {
-      if (!changes) {
+      if (!changes || evaluator.sharing.state.disposed) {
         return () => null
       }
       return changes.subscribe((keys) => {
@@ -231,6 +244,6 @@ export function createFlags<TIdentity extends Subject, const T extends string = 
   }
 
   return options.identify
-    ? { ...createReader(evaluator, identifyWith(options.identify)), ...scope }
-    : scope
+    ? disposable({ ...createReader(evaluator, identifyWith(options.identify)), ...scope }, dispose)
+    : disposable(scope, dispose)
 }

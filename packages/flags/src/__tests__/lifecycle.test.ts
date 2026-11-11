@@ -1087,6 +1087,55 @@ describe("first-class cache", () => {
   })
 })
 
+describe("disposal", () => {
+  test("detaches a disposed reader from its provider", async () => {
+    const listeners = new Set<ChangeListener>()
+    const provider = defineProvider({
+      decideOne: () => TRUE,
+      name: "shared",
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    })
+
+    // A server that makes one reader per request disposes it when the request ends.
+    const serve = async () => {
+      using flags = createFlags({ identify, provider })
+      return await flags.get(betaAccess)
+    }
+    const values = await Promise.all(Array.from({ length: 50 }, serve))
+    expect(values.every(Boolean)).toBe(true)
+    expect(listeners.size).toBe(0)
+  })
+
+  test("reads straight from the provider after dispose", async () => {
+    const stored = new Map<string, Decision>()
+    const { decideOne, provider } = controlledProvider()
+    const flags = createFlags({
+      cache: {
+        store: {
+          get: (key) => Promise.resolve(stored.get(key)),
+          set: (key, value) => {
+            stored.set(key, value)
+            return Promise.resolve()
+          },
+        },
+      },
+      identify,
+      provider,
+    })
+    expect(await flags.get(betaAccess)).toBe(true)
+    await flushBackground()
+    flags.dispose()
+    flags.dispose()
+
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "provider", value: true })
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    expect(flags.subscribe(() => null)).toBeTypeOf("function")
+  })
+})
+
 describe("request coalescing", () => {
   test("shares concurrent provider work for one evaluation key by default", async () => {
     const decideOne = slowTrue()

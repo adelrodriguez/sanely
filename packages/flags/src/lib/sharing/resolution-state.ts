@@ -36,6 +36,8 @@ export type StoreMutations = {
  * built from the same options.
  */
 export type ResolutionState<TIdentity extends Subject> = {
+  // A disposed reader keeps no decision memory: its reads go straight to the provider.
+  disposed: boolean
   keysByFlag: Map<string, Map<string, TIdentity | null>>
   mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
@@ -50,6 +52,7 @@ export type ResolutionState<TIdentity extends Subject> = {
 
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
   return {
+    disposed: false,
     keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),

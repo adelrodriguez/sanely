@@ -142,16 +142,19 @@ The package reads the store before the provider work, and writes the provider de
 
 ### `Flags<TIdentity>`
 
-The value that `createFlags` returns with `identify`. It has every `FlagReader` method, `for`, and `subscribe`.
+The value that `createFlags` returns with `identify`. It has every `FlagReader` method, `for`, `subscribe`, and `dispose`.
 
 ### `CallerFlags<TIdentity>`
 
-The value that `createFlags` returns without `identify`. It has only `for` and `subscribe`.
+The value that `createFlags` returns without `identify`. It has only `for`, `subscribe`, and `dispose`.
 
 | Member                | Description                                                                                                                |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `for(identity)`       | Returns a `FlagReader` for `identity`. A missing identity makes its reads return defaults with an `IdentityNotFoundError`. |
 | `subscribe(listener)` | Calls `listener(keys?)` after each provider change. Returns a function that removes the listener.                          |
+| `dispose()`           | Detaches the reader from its provider and drops its decision memory. Also available as `using flags = createFlags(...)`.   |
+
+A reader stays attached to its provider until you dispose it, so create one reader for the process, or dispose a reader that you create for one request. After `dispose`, reads still work, but they skip the store and coalescing, and `subscribe` does nothing. Calling `dispose` again does nothing.
 
 `subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report. The listener stays registered, and it receives changes once a later subscription or evaluation attaches the provider.
 

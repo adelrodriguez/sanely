@@ -22,6 +22,10 @@ export type ChangeBroadcaster = {
    * Attaches the provider again when listeners wait and an earlier attach failed.
    */
   attach(): void
+  /**
+   * Removes every listener and detaches the provider. Later subscriptions attach it again.
+   */
+  close(): void
 }
 
 export function createChangeBroadcaster(
@@ -62,6 +66,15 @@ export function createChangeBroadcaster(
 
   return {
     attach,
+    close() {
+      listeners.clear()
+      if (attached) {
+        const detachProvider = detach
+        attached = false
+        detach = undefined
+        detachProvider?.()
+      }
+    },
     subscribe(listener) {
       const entry = { listener }
       listeners.add(entry)
