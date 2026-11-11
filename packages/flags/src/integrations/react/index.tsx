@@ -23,14 +23,14 @@ import {
 } from "#lib/definition/index.ts"
 import { FlagDefinitionError, IdentityNotFoundError } from "#lib/errors/index.ts"
 import { type Anonymous, anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
+import { type FlagCacheKey, serializeKey } from "#lib/shared/cache-key.ts"
+import { milliseconds } from "#lib/shared/utils.ts"
 import {
   DEFAULT_MAX_ENTRIES,
   DEFAULT_TTL,
   evictOnRejection,
   type FlagCacheOptions,
-} from "#lib/promise-cache/index.ts"
-import { type FlagCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
-import { milliseconds } from "#lib/shared/utils.ts"
+} from "./options"
 
 /**
  * A hook or `FeatureFlag` rendered outside a `FlagsProvider`.
@@ -819,4 +819,4 @@ export function FeatureFlag<TFlag extends Flag>(props: FeatureFlagProps<TFlag>):
   return loading === undefined ? slot : <Suspense fallback={loading}>{slot}</Suspense>
 }
 
-export type { FlagCacheOptions } from "#lib/promise-cache/index.ts"
+export type { FlagCacheOptions } from "./options"

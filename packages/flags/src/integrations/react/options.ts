@@ -1,7 +1,5 @@
 import type { ValidateTimeExpression } from "@sanely/duration"
 
-export * from "./key"
-
 /**
  * The defaults of `FlagCacheOptions`. docs/reference.md states them, and a test compares the two.
  */

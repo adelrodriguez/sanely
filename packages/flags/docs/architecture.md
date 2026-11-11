@@ -7,35 +7,33 @@ The core does not import React.
 
 ## Domain ownership
 
-| Domain           | Ownership                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------- |
-| `errors/`        | The tagged evaluation errors and `FlagDefinitionError`.                                     |
-| `changes/`       | The change broadcaster.                                                                     |
-| `shared/`        | Signals, background reporting, and error normalization.                                     |
-| `definition/`    | Flag definitions and their validation, decisions, decision validation, and payload parsing. |
-| `identity/`      | Identity types, `anonymous`, the evaluation context, and identity sources.                  |
-| `provider/`      | `defineProvider`, provider validation, and the engine's view of a provider.                 |
-| `sharing/`       | The decision store, request coalescing, evaluation keys, and store invalidation.            |
-| `evaluation/`    | Hooks, one evaluation, and batches with their flush rounds.                                 |
-| `flags/`         | `createFlags`, readers, `for`, `subscribe`, snapshots, and error reports.                   |
-| `promise-cache/` | Promise-cache keys and helpers for integrations.                                            |
+| Domain        | Ownership                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `errors/`     | The tagged evaluation errors and `FlagDefinitionError`.                                     |
+| `changes/`    | The change broadcaster.                                                                     |
+| `shared/`     | Signals, background reporting, error normalization, and the cache-key encoding.             |
+| `definition/` | Flag definitions and their validation, decisions, decision validation, and payload parsing. |
+| `identity/`   | Identity types, `anonymous`, the evaluation context, and identity sources.                  |
+| `provider/`   | `defineProvider`, provider validation, and the engine's view of a provider.                 |
+| `sharing/`    | The decision store, request coalescing, evaluation keys, and store invalidation.            |
+| `evaluation/` | Hooks, one evaluation, and batches with their flush rounds.                                 |
+| `flags/`      | `createFlags`, readers, `for`, `subscribe`, snapshots, and error reports.                   |
 
 ## Dependency order
 
 Each domain imports only itself and the domains that the root `oxlint.config.ts` lists for it:
 
-| Domain           | Imports                                                              |
-| ---------------- | -------------------------------------------------------------------- |
-| `errors/`        | Nothing.                                                             |
-| `changes/`       | Nothing.                                                             |
-| `promise-cache/` | Nothing.                                                             |
-| `shared/`        | `errors`.                                                            |
-| `definition/`    | `errors`, `shared`.                                                  |
-| `identity/`      | `definition`, `errors`, `shared`.                                    |
-| `provider/`      | `changes`, `definition`, `errors`, `identity`, `shared`.             |
-| `sharing/`       | `changes`, `definition`, `identity`, `promise-cache`, `shared`.      |
-| `evaluation/`    | `definition`, `errors`, `identity`, `provider`, `shared`, `sharing`. |
-| `flags/`         | Every domain above except `promise-cache`.                           |
+| Domain        | Imports                                                              |
+| ------------- | -------------------------------------------------------------------- |
+| `errors/`     | Nothing.                                                             |
+| `changes/`    | Nothing.                                                             |
+| `shared/`     | `errors`.                                                            |
+| `definition/` | `errors`, `shared`.                                                  |
+| `identity/`   | `definition`, `errors`, `shared`.                                    |
+| `provider/`   | `changes`, `definition`, `errors`, `identity`, `shared`.             |
+| `sharing/`    | `changes`, `definition`, `identity`, `shared`.                       |
+| `evaluation/` | `definition`, `errors`, `identity`, `provider`, `shared`, `sharing`. |
+| `flags/`      | Every domain above.                                                  |
 
 No library domain imports an entry point. The root lint configuration enforces these rules.
 
@@ -46,7 +44,7 @@ Evaluation owns each call's lifecycle, cancellation, timeout, fallback, and deta
 Flag definitions and providers are frozen values with no state.
 React owns each `FlagsProvider` mount's flag cache, the change clocks of each reader, and subscriptions.
 
-The React integration uses flag definitions, readers, identity helpers, and promise-cache helpers.
+The React integration uses flag definitions, readers, identity helpers, and the cache-key encoding in `shared/`. Its flag cache options and helpers live in `integrations/react/`.
 Its source and built entry keep the `use client` directive. React remains an optional peer.
 The testing entry point builds on `defineProvider` and the store type.
 

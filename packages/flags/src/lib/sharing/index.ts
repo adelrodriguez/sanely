@@ -1,7 +1,7 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Flag } from "#lib/definition/index.ts"
 import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
-import type { FlagCacheKey } from "#lib/promise-cache/key.ts"
+import type { FlagCacheKey } from "#lib/shared/cache-key.ts"
 import {
   type Decision,
   type DecisionSource,

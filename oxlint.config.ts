@@ -57,10 +57,9 @@ const dependencies: Record<string, Record<string, string[]>> = {
       "sharing",
     ],
     identity: ["definition", "errors", "shared"],
-    "promise-cache": [],
     provider: ["changes", "definition", "errors", "identity", "shared"],
     shared: ["errors"],
-    sharing: ["changes", "definition", "identity", "promise-cache", "shared"],
+    sharing: ["changes", "definition", "identity", "shared"],
   },
   // Each reader, such as `ip` or `geo`, imports the shared request domain and never another reader.
   request: {

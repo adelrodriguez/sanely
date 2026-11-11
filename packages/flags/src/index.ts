@@ -42,7 +42,7 @@ export type {
 export { defineProvider } from "#lib/provider/index.ts"
 export type { DecideOptions, Provider, ProviderDefinition } from "#lib/provider/index.ts"
 export type { ChangeListener } from "#lib/changes/index.ts"
-export type { FlagCacheKey } from "#lib/promise-cache/key.ts"
+export type { FlagCacheKey } from "#lib/shared/cache-key.ts"
 export type { MaybePromise } from "#lib/shared/utils.ts"
 export type {
   DecisionStore,

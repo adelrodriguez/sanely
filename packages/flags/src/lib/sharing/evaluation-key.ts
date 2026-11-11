@@ -1,6 +1,6 @@
 import { byKind } from "#lib/definition/index.ts"
 import { anonymous, type EvaluationContext, type Subject } from "#lib/identity/index.ts"
-import { type FlagCacheKey, serializeKey } from "#lib/promise-cache/key.ts"
+import { type FlagCacheKey, serializeKey } from "#lib/shared/cache-key.ts"
 
 /**
  * The evaluation key of one evaluation, or `undefined` when the evaluation must not share a
