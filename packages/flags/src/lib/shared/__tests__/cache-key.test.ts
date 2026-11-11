@@ -39,6 +39,23 @@ describe("serializeKey", () => {
     ).toBe('object:{"B":number:1,"a":number:1,"b":number:1,"é":number:1}')
   })
 
+  test("reads object values in key order", () => {
+    const reads: string[] = []
+    const value = {}
+    for (const key of ["b", "a"]) {
+      Object.defineProperty(value, key, {
+        enumerable: true,
+        get() {
+          reads.push(key)
+          return reads.length
+        },
+      })
+    }
+
+    expect(serializeKey(value, "cacheKey")).toBe('object:{"a":number:1,"b":number:2}')
+    expect(reads).toEqual(["a", "b"])
+  })
+
   test("names an object whose prototype has no constructor as a non-plain object", () => {
     const prototype: object = Object.create(null)
     const value: object = Object.create(prototype)

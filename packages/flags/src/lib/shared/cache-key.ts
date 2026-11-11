@@ -63,9 +63,13 @@ export function serializeKey(value: unknown, rootPath: "cacheKey"): string {
               .join(",")}]`
           }
 
-          const entries = Object.entries(current)
-            .toSorted(([left], [right]) => (left < right ? -1 : 1))
-            .map(([key, item]) => `${JSON.stringify(key)}:${encode(item, `${path}.${key}`)}`)
+          // Each value is read after the sort, so getters run in key order.
+          const entries = Object.keys(current)
+            .toSorted()
+            .map((key) => {
+              const item: unknown = Reflect.get(current, key)
+              return `${JSON.stringify(key)}:${encode(item, `${path}.${key}`)}`
+            })
           return `object:{${entries.join(",")}}`
         } finally {
           ancestors.delete(current)
