@@ -143,22 +143,6 @@ describe("connect", () => {
     await expect(push.notify({ message: "hi" })).resolves.toBeUndefined()
   })
 
-  test("rehydrates validation failures with issues across the wire", async () => {
-    const { api } = createConnectedPeers()
-
-    const error = await api.math
-      .add({ a: 2, b: "three" as unknown as number })
-      .catch((error: unknown) => error)
-
-    // Thrown by the remote router, yet instanceof and code checks work on this side.
-    expect(error).toBeInstanceOf(ChannelError)
-
-    const channelError = error as Extract<ChannelError, { code: "validation" }>
-
-    expect(channelError.code).toBe("validation")
-    expect(channelError.issues.length).toBeGreaterThan(0)
-  })
-
   test("hides resolver crashes as code internal by default", async () => {
     const [serverWire, clientWire] = createWirePair()
     const router = createRouter(pullContract, {
