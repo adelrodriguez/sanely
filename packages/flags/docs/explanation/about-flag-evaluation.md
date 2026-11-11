@@ -4,7 +4,7 @@ This page explains how `@sanely/flags` evaluates a flag: why flags are values, w
 
 ## Flags are values in code
 
-A flag definition holds a key, a default, and its variants. It does not hold a provider or an identity. Code reads a flag by passing the definition to a reader, as in `flags.get(theme)`, and not by a string key.
+A flag definition holds a key, a default, its variants, and its timeout. It does not hold a provider or an identity. Code reads a flag by passing the definition to a reader, as in `flags.get(theme)`, and not by a string key.
 
 This follows the [flags-as-code principles](https://flags-sdk.dev/docs/principles/flags-as-code) of the Flags SDK. Each read site has the same shape. The default lives on the declaration, so it is the same at every read site. Your editor can find every read of a flag and jump to its declaration. A change of provider changes the reader, not the read sites.
 
@@ -36,7 +36,7 @@ An evaluation runs these steps in order:
 6. Write the decision to the store.
 7. Run the `after` hooks, or the `error` hooks on a failure, and then the `finally` hooks.
 
-The timeout covers steps 1 to 5. A read does not wait for the `after` and `finally` hooks, so an observer cannot add latency. For the same reason, they are not a place for work that must finish before a serverless runtime exits.
+The timeout covers steps 1 to 5, and the `error` hooks of step 7. A read does not wait for the `after` and `finally` hooks, so an observer cannot add latency. For the same reason, they are not a place for work that must finish before a serverless runtime exits.
 
 ## Concurrent evaluations share provider work
 
@@ -58,4 +58,4 @@ When the server and the browser both evaluate a flag, they can disagree, and Rea
 
 ## React evaluations are promises in a cache
 
-React Suspense needs the same promise on each render until it settles. So the React integration keeps evaluation promises in a cache, with one bucket for each list of flags. The buckets have a size limit and a lifetime. On the server, a request must not see the cached values of another request, so each `FlagsProvider` mount has its own cache, and the hooks refuse to run without one.
+React Suspense needs the same promise on each render until it settles. So the React integration keeps evaluation promises in a cache, with one bucket for each list of flags. Each bucket keeps a limited number of settled entries, one for each identity, and each entry has a lifetime. On the server, a request must not see the cached values of another request, so each `FlagsProvider` mount has its own cache, and the hooks refuse to run without one.
