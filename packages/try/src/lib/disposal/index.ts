@@ -83,7 +83,7 @@ interface DisposalFailure {
   readonly error: unknown
 }
 
-function addFailure(failure: DisposalFailure | undefined, error: unknown): DisposalFailure {
+function addFailure(failure: DisposalFailure | undefined, error: unknown) {
   return { error: failure ? createSuppressedError(error, failure.error) : error }
 }
 

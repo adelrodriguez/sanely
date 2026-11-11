@@ -115,12 +115,10 @@ describe("disposer shim", () => {
 
       const error = catchError(() => {
         stack.dispose()
-      }) as SuppressedErrorLike
+      })
 
-      expect(error.name).toBe("SuppressedError")
-      expect(error.error).toBe(later)
-      expect(error.suppressed).toBeUndefined()
-      expect("suppressed" in error).toBe(true)
+      expect(error).toMatchObject({ error: later, name: "SuppressedError", suppressed: undefined })
+      expect(error).toHaveProperty("suppressed")
     })
 
     it("runs deferred cleanups in LIFO order through the sync symbol alias", () => {
