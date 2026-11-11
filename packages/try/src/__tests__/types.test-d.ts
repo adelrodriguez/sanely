@@ -1230,6 +1230,14 @@ function _negativeTypeTests() {
     void try$.retry({ backoff: "exponential", limit: 2, maxDelay: "1M" })
     // @ts-expect-error -- "M" is ambiguous between minutes and months.
     void try$.retryOptions({ backoff: "constant", delay: "1M", limit: 2 })
+    // @ts-expect-error -- the strict grammar has no hexadecimal numbers
+    void try$.retry({ backoff: "constant", delay: "0x10h", limit: 2 })
+    // @ts-expect-error -- the strict grammar has no hexadecimal numbers
+    void try$.retry({ backoff: "exponential", limit: 2, maxDelay: "0x10h" })
+    void try$.retry(
+      // @ts-expect-error -- the strict grammar applies to union members too
+      Math.random() > 0.5 ? 3 : { backoff: "constant" as const, delay: "0x10h", limit: 5 }
+    )
     // @ts-expect-error -- a string from config needs isTimeExpression first
     void try$.timeout(fromConfig)
     // @ts-expect-error -- a string from config needs isTimeExpression first

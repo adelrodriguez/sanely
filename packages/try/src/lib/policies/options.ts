@@ -143,10 +143,15 @@ export type ValidateRetryLimit<N extends number> = number extends N
  * policy forms. Distributes over union members so that mixed inputs like `flag ? 3 : { backoff:
  * "constant", limit: 5 }` are accepted while any member carrying an invalid literal limit still
  * fails to compile. A generic parameter skips the excess-property check, so a member with an
- * unknown key, such as a misspelled `delay`, also fails here.
+ * unknown key, such as a misspelled `delay`, also fails here. A literal `delay` or `maxDelay` must
+ * pass the strict time expression grammar, which is narrower than `TimeExpression`.
  */
 export type ValidateRetryOptions<P extends RetryOptions<TimeExpression>> = P extends number
   ? ValidateRetryLimit<P>
   : P extends { limit: infer N extends number }
-    ? { limit: ValidateRetryLimit<N> } & Record<Exclude<keyof P, keyof RetryPolicy>, never>
+    ? { limit: ValidateRetryLimit<N> } & Record<Exclude<keyof P, keyof RetryPolicy>, never> & {
+          [K in keyof P & ("delay" | "maxDelay")]: P[K] extends string
+            ? ValidateTimeExpression<P[K]>
+            : P[K]
+        }
     : never
