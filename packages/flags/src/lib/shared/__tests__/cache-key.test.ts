@@ -33,6 +33,21 @@ describe("serializeKey", () => {
     )
   })
 
+  test("orders object keys by UTF-16 code unit", () => {
+    expect(
+      serializeKey(Object.fromEntries(["b", "é", "a", "B"].map((key) => [key, 1])), "cacheKey")
+    ).toBe('object:{"B":number:1,"a":number:1,"b":number:1,"é":number:1}')
+  })
+
+  test("names an object whose prototype has no constructor as a non-plain object", () => {
+    const prototype: object = Object.create(null)
+    const value: object = Object.create(prototype)
+
+    expect(() => serializeKey(value, "cacheKey")).toThrow(
+      "Unsupported flag cache key at cacheKey: non-plain object is not supported."
+    )
+  })
+
   test("keeps arrays, objects, and primitive types distinct", () => {
     const keys = [
       serializeKey([0, "0"], "cacheKey"),

@@ -12,11 +12,12 @@ export function invariant(condition: unknown, error: Error): asserts condition {
 }
 
 export function checkIsPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === "object" || typeof value === "function")
-    && value !== null
-    && typeof (value as { then?: unknown }).then === "function"
-  )
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+    return false
+  }
+
+  const candidate: { then?: unknown } = value
+  return typeof candidate.then === "function"
 }
 
 /**

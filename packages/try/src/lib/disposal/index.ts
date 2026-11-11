@@ -19,8 +19,6 @@ export type AsyncDisposableLike = {
   [ASYNC_DISPOSE](): void | PromiseLike<void>
 }
 
-export type MaybeDisposable = AsyncDisposableLike | DisposableLike | null | undefined
-
 export interface AsyncDisposer extends AsyncDisposable {
   /**
    * Registers a cleanup callback. Callbacks run in reverse registration order (LIFO) when the
@@ -93,18 +91,17 @@ function checkCanRegister(disposed: boolean, name: string) {
   }
 }
 
-function resolveAsyncDisposer(
-  value: AsyncDisposable | Disposable | MaybeDisposable
-): AsyncDisposerFn {
-  const asyncCandidate = value as AsyncDisposableLike
-  const asyncDisposer = asyncCandidate[ASYNC_DISPOSE]
+function resolveAsyncDisposer(value: AsyncDisposable | Disposable): AsyncDisposerFn {
+  // `ASYNC_DISPOSE` and `DISPOSE` are plain `symbol`s, so TypeScript cannot index a resource by them.
+  const asyncDisposer: unknown = Reflect.get(value, ASYNC_DISPOSE)
 
   if (typeof asyncDisposer === "function") {
-    return () => asyncDisposer.call(value)
+    return async () => {
+      await asyncDisposer.call(value)
+    }
   }
 
-  const syncCandidate = value as DisposableLike
-  const syncDisposer = syncCandidate[DISPOSE]
+  const syncDisposer: unknown = Reflect.get(value, DISPOSE)
 
   if (typeof syncDisposer === "function") {
     return () => {
