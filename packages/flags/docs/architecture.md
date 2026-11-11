@@ -3,6 +3,7 @@
 The public entry points are `src/index.ts`, `src/integrations/react/index.tsx`, and `src/testing/index.ts`.
 They publish as `@sanely/flags`, `@sanely/flags/react`, and `@sanely/flags/testing`.
 The core does not import React.
+`#lib/shared` reads a timeout or a cache lifetime given as a time expression with `@sanely/duration`. It is a runtime dependency, so a consumer that also imports duration shares one copy. The build keeps it external, and `build:verify` installs it from its own tarball.
 
 ## Domain ownership
 
@@ -29,7 +30,7 @@ Each domain imports only itself and the domains that the root `oxlint.config.ts`
 | `changes/`       | Nothing.                                                             |
 | `promise-cache/` | Nothing.                                                             |
 | `shared/`        | `errors`.                                                            |
-| `definition/`    | `errors`.                                                            |
+| `definition/`    | `errors`, `shared`.                                                  |
 | `identity/`      | `definition`, `errors`, `shared`.                                    |
 | `provider/`      | `changes`, `definition`, `errors`, `identity`, `shared`.             |
 | `sharing/`       | `changes`, `definition`, `identity`, `shared`.                       |

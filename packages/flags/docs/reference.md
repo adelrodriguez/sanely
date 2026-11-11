@@ -13,7 +13,11 @@ The package has three entry points:
 ### `flag.boolean(key, defaultValue, options?)`
 
 ```ts
-function boolean(key: string, defaultValue: boolean, options?: { timeoutMs?: number }): BooleanFlag
+function boolean<const T extends string = never>(
+  key: string,
+  defaultValue: boolean,
+  options?: { timeout?: number | ValidateTimeExpression<T> }
+): BooleanFlag
 ```
 
 Returns a frozen boolean flag definition.
@@ -21,25 +25,34 @@ Returns a frozen boolean flag definition.
 ### `flag.variant(key, variants, defaultValue, options?)`
 
 ```ts
-function variant<const TVariants extends readonly [string, ...string[]], TPayload = unknown>(
+function variant<
+  const TVariants extends readonly [string, ...string[]],
+  TPayload = unknown,
+  const T extends string = never,
+>(
   key: string,
   variants: TVariants,
   defaultValue: TVariants[number],
-  options?: { payload?: (payload: unknown) => TPayload; timeoutMs?: number }
+  options?: {
+    payload?: (payload: unknown) => TPayload
+    timeout?: number | ValidateTimeExpression<T>
+  }
 ): VariantFlag<TVariants[number], TPayload>
 ```
 
 Returns a frozen variant flag definition. The value type is the union of `variants`, and the payload type is the return type of `payload`. No call needs a type argument.
 
-| Argument or option | Description                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `key`              | The provider key of the flag. A non-empty string.                                                            |
-| `variants`         | The allowed variants. A non-empty array of unique strings.                                                   |
-| `defaultValue`     | The value on any failure. A boolean for a boolean flag, or one of `variants`.                                |
-| `payload`          | Parses the variant payload of a decision. A throw makes the evaluation return the default.                   |
-| `timeoutMs`        | The deadline of this flag. It replaces the reader's `timeoutMs`. A positive number no greater than 2^31 - 1. |
+| Argument or option | Description                                                                                                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`              | The provider key of the flag. A non-empty string.                                                                                                                                                                                             |
+| `variants`         | The allowed variants. A non-empty array of unique strings.                                                                                                                                                                                    |
+| `defaultValue`     | The value on any failure. A boolean for a boolean flag, or one of `variants`.                                                                                                                                                                 |
+| `payload`          | Parses the variant payload of a decision. A throw makes the evaluation return the default.                                                                                                                                                    |
+| `timeout`          | The deadline of this flag. It replaces the reader's `timeout`. A number of milliseconds or a time expression, such as `"500ms"`, greater than 0 and no greater than 2^31 - 1 milliseconds. The definition's `timeout` holds the milliseconds. |
 
 An invalid argument throws `FlagDefinitionError` when you define the flag.
+
+`ValidateTimeExpression` comes from [`@sanely/duration`](../../duration/README.md). It makes a literal that is not a time expression, such as `"1M"`, fail to compile with the reason. A string from config needs `isTimeExpression` from `@sanely/duration` first.
 
 Two flags with the same key ask the provider about the same provider flag.
 
@@ -90,16 +103,16 @@ function createFlags<TIdentity extends Subject>(
 
 Returns a reader. `TIdentity` comes from `provider`.
 
-| Option      | Type                                                     | Default   | Description                                                                       |
-| ----------- | -------------------------------------------------------- | --------- | --------------------------------------------------------------------------------- |
-| `provider`  | `Provider<TIdentity>`                                    | Required  | The provider that decides each flag.                                              |
-| `identify`  | `() => MaybePromise<TIdentity \| null \| undefined>`     | None      | Resolves the identity of each read. Without it, every read goes through `for`.    |
-| `timeoutMs` | `number`                                                 | None      | The deadline of each evaluation. A flag's `timeoutMs` replaces it.                |
-| `cache`     | `CacheOptions<TIdentity>`                                | See below | The decision store, request coalescing, and the evaluation key.                   |
-| `hooks`     | `ReadonlyArray<Hook<TIdentity>>`                         | `[]`      | Lifecycle observers.                                                              |
-| `onError`   | `(report: ErrorReport<TIdentity>) => MaybePromise<void>` | None      | Receives the failures of hooks, store operations, and the provider's `subscribe`. |
+| Option     | Type                                                     | Default   | Description                                                                       |
+| ---------- | -------------------------------------------------------- | --------- | --------------------------------------------------------------------------------- |
+| `provider` | `Provider<TIdentity>`                                    | Required  | The provider that decides each flag.                                              |
+| `identify` | `() => MaybePromise<TIdentity \| null \| undefined>`     | None      | Resolves the identity of each read. Without it, every read goes through `for`.    |
+| `timeout`  | `number \| ValidateTimeExpression<T>`                    | None      | The deadline of each evaluation, such as `"1s"`. A flag's `timeout` replaces it.  |
+| `cache`    | `CacheOptions<TIdentity>`                                | See below | The decision store, request coalescing, and the evaluation key.                   |
+| `hooks`    | `ReadonlyArray<Hook<TIdentity>>`                         | `[]`      | Lifecycle observers.                                                              |
+| `onError`  | `(report: ErrorReport<TIdentity>) => MaybePromise<void>` | None      | Receives the failures of hooks, store operations, and the provider's `subscribe`. |
 
-An invalid `provider`, `timeoutMs`, or `identify` throws `FlagDefinitionError`.
+An invalid `provider`, `timeout`, or `identify` throws `FlagDefinitionError`.
 
 `identify` that returns `null` or `undefined`, or that throws, makes the evaluation return its default with an `IdentityNotFoundError`. The package reads `hooks` once, so a later change to the array has no effect.
 
@@ -227,7 +240,7 @@ Evaluations return these errors in `details().error` and never throw them. Each 
 | `IdentityNotFoundError`  | `cause`              | `identify` returned nothing or threw, or `for` received no identity. `cause` holds what `identify` threw.                                                                 |
 | `InvalidDecisionError`   | `decision`, `reason` | The decision is malformed, has the other kind, names a variant that the flag does not allow, has a payload that the parser rejects, or is missing from a `decide` result. |
 | `ProviderFailedError`    | `provider`, `cause`  | `decide` or `decideOne` threw or rejected. `provider` is the provider's `name`.                                                                                           |
-| `EvaluationTimeoutError` | `timeoutMs`          | The deadline passed.                                                                                                                                                      |
+| `EvaluationTimeoutError` | `timeout`            | The deadline passed. `timeout` holds the deadline in milliseconds.                                                                                                        |
 | `EvaluationAbortedError` | `cause`              | The caller's signal aborted. `cause` holds the signal's reason.                                                                                                           |
 
 `EvaluationError` is the union of these classes.
@@ -281,11 +294,11 @@ An identity in a cache key can hold strings, numbers, booleans, `null`, `undefin
 
 ### `FlagCacheOptions`
 
-| Option         | Type     | Default  | Description                                                                                                 |
-| -------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `maxEntries`   | `number` | `100`    | The most settled entries for each list of flags. A positive integer.                                        |
-| `ttlMs`        | `number` | `300000` | How long an evaluation stays cached, in milliseconds.                                                       |
-| `pendingTtlMs` | `number` | None     | How long a pending evaluation stays before the cache can remove it. Removal does not cancel the evaluation. |
+| Option       | Type                                  | Default  | Description                                                                                                                  |
+| ------------ | ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `maxEntries` | `number`                              | `100`    | The most settled entries for each list of flags. A positive integer.                                                         |
+| `ttl`        | `number \| ValidateTimeExpression<T>` | `300000` | How long an evaluation stays cached, in milliseconds or as a time expression such as `"5m"`.                                 |
+| `pendingTtl` | `number \| ValidateTimeExpression<T>` | None     | How long a pending evaluation stays before the cache can remove it, such as `"30s"`. Removal does not cancel the evaluation. |
 
 ### `useFlag(flag)`
 
