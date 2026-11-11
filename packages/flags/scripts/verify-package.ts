@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import packageJson from "../package.json" with { type: "json" }
@@ -55,9 +64,27 @@ try {
     join(temporaryDirectory, "package.json"),
     `${JSON.stringify({ name: "flags-build-verification", private: true, type: "module" }, null, 2)}\n`
   )
+  // npm may not have the workspace dependency versions that the tarball names, so install each
+  // from its own tarball.
+  const dependencyDirectory = join(temporaryDirectory, "dependencies")
+  mkdirSync(dependencyDirectory)
+  for (const dependency of Object.keys(packageJson.dependencies)) {
+    const dependencyRoot = realpathSync(join(packageRoot, "node_modules", dependency))
+    run("pnpm", ["pack", "--pack-destination", dependencyDirectory], dependencyRoot)
+  }
+  const dependencyTarballs = readdirSync(dependencyDirectory).map((file) =>
+    join(dependencyDirectory, file)
+  )
   run(
     "npm",
-    ["install", "--ignore-scripts", "--no-package-lock", "--omit=peer", tarballPath],
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--omit=peer",
+      tarballPath,
+      ...dependencyTarballs,
+    ],
     temporaryDirectory
   )
 
