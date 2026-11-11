@@ -11,7 +11,7 @@
   </p>
 </div>
 
-`@sanely/duration` is a TypeScript package for time expressions, with no external dependencies. It converts `"1h"` to seconds, parses `"1h 30m"` to milliseconds, and formats `5_400_000` as `"1h 30m"`.
+`@sanely/duration` is a TypeScript package for time expressions. It converts `"1h"` to seconds, parses `"1h 30m"` to milliseconds, and formats `5_400_000` as `"1h 30m"`.
 
 ## Features
 
@@ -24,6 +24,7 @@
 - `isTimeExpression` and `isValidTimeExpression` check values at run time.
 - Invalid input throws `InvalidTimeExpressionError`, or `safeParse` returns `null`.
 - Every export is a named export that a bundler can remove when you do not use it.
+- No external dependencies.
 
 ## Install
 

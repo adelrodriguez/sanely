@@ -4,15 +4,33 @@
   <p align="center">
     <strong>Read the client IP address and location from a request</strong>
   </p>
+
+  <p align="center">
+    <a href="https://www.npmjs.com/package/@sanely/request"><img src="https://img.shields.io/npm/v/@sanely/request" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
+  </p>
 </div>
 
-`@sanely/request` reads what the network and the hosting platform report about a request: the client's IP address and, on platforms that send it, the client's location. It works with a Fetch `Request` and with Node.js-style requests, and it has no external dependencies.
+`@sanely/request` reads what the network and the hosting platform report about a request: the client's IP address and, on platforms that send it, the client's location.
 
-## Quick start
+## Features
+
+- **Headers a client cannot forge.** Name the platform the app runs on, such as Vercel, Cloudflare, or Fly.io, and `ip` reads only the headers that platform sets.
+- **Location.** `geo` reads the country, city, and other fields that the platform reports.
+- **Your own proxies.** List their addresses with `parseProxies`, and `ip` skips them.
+- **No platform.** With `platform: "none"`, `ip` reads the connection and falls back to common forwarding headers such as `X-Forwarded-For`.
+- **Any request.** Both functions accept a Fetch `Request` or a Node.js-style request.
+- **No external dependencies.**
+
+## Install
 
 ```sh
 npm install @sanely/request
 ```
+
+The package needs Node.js 20 or later.
+
+## Get started
 
 ```ts
 import { geo, ip } from "@sanely/request"
@@ -39,6 +57,10 @@ ip(request, { platform: "none", proxies })
 
 - [Reference](docs/reference.md): `ip`, `geo`, platforms, and types
 
-## Development
+## Contributing
 
-Read the [architecture](docs/architecture.md) before you change source ownership or add a reader, and the [testing guide](docs/testing.md) before you add tests.
+Read the [architecture](docs/architecture.md), [testing guide](docs/testing.md), and root [contributor guide](../../CONTRIBUTING.md) before changing the package.
+
+## License
+
+MIT. See [LICENSE](../../LICENSE).

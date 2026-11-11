@@ -6,8 +6,8 @@
   </p>
 
   <p align="center">
-    <a href="https://www.npmjs.com/package/@sanely/errors"><img src="https://img.shields.io/npm/v/@sanely/errors" alt="npm version" /></a>
-    <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+    <a href="https://www.npmjs.com/package/@sanely/errors"><img src="https://img.shields.io/npm/v/@sanely/errors" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
   </p>
 </div>
 
@@ -85,7 +85,9 @@ Explanation:
 
 - [About faults, registries, and the wire format](docs/explanation/about-faults.md)
 
-To work on the package, read [CONTRIBUTING.md](CONTRIBUTING.md).
+## Contributing
+
+Read the [contributor guide](CONTRIBUTING.md) before changing the package.
 
 ## Acknowledgments
 

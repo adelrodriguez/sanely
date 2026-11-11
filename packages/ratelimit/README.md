@@ -4,6 +4,11 @@
   <p align="center">
     <strong>Atomic rate limiting with pluggable stores</strong>
   </p>
+
+  <p align="center">
+    <a href="https://www.npmjs.com/package/@sanely/ratelimit"><img src="https://img.shields.io/npm/v/@sanely/ratelimit" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
+  </p>
 </div>
 
 `@sanely/ratelimit` counts requests in a store that every instance of your application shares, so a limit holds across instances and restarts. Each check runs as one atomic step inside the store, so requests that arrive together can never pass a limit together.
@@ -81,7 +86,9 @@ Explanation:
 
 - [About the design of `@sanely/ratelimit`](docs/explanation/about-the-design.md)
 
-To work on the package, read [architecture](docs/architecture.md), [testing](docs/testing.md), and [benchmarks](docs/benchmarks.md).
+## Contributing
+
+Read the [architecture](docs/architecture.md), [testing guide](docs/testing.md), [benchmarks](docs/benchmarks.md), and root [contributor guide](../../CONTRIBUTING.md) before changing the package.
 
 ## License
 

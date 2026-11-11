@@ -4,16 +4,34 @@
   <p align="center">
     <strong>Type-safe schedules that compile to exact cron expressions</strong>
   </p>
+
+  <p align="center">
+    <a href="https://www.npmjs.com/package/@sanely/cron"><img src="https://img.shields.io/npm/v/@sanely/cron" alt="npm version"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/adelrodriguez/sanely" alt="license"></a>
+  </p>
 </div>
 
-`@sanely/cron` has one model of a schedule, the `Schedule` object, and converts it to a standard 5-field cron expression. You can write a schedule in three ways, and get it back in one:
+`@sanely/cron` has one model of a schedule, the `Schedule` object, and converts it to a standard 5-field cron expression. You can write a schedule in three ways, and get it back in one.
+
+## Features
 
 - **A cron phrase in your code**, such as `"every 15 minutes on weekdays"`. The type checker checks the phrase and gives the reason for an error.
 - **A `Schedule` object in your code**, such as `{ every: "day", at: { hour: 17, minute: 30 } }`. Ordinary types check it.
 - **Input at runtime**: a cron phrase in any case and spelling, or a schedule object from JSON. `parse` checks it and throws an error with the reason.
 - **A phrase for display**: `describe` writes a schedule back as a cron phrase in the strict form.
+- **Exact schedules.** Each schedule maps to exactly one cron expression, and the package rejects every schedule that one cron expression cannot express exactly.
+- **No side effects.**
+- **No external dependencies.**
 
-Each schedule maps to exactly one cron expression, and the package rejects every schedule that one cron expression cannot express exactly. It has no external dependencies and no side effects. It is ESM only, for Node 20 and later.
+## Install
+
+```sh
+npm install @sanely/cron
+```
+
+The package is ESM only and needs Node.js 20 or later.
+
+## Get started
 
 ```ts
 import { cron, describe, parse } from "@sanely/cron"
@@ -28,12 +46,6 @@ const schedule = parse(form.schedule) // a Schedule, or throws InvalidScheduleEr
 queue.upsertJobScheduler(id, { pattern: cron(schedule) })
 
 describe(schedule) // "every 15 minutes between 9:00 and 17:00 on weekdays"
-```
-
-## Install
-
-```sh
-npm install @sanely/cron
 ```
 
 ## Documentation
@@ -57,4 +69,4 @@ Read the [architecture](docs/architecture.md), [testing guide](docs/testing.md),
 
 ## License
 
-MIT
+MIT. See [LICENSE](../../LICENSE).
