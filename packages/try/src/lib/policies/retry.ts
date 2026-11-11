@@ -2,7 +2,7 @@ import { Panic } from "#lib/shared/errors.ts"
 import { assertUnreachable, invariant } from "#lib/shared/utils.ts"
 import type { BuilderConfig, RetryOptions, RetryPolicy, TryCtx } from "./options.ts"
 
-function checkIsValidDelay(ms: number): boolean {
+function checkIsValidDelay(ms: number) {
   return Number.isFinite(ms) && ms >= 0
 }
 

@@ -65,7 +65,7 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647
  * call. A delay above the timer limit runs as a chain of shorter timers. Each one measures the time
  * left on the monotonic clock, so a timer that runs late never extends the delay.
  */
-export function startTimer(callback: () => void, ms: number): () => void {
+export function startTimer(callback: () => void, ms: number) {
   const endsAt = performance.now() + ms
   let timer: ReturnType<typeof setTimeout> | undefined
 
