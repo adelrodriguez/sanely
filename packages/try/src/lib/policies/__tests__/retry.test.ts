@@ -36,4 +36,19 @@ describe("retry helpers", () => {
     })
     expect("maxDelayMs" in normalized).toBe(false)
   })
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])("rejects a delayMs of %s", (delayMs) => {
+    expect(() => retryOptions({ backoff: "constant", delayMs, limit: 2 })).toThrow(
+      expect.objectContaining({ code: "RETRY_INVALID_DELAY", name: "Panic" })
+    )
+  })
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects a maxDelayMs of %s",
+    (maxDelayMs) => {
+      expect(() => retryOptions({ backoff: "exponential", limit: 2, maxDelayMs })).toThrow(
+        expect.objectContaining({ code: "RETRY_INVALID_DELAY", name: "Panic" })
+      )
+    }
+  )
 })

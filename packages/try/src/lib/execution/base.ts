@@ -11,7 +11,12 @@ import {
   TimeoutError,
   UnhandledException,
 } from "#lib/shared/errors.ts"
-import { assertUnreachable, checkIsPromiseLike, discardOutcome } from "#lib/shared/utils.ts"
+import {
+  assertUnreachable,
+  checkIsPromiseLike,
+  discardOutcome,
+  startTimer,
+} from "#lib/shared/utils.ts"
 
 export type RunnerError =
   | CancellationError
@@ -279,8 +284,10 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       return undefined
     }
 
-    const { promise: delayElapsed, resolve } = Promise.withResolvers()
-    const timer = setTimeout(resolve, delay)
+    const { promise: delayElapsed, resolve } = Promise.withResolvers<true>()
+    const cancelTimer = startTimer(() => {
+      resolve(true)
+    }, delay)
 
     try {
       const delayResult = await this.race(delayElapsed)
@@ -293,7 +300,7 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
     } finally {
       // A timeout or cancellation can end the wait before the timer fires. Clear the timer so it
       // does not keep the process alive after the execution returns.
-      clearTimeout(timer)
+      cancelTimer()
     }
   }
 

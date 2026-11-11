@@ -8,7 +8,7 @@ import {
   UnhandledException,
 } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic } from "./test-utils"
+import { blockEventLoop, expectPanic, sleep } from "./test-utils"
 
 /**
  * Patches `setTimeout` to record every scheduled delay and re-schedule callbacks with a 0ms delay.
@@ -821,26 +821,125 @@ describe("timeout and cancellation behavior", () => {
   })
 
   it("reports the configured deadline over a TimeoutError returned as a value", async () => {
+    const userTimeout = new TimeoutError("returned as a value")
+
+    const result = await try$.timeout(5).run(() => {
+      // Pass the deadline before its timer can fire: sync work cannot observe the timer, so the
+      // clock check at the result boundary must report the policy timeout.
+      blockEventLoop(10)
+      return userTimeout
+    })
+
+    expect(result).toBeInstanceOf(TimeoutError)
+    expect(result).not.toBe(userTimeout)
+    expect(result.message).toBe("Execution exceeded timeout of 5ms")
+  })
+
+  it("keeps the deadline when the system clock jumps forward during the work", async () => {
     vi.useFakeTimers()
 
     try {
-      const userTimeout = new TimeoutError("returned as a value")
-
-      const result = await try$.timeout(5).run(() => {
-        // Move the clock past the deadline without firing timers: sync work cannot
-        // observe the timer, so the clock check at the result boundary must report
-        // the policy timeout.
-        vi.setSystemTime(Date.now() + 10)
-        return userTimeout
+      const result = await try$.timeout(5000).run(() => {
+        // Only the wall clock moves. No time passes for the deadline.
+        vi.setSystemTime(Date.now() + 10_000)
+        return 42
       })
 
-      expect(result).toBeInstanceOf(TimeoutError)
-      expect(result).not.toBe(userTimeout)
-      expect(result.message).toBe("Execution exceeded timeout of 5ms")
+      expect(result).toBe(42)
     } finally {
       vi.useRealTimers()
     }
   })
+
+  it("waits for the work under a deadline above the timer limit", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const pending = try$.timeout(Number.MAX_SAFE_INTEGER).run(() => sleep(50).then(() => "done"))
+
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(await pending).toBe("done")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ends a deadline above the timer limit only when the full time passes", async () => {
+    vi.useFakeTimers()
+
+    try {
+      const timeoutMs = 3_000_000_000
+      const pending = try$.timeout(timeoutMs).run(() => never<string>())
+
+      await vi.advanceTimersByTimeAsync(timeoutMs - 1)
+      expect(await Promise.race([pending, Promise.resolve("still running")])).toBe("still running")
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await pending).toBeInstanceOf(TimeoutError)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ends a long deadline at once when a timer runs after the deadline passed", async () => {
+    // Fake only the timers, so the test can move the monotonic clock past the deadline while the
+    // first timer is still pending, as when the machine sleeps.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let now = 0
+    vi.spyOn(performance, "now").mockImplementation(() => now)
+
+    try {
+      const timeoutMs = 3_000_000_000
+      const pending = try$.timeout(timeoutMs).run(() => never<string>())
+
+      now = timeoutMs + 1
+      // The first timer runs late, after the full deadline passed. The deadline must end on the
+      // next timer tick instead of waiting for another chunk.
+      await vi.advanceTimersByTimeAsync(2_147_483_647 + 1)
+
+      expect(await Promise.race([pending, Promise.resolve("still running")])).toBeInstanceOf(
+        TimeoutError
+      )
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each([
+    { delays: [3_000_000_000], policy: { backoff: "constant", delayMs: 3_000_000_000, limit: 2 } },
+    // The second delay, 2 ** 31 ms, is one above the timer limit.
+    { delays: [2 ** 30, 2 ** 31], policy: { backoff: "exponential", delayMs: 2 ** 30, limit: 3 } },
+  ] as const)(
+    "waits the full retry delay above the timer limit: $policy.backoff",
+    async ({ delays, policy }) => {
+      vi.useFakeTimers()
+
+      try {
+        let attempts = 0
+
+        const pending = try$.retry(policy).run(() => {
+          attempts += 1
+          throw new Error("boom")
+        })
+
+        for (const [index, delay] of delays.entries()) {
+          // oxlint-disable-next-line no-await-in-loop
+          await vi.advanceTimersByTimeAsync(delay - 1)
+          expect(attempts).toBe(index + 1)
+
+          // oxlint-disable-next-line no-await-in-loop
+          await vi.advanceTimersByTimeAsync(1)
+          expect(attempts).toBe(index + 2)
+        }
+
+        expect(await pending).toBeInstanceOf(RetryExhaustedError)
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
 
   it("returns CancellationError when aborted during retry backoff", async () => {
     vi.useFakeTimers()
@@ -916,17 +1015,11 @@ describe("timeout and cancellation behavior", () => {
     let result: unknown
 
     const unhandled = await collectUnhandledRejections(async () => {
-      vi.useFakeTimers()
-
-      try {
-        result = await try$.timeout(5).run(() => {
-          // The deadline passes before the fake timer can fire.
-          vi.setSystemTime(Date.now() + 10)
-          return Promise.reject(lateFailure)
-        })
-      } finally {
-        vi.useRealTimers()
-      }
+      result = await try$.timeout(5).run(() => {
+        // The deadline passes before its timer can fire.
+        blockEventLoop(10)
+        return Promise.reject(lateFailure)
+      })
     })
 
     expect(result).toBeInstanceOf(TimeoutError)
@@ -963,45 +1056,33 @@ describe("timeout and cancellation behavior", () => {
   })
 
   it("returns TimeoutError when async try resolves after the deadline passed", async () => {
-    vi.useFakeTimers()
+    const result = await try$.timeout(5).run(async () => {
+      await Promise.resolve()
+      // The deadline passes before its timer can fire.
+      blockEventLoop(10)
+      return 42
+    })
 
-    try {
-      const result = await try$.timeout(5).run(async () => {
-        await Promise.resolve()
-        // The deadline passes before the fake timer can fire.
-        vi.setSystemTime(Date.now() + 10)
-        return 42
-      })
-
-      expect(result).toBeInstanceOf(TimeoutError)
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(result).toBeInstanceOf(TimeoutError)
   })
 
   it("returns TimeoutError when async catch resolves after the deadline passed", async () => {
-    vi.useFakeTimers()
+    const failure = new Error("boom")
 
-    try {
-      const failure = new Error("boom")
+    const result = await try$.timeout(5).run({
+      catch: async () => {
+        await Promise.resolve()
+        // The deadline passes before its timer can fire.
+        blockEventLoop(10)
+        return "mapped" as const
+      },
+      try: () => {
+        throw failure
+      },
+    })
 
-      const result = await try$.timeout(5).run({
-        catch: async () => {
-          await Promise.resolve()
-          // The deadline passes before the fake timer can fire.
-          vi.setSystemTime(Date.now() + 10)
-          return "mapped" as const
-        },
-        try: () => {
-          throw failure
-        },
-      })
-
-      expect(result).toBeInstanceOf(TimeoutError)
-      expect((result as TimeoutError).cause).toBe(failure)
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(result).toBeInstanceOf(TimeoutError)
+    expect((result as TimeoutError).cause).toBe(failure)
   })
 
   it("returns CancellationError without running try when the signal was aborted with a TimeoutError reason", async () => {

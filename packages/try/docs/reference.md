@@ -117,6 +117,8 @@ The delay after attempt `n` is:
 | `"linear"`      | `delayMs * n`                                  |
 | `"exponential"` | `delayMs * 2 ** (n - 1)`, at most `maxDelayMs` |
 
+`delayMs` and `maxDelayMs` must be finite numbers that are not negative, or `retry` throws a `Panic` with the code `RETRY_INVALID_DELAY`. Without `maxDelayMs`, a computed delay is at most `Number.MAX_SAFE_INTEGER` milliseconds. A delay above the 32-bit timer limit of about 24.8 days waits the full time.
+
 ```ts
 try$.retry({ backoff: "exponential", delayMs: 100, maxDelayMs: 5_000, jitter: true, limit: 5 })
 ```
@@ -127,7 +129,7 @@ try$.retry({ backoff: "exponential", delayMs: 100, maxDelayMs: 5_000, jitter: tr
 function retryOptions(options: number | RetryPolicy): RetryPolicy
 ```
 
-Returns the policy that `retry` uses for `options`. It throws a `Panic` with the code `RETRY_INVALID_LIMIT` for an invalid limit.
+Returns the policy that `retry` uses for `options`. It throws a `Panic` with the code `RETRY_INVALID_LIMIT` for an invalid limit, and with the code `RETRY_INVALID_DELAY` for an invalid `delayMs` or `maxDelayMs`.
 
 ```ts
 try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
@@ -139,7 +141,7 @@ try$.retryOptions(3) // { backoff: "constant", delayMs: 0, limit: 3 }
 timeout(ms: number)
 ```
 
-Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. When the chain already has a deadline, the tighter deadline applies.
+Sets one total deadline. For `run`, it covers every attempt, the delays, and `catch`. For orchestration, it covers the whole task graph. `ms` must be a finite number that is not negative, or `timeout` throws a `Panic` with the code `TIMEOUT_INVALID_MS`. When the chain already has a deadline, the tighter deadline applies. The deadline counts the time that passes on the monotonic clock, so a change to the system clock does not move it, and a deadline above the 32-bit timer limit of about 24.8 days waits the full time.
 
 ### `signal(abortSignal)`
 
@@ -259,26 +261,27 @@ Each error has a type guard: `isUnhandledException`, `isRetryExhaustedError`, `i
 
 ### `PanicCode`
 
-| Code                               | Cause                                               |
-| ---------------------------------- | --------------------------------------------------- |
-| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.       |
-| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.          |
-| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                 |
-| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.           |
-| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.          |
-| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay.     |
-| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.        |
-| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.          |
-| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.             |
-| `TASK_INVALID_HANDLER`             | A task is not a function.                           |
-| `TASK_SELF_REFERENCE`              | A task read its own result.                         |
-| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.          |
-| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.              |
-| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.          |
-| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.          |
-| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.              |
-| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.           |
-| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`. |
+| Code                               | Cause                                                        |
+| ---------------------------------- | ------------------------------------------------------------ |
+| `CATCH_HANDLER_REJECT`             | A `catch` rejected. The error is the `cause`.                |
+| `CATCH_HANDLER_THROW`              | A `catch` threw. The error is the `cause`.                   |
+| `FLOW_NO_EXIT`                     | No task of a `flow` called `$exit`.                          |
+| `ORCHESTRATION_UNSUPPORTED_POLICY` | An orchestration call came after `retry`.                    |
+| `RETRY_INVALID_DELAY`              | A retry `delayMs` or `maxDelayMs` is negative or not finite. |
+| `RETRY_INVALID_LIMIT`              | The retry limit is not a positive integer.                   |
+| `RUN_SYNC_ASYNC_RETRY_POLICY`      | `runSync` received a retry policy with a delay.              |
+| `RUN_SYNC_CATCH_PROMISE`           | The `catch` of `runSync` returned a promise.                 |
+| `RUN_SYNC_TRY_PROMISE`             | The `try` of `runSync` returned a promise.                   |
+| `RUN_SYNC_WRAPPED_RESULT_PROMISE`  | A wrap of `runSync` returned a promise.                      |
+| `TASK_INVALID_HANDLER`             | A task is not a function.                                    |
+| `TASK_SELF_REFERENCE`              | A task read its own result.                                  |
+| `TASK_UNKNOWN_REFERENCE`           | A task read the result of an unknown task.                   |
+| `TIMEOUT_INVALID_MS`               | The timeout is negative or not finite.                       |
+| `UNREACHABLE_RETRY_POLICY_BACKOFF` | The retry policy has an unknown `backoff`.                   |
+| `UNREACHABLE_WORK_STATE`           | The wrapped work reached an unknown state.                   |
+| `WRAP_NEXT_CALLED_TWICE`           | A wrap called `next()` more than once.                       |
+| `WRAP_NEXT_NOT_CALLED`             | A wrap returned without calling `next()`.                    |
+| `WRAP_THROW`                       | A wrap threw or rejected. The error is the `cause`.          |
 
 ## Types
 
