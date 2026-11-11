@@ -52,6 +52,7 @@ function namesTime(key: ESTree.Node): string | undefined {
 // A callback's parameters describe data the caller receives, not options it passes.
 const FUNCTION_TYPES = new Set([
   "TSCallSignatureDeclaration",
+  "TSConstructSignatureDeclaration",
   "TSConstructorType",
   "TSFunctionType",
   "TSMethodSignature",

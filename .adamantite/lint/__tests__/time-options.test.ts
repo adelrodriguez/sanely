@@ -56,6 +56,10 @@ new RuleTester().run("time-options", rule, {
       ...source(),
       code: "interface RetryOptions { onResult(result: { readonly duration: number }): void }",
     },
+    {
+      ...source(),
+      code: "interface FactoryOptions { new (data: { readonly duration: number }): object }",
+    },
     // Other numeric options do not hold a length of time.
     { ...source(), code: "export type WindowOptions = { readonly limit: number }" },
     // Tests write milliseconds on purpose.
