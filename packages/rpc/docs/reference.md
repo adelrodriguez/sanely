@@ -8,8 +8,6 @@
 - `@sanely/rpc/wire/message-port`
 - `@sanely/rpc/wire/web-socket`
 
-`@sanely/rpc/wire` also exports everything from the three `@sanely/rpc/wire/*` entry points.
-
 ## `@sanely/rpc`
 
 ### `channel`
