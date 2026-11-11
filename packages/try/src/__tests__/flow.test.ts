@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { CancellationError, TimeoutError, UnhandledException } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic, expectUnhandled } from "./test-utils"
+import { blockEventLoop, expectPanic, expectUnhandled } from "./test-utils"
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
@@ -295,20 +295,13 @@ describe("flow", () => {
     process.on("unhandledRejection", onUnhandled)
 
     try {
-      vi.useFakeTimers()
-      let error: unknown
-
-      try {
-        error = await try$.timeout(5).flow({
-          a() {
-            // The deadline passes before the fake timer can fire.
-            vi.setSystemTime(Date.now() + 20)
-            throw new Error("after deadline")
-          },
-        })
-      } finally {
-        vi.useRealTimers()
-      }
+      const error = await try$.timeout(5).flow({
+        a() {
+          // The deadline passes before its timer can fire.
+          blockEventLoop(20)
+          throw new Error("after deadline")
+        },
+      })
 
       expect(error).toBeInstanceOf(TimeoutError)
 

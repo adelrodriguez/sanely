@@ -2,7 +2,7 @@ import { runInNewContext } from "node:vm"
 import { describe, expect, it, vi } from "vitest"
 import { CancellationError, TimeoutError, UnhandledException } from "#errors.ts"
 import * as try$ from "#index.ts"
-import { expectPanic, expectUnhandled, sleep } from "./test-utils"
+import { blockEventLoop, expectPanic, expectUnhandled, sleep } from "./test-utils"
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -910,35 +910,47 @@ describe("all", () => {
     }
   })
 
-  it("reports the graph deadline instead of calling catch when a task fails after the deadline elapsed", async () => {
+  it("keeps the graph deadline when the system clock jumps forward", async () => {
     vi.useFakeTimers()
 
     try {
-      const boom = new Error("boom")
-      let catchCalls = 0
-
-      const error = await try$.timeout(10).all(
-        {
-          async a() {
-            await Promise.resolve()
-            // The deadline elapses, but its fake timer never fires before the failure is mapped.
-            vi.setSystemTime(Date.now() + 20)
-            throw boom
-          },
+      const result = await try$.timeout(5000).all({
+        a() {
+          // Only the wall clock moves. No time passes for the deadline.
+          vi.setSystemTime(Date.now() + 10_000)
+          return 1
         },
-        {
-          catch: () => {
-            catchCalls += 1
-            return "mapped" as const
-          },
-        }
-      )
+      })
 
-      expect(error).toBeInstanceOf(TimeoutError)
-      expect((error as TimeoutError).cause).toBe(boom)
-      expect(catchCalls).toBe(0)
+      expect(result).toEqual({ a: 1 })
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("reports the graph deadline instead of calling catch when a task fails after the deadline elapsed", async () => {
+    const boom = new Error("boom")
+    let catchCalls = 0
+
+    const error = await try$.timeout(10).all(
+      {
+        async a() {
+          await Promise.resolve()
+          // The deadline elapses, but its timer cannot fire before the failure is mapped.
+          blockEventLoop(20)
+          throw boom
+        },
+      },
+      {
+        catch: () => {
+          catchCalls += 1
+          return "mapped" as const
+        },
+      }
+    )
+
+    expect(error).toBeInstanceOf(TimeoutError)
+    expect((error as TimeoutError).cause).toBe(boom)
+    expect(catchCalls).toBe(0)
   })
 })

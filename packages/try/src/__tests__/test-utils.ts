@@ -7,6 +7,18 @@ export function sleep(ms: number): Promise<void> {
   })
 }
 
+/**
+ * Runs synchronous work for `ms` milliseconds of real time. No timer can fire meanwhile, so a
+ * deadline can pass while its timer is still pending, as when a timer runs late.
+ */
+export function blockEventLoop(ms: number): void {
+  const end = performance.now() + ms
+
+  while (performance.now() < end) {
+    // Busy-wait: the point is to keep the event loop from running timers.
+  }
+}
+
 export function expectPanic(error: unknown, code: PanicCode) {
   expect(error).toBeInstanceOf(Panic)
   expect((error as Panic).code).toBe(code)
