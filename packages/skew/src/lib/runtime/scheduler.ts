@@ -100,11 +100,15 @@ export class DeploymentScheduler {
   }
 }
 
+// The type requires every field of DeploymentSchedule, so a new field fails to compile until the
+// scheduler compares it.
+const SCHEDULE_FIELDS: { readonly [K in keyof DeploymentSchedule]-?: K } = {
+  checkInterval: "checkInterval",
+  checkOnReconnect: "checkOnReconnect",
+  checkOnSubscribe: "checkOnSubscribe",
+  checkOnVisible: "checkOnVisible",
+}
+
 function schedulesMatch(left: DeploymentSchedule, right: DeploymentSchedule): boolean {
-  return (
-    left.checkInterval === right.checkInterval
-    && left.checkOnReconnect === right.checkOnReconnect
-    && left.checkOnSubscribe === right.checkOnSubscribe
-    && left.checkOnVisible === right.checkOnVisible
-  )
+  return Object.values(SCHEDULE_FIELDS).every((field) => left[field] === right[field])
 }

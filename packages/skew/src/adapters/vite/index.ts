@@ -5,6 +5,7 @@ import type { Deployment } from "#lib/protocol/types.ts"
 import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
   checkIsExternalEndpoint,
+  embedScript,
   resolveDeploymentId,
   resolvePublicEndpoint,
   serializeEmbed,
@@ -57,7 +58,7 @@ export function deploymentCheck(options: ViteAdapterOptions = {}): Plugin {
 
       return [
         {
-          children: `globalThis.__DEPLOYMENT_CHECK__=${serializeEmbed(embed)}`,
+          children: embedScript(serializeEmbed(embed)),
           injectTo: "head-prepend",
           tag: "script",
         },

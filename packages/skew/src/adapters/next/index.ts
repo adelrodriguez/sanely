@@ -9,6 +9,7 @@ import type { Deployment } from "#lib/protocol/types.ts"
 import {
   DEFAULT_DESCRIPTOR_ENDPOINT,
   checkIsExternalEndpoint,
+  embedScript,
   resolveDeploymentId,
   resolvePublicEndpoint,
   serializeEmbed,
@@ -47,7 +48,7 @@ export function DeploymentScript(): ReactNode {
 
   return createElement(Script, {
     dangerouslySetInnerHTML: {
-      __html: `globalThis.__DEPLOYMENT_CHECK__=${embed}`,
+      __html: embedScript(embed),
     },
     id: "deployment-check-embed",
     strategy: "beforeInteractive",
