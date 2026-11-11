@@ -91,7 +91,8 @@ export function connect<Context = void, const T extends string = never>(
   closed: Promise<ChannelError>
   transport: Transport<CallOptions>
 } {
-  const { context, expose, onHidden, router, signal, timeout = DEFAULT_TIMEOUT_MS } = options ?? {}
+  const { context, expose, onHidden, router, timeout = DEFAULT_TIMEOUT_MS } = options ?? {}
+  const signal = options?.signal
   const timeoutMs = typeof timeout === "number" ? timeout : safeParse(timeout)
 
   // `NaN` would silently disable the timeout, and zero or less, or more than a timer holds, would

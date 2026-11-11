@@ -606,6 +606,13 @@ describe("connect", () => {
     )
   })
 
+  // Only a missing timeout takes the default. A null one from untyped config is rejected.
+  test("rejects a null timeout when it connects", () => {
+    expect(() => connect(createWirePair()[0], { timeout: null as never })).toThrow(
+      expect.objectContaining({ code: "invalid-timeout", name: "SetupError", timeout: null })
+    )
+  })
+
   test("timeout: Infinity leaves calls pending until close", async () => {
     vi.useFakeTimers()
 
