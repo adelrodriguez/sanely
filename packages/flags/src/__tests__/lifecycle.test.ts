@@ -304,13 +304,41 @@ describe("first-class cache", () => {
     const providerDetails = await flags.details(theme)
     expect(providerDetails.source).toBe("provider")
     await flushBackground()
-    expect(set).toHaveBeenCalledWith('["theme","variant",["light","dark"],"string","user123"]', {
-      type: "variant",
-      variant: "dark",
-    })
+    expect(set).toHaveBeenCalledWith(
+      '["test","theme","variant",["light","dark"],"string","user123"]',
+      {
+        type: "variant",
+        variant: "dark",
+      }
+    )
     const cacheDetails = await flags.details(theme)
     expect(cacheDetails.source).toBe("cache")
     expect(decideOne).toHaveBeenCalledTimes(1)
+  })
+
+  test("keeps the decisions of readers with different providers apart in one store", async () => {
+    const stored = new Map<string, Decision>()
+    const store: DecisionStore = {
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: (key, value) => {
+        stored.set(key, value)
+        return Promise.resolve()
+      },
+    }
+    const production = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => TRUE, name: "production" }),
+    })
+    const staging = createFlags({
+      cache: { store },
+      identify,
+      provider: defineProvider({ decideOne: () => FALSE, name: "staging" }),
+    })
+
+    expect(await production.get(betaAccess)).toBe(true)
+    await flushBackground()
+    expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
   test("supports a custom identity-sensitive key", async () => {

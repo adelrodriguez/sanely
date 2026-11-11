@@ -263,7 +263,7 @@ describe("batches", () => {
       },
     }
     const stored = new Map<string, Decision>([
-      ['["beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
+      ['["bulk","beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
     ])
     const decide = vi.fn(decideAll)
     const flags = createFlags({
@@ -407,7 +407,7 @@ describe("batches", () => {
 
   test("integrates with the store and coalescing without hanging", async () => {
     const stored = new Map<string, Decision>([
-      ['["beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
+      ['["bulk","beta-access","boolean",null,"string","user123"]', decision.boolean(true)],
     ])
     const store = {
       get: vi.fn((key: string) => Promise.resolve(stored.get(key))),
@@ -432,7 +432,7 @@ describe("batches", () => {
     await delay(0)
     expect(keysOf(decide.mock.calls[0]?.[0] ?? [])).toEqual(["theme"])
     expect(store.set).toHaveBeenCalledWith(
-      '["theme","variant",["light","dark"],"string","user123"]',
+      '["bulk","theme","variant",["light","dark"],"string","user123"]',
       { type: "variant", variant: "dark" }
     )
   })

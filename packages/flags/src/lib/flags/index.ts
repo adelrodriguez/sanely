@@ -199,7 +199,7 @@ export function createFlags<TIdentity extends Subject, const T extends string = 
     hooks: [...(options.hooks ?? [])],
     onError,
     provider,
-    sharing: createSharing(options.cache, changes, onError),
+    sharing: createSharing(options.cache, provider.name, changes, onError),
     timeout,
   }
 

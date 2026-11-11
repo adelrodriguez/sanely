@@ -28,7 +28,7 @@ function createEvaluator(
     hooks: [],
     onError: undefined,
     provider: providerCalls(defineProvider(definition)),
-    sharing: createSharing({ coalesce: false }, detached.changes, detached.onError),
+    sharing: createSharing({ coalesce: false }, "test", detached.changes, detached.onError),
     timeout: undefined,
     ...overrides,
   }

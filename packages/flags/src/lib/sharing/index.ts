@@ -74,12 +74,15 @@ export type Sharing<TIdentity extends Subject> = {
   onError:
     | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
     | undefined
+  // The provider's name, which the default evaluation key holds.
+  provider: string
   state: ResolutionState<TIdentity>
   store: DecisionStore | undefined
 }
 
 export function createSharing<TIdentity extends Subject>(
   options: CacheOptions<TIdentity> | undefined,
+  provider: string,
   changes: ChangeBroadcaster | undefined,
   onError: Sharing<TIdentity>["onError"]
 ): Sharing<TIdentity> {
@@ -88,6 +91,7 @@ export function createSharing<TIdentity extends Subject>(
     coalesce: options?.coalesce !== false,
     key: options?.key,
     onError,
+    provider,
     state: createResolutionState(),
     store: options?.store,
   }
@@ -390,7 +394,7 @@ export async function resolveDecision<TIdentity extends Subject>(
 
   let key: string | undefined
   try {
-    key = getEvaluationKey(context, config.key)
+    key = getEvaluationKey(context, config.provider, config.key)
   } catch (error) {
     reportStoreError(config, storeContext(context), "key", context.flag.key, error)
     key = undefined

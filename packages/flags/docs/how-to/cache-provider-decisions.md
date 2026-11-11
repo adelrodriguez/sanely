@@ -59,7 +59,7 @@ To keep coalescing and still track each exposure, use an `after` hook. See [How 
 
 ## Include more identity fields in the key
 
-The default evaluation key holds the flag key, the flag kind, the variants, and the type and value of `distinctId`. If other identity fields change the decision, give a `key` function:
+The default evaluation key holds the provider's `name`, the flag key, the flag kind, the variants, and the type and value of `distinctId`. If other identity fields change the decision, give a `key` function:
 
 ```typescript
 const flags = createFlags({

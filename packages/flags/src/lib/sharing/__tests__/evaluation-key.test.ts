@@ -18,18 +18,24 @@ const variantContext: EvaluationContext = {
 }
 
 describe("getEvaluationKey", () => {
-  test("encodes the flag key, flag shape, and typed distinctId by default", () => {
-    expect(getEvaluationKey(booleanContext)).toBe(
-      JSON.stringify(["beta-access", "boolean", undefined, "string", "user-1"])
+  test("encodes the provider, flag key, flag shape, and typed distinctId by default", () => {
+    expect(getEvaluationKey(booleanContext, "test")).toBe(
+      JSON.stringify(["test", "beta-access", "boolean", undefined, "string", "user-1"])
     )
-    expect(getEvaluationKey(variantContext)).toBe(
-      JSON.stringify(["theme", "variant", ["light", "dark"], "number", "42"])
+    expect(getEvaluationKey(variantContext, "test")).toBe(
+      JSON.stringify(["test", "theme", "variant", ["light", "dark"], "number", "42"])
+    )
+  })
+
+  test("keeps the decisions of different providers apart", () => {
+    expect(getEvaluationKey(booleanContext, "production")).not.toBe(
+      getEvaluationKey(booleanContext, "staging")
     )
   })
 
   test("keeps a numeric and a string distinctId with one text apart", () => {
-    const numeric = getEvaluationKey({ ...booleanContext, identity: { distinctId: 7 } })
-    const text = getEvaluationKey({ ...booleanContext, identity: { distinctId: "7" } })
+    const numeric = getEvaluationKey({ ...booleanContext, identity: { distinctId: 7 } }, "test")
+    const text = getEvaluationKey({ ...booleanContext, identity: { distinctId: "7" } }, "test")
 
     expect(numeric).not.toBe(text)
   })
@@ -37,16 +43,18 @@ describe("getEvaluationKey", () => {
   test("returns undefined before the identity resolves and for anonymous", () => {
     const key = vi.fn(() => "custom")
 
-    expect(getEvaluationKey({ ...booleanContext, identity: null })).toBeUndefined()
-    expect(getEvaluationKey({ ...booleanContext, identity: null }, key)).toBeUndefined()
-    expect(getEvaluationKey({ ...booleanContext, identity: anonymous }, key)).toBeUndefined()
+    expect(getEvaluationKey({ ...booleanContext, identity: null }, "test")).toBeUndefined()
+    expect(getEvaluationKey({ ...booleanContext, identity: null }, "test", key)).toBeUndefined()
+    expect(
+      getEvaluationKey({ ...booleanContext, identity: anonymous }, "test", key)
+    ).toBeUndefined()
     expect(key).not.toHaveBeenCalled()
   })
 
   test("uses a custom key function", () => {
     const key = vi.fn((context: EvaluationContext) => `custom:${context.flag.key}`)
 
-    expect(getEvaluationKey(booleanContext, key)).toBe("custom:beta-access")
+    expect(getEvaluationKey(booleanContext, "test", key)).toBe("custom:beta-access")
     expect(key).toHaveBeenCalledWith(booleanContext)
   })
 })

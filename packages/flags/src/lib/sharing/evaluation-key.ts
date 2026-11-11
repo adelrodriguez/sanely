@@ -2,11 +2,13 @@ import { anonymous, type EvaluationContext, type Subject } from "#lib/identity/i
 
 /**
  * The evaluation key of one evaluation, or `undefined` when the evaluation must not share a
- * decision: before the identity resolves, and for `anonymous`. The default key uses the flag key,
- * the flag shape, and the type and value of `identity.distinctId`.
+ * decision: before the identity resolves, and for `anonymous`. The default key uses the provider
+ * name, the flag key, the flag shape, and the type and value of `identity.distinctId`, so readers
+ * with different providers can share one store.
  */
 export function getEvaluationKey<TIdentity extends Subject>(
   context: EvaluationContext<TIdentity>,
+  provider: string,
   key?: (context: EvaluationContext<TIdentity>) => string
 ): string | undefined {
   const { flag, identity } = context
@@ -18,6 +20,7 @@ export function getEvaluationKey<TIdentity extends Subject>(
   }
   const { distinctId } = identity
   return JSON.stringify([
+    provider,
     flag.key,
     flag.kind,
     flag.kind === "variant" ? flag.variants : undefined,

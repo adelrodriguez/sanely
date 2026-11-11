@@ -25,7 +25,7 @@ function createEvaluator(overrides: Partial<Evaluator<Identity>> = {}): Evaluato
     hooks: [],
     onError: undefined,
     provider: { decideOne: () => Promise.resolve(null), name: "test" },
-    sharing: createSharing({ coalesce: false }, detached.changes, detached.onError),
+    sharing: createSharing({ coalesce: false }, "test", detached.changes, detached.onError),
     timeout: undefined,
     ...overrides,
   }
@@ -90,7 +90,7 @@ describe("evaluate", () => {
     }
     const decide = decideWith(null)
     const evaluator = createEvaluator({
-      sharing: createSharing({ store }, detached.changes, detached.onError),
+      sharing: createSharing({ store }, "test", detached.changes, detached.onError),
     })
 
     const details = await evaluate(evaluator, betaAccess, identify, decide, noDeadline)
