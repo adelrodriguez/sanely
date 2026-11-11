@@ -378,6 +378,33 @@ describe("first-class cache", () => {
     }
   )
 
+  test.each([true, false])(
+    "stores every decision of a fresh batch, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
+      })
+
+      await flags.detailsMany([flag.boolean("a", false), flag.boolean("b", false)], {
+        fresh: true,
+      })
+      await flushBackground()
+      expect(stored.size).toBe(2)
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {

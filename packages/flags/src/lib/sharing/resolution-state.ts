@@ -56,6 +56,10 @@ export type ResolutionState<TIdentity extends Subject> = {
   // A pending write lives for milliseconds and the next evaluation re-establishes it, so dropping
   // one is always safe. It is cheaper than tracking which flags a notification covers.
   writes: { generation: number }
+  // The open write tickets of each evaluation key. A fresh read advances its key's epoch, which
+  // voids only that key's older tickets. A key leaves the map when its last ticket closes, so the
+  // map holds only keys with a read in flight.
+  tickets: Map<string, { epoch: number; open: number }>
 }
 
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
@@ -66,6 +70,7 @@ export function createResolutionState<TIdentity extends Subject>(): ResolutionSt
     mutations: new Map(),
     pending: new Map(),
     subscription: { registered: false },
+    tickets: new Map(),
     writes: { generation: 0 },
   }
 }

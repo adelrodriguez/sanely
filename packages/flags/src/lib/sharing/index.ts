@@ -284,6 +284,7 @@ export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdent
   const { state } = config
   state.disposed = true
   state.pending.clear()
+  state.tickets.clear()
   state.keysByFlag.clear()
   state.writes.generation += 1
 }
@@ -393,18 +394,49 @@ async function consultStore<TIdentity extends Subject>(
   }
 }
 
+/**
+ * A read's permission to store the decision it fetches. A change notification voids every open
+ * ticket through `generation`, and a fresh read voids the older tickets of its key through `epoch`.
+ * Each ticket closes once: when its write runs, or when its read ends without one.
+ */
+type WriteTicket = { epoch: number; generation: number; key: string; store: DecisionStore }
+
+function openTicket<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  store: DecisionStore,
+  key: string,
+  generation: number,
+  fresh: boolean
+): WriteTicket {
+  const { tickets } = config.state
+  const entry = tickets.get(key) ?? { epoch: 0, open: 0 }
+  if (fresh) entry.epoch += 1
+  entry.open += 1
+  tickets.set(key, entry)
+  return { epoch: entry.epoch, generation, key, store }
+}
+
+function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
+  const { tickets } = config.state
+  const entry = tickets.get(ticket.key)
+  if (!entry) return
+  entry.open -= 1
+  if (entry.open === 0) tickets.delete(ticket.key)
+}
+
 function writeThrough<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
   context: EvaluationContext<TIdentity>,
-  store: DecisionStore,
-  generation: number,
-  key: string,
+  ticket: WriteTicket,
   decision: Decision
 ): void {
-  // The generation check runs when the write starts, after the earlier operations for this key. A
-  // change during the write queues its delete after the write.
+  const { key, store } = ticket
+  // The checks run when the write starts, after the earlier operations for this key. A change
+  // during the write queues its delete after the write.
   mutateStore(config, storeContext(context), key, "set", () => {
-    if (config.state.writes.generation !== generation) {
+    const epoch = config.state.tickets.get(key)?.epoch
+    closeTicket(config, ticket)
+    if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
       return
     }
     // A change during the read removed this key from the index, so index it again for the decision
@@ -413,8 +445,6 @@ function writeThrough<TIdentity extends Subject>(
     return store.set(key, decision, { flagKey: context.flag.key })
   })
 }
-
-type WriteTicket = { generation: number; store: DecisionStore }
 
 /**
  * Starts the provider call that concurrent evaluations with one evaluation key share, and registers
@@ -457,14 +487,16 @@ function startSharedCall<TIdentity extends Subject>(
   }
   void promise.then(settle, settle)
   if (write) {
-    const { generation, store } = write
     // Each evaluation reports its own invalid decision. The call only skips storing it.
     void accepted.then(
       ({ decision }) => {
-        writeThrough(config, context, store, generation, key, decision)
+        writeThrough(config, context, write, decision)
         return null
       },
-      () => null
+      () => {
+        closeTicket(config, write)
+        return null
+      }
     )
   }
   return call
@@ -507,23 +539,26 @@ export async function resolveDecision<TIdentity extends Subject>(
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
-    // A fresh read skips the stored decision but still stores the provider's. It also voids the
-    // write tickets of older calls, so a slower older call cannot store over its decision.
-    if (fresh) state.writes.generation += 1
+    // A fresh read skips the stored decision but still stores the provider's. Its ticket voids
+    // the older tickets of its key, so a slower older call cannot store over its decision.
     const consultation = fresh
       ? { generation: state.writes.generation }
       : await raceWithSignal(() => consultStore(config, context, flag, store, key), signal)
     if (consultation.accepted) {
       return { ...consultation.accepted, source: "cache" }
     }
-    write = { generation: consultation.generation, store }
+    write = openTicket(config, store, key, consultation.generation, fresh)
   }
 
   if (!coalesce) {
-    const accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
-    if (write) {
-      writeThrough(config, context, write.store, write.generation, key, accepted.decision)
+    let accepted: { decision: Decision; payload: unknown }
+    try {
+      accepted = accept(await raceWithSignal(() => provider(signal), signal), flag)
+    } catch (error) {
+      if (write) closeTicket(config, write)
+      throw error
     }
+    if (write) writeThrough(config, context, write, accepted.decision)
     return { ...accepted, source: "provider" }
   }
 
@@ -536,6 +571,8 @@ export async function resolveDecision<TIdentity extends Subject>(
     existing && !existing.shared.signal.aborted
       ? existing
       : startSharedCall(config, context, key, provider, write)
+  // Only the call that this evaluation started stores the decision, with this evaluation's ticket.
+  if (write && call === existing) closeTicket(config, write)
   call.shared.join(signal)
 
   // Each evaluation waits on its own signal: leaving never cancels the call for the others.
