@@ -87,21 +87,25 @@ describe("scriptStore", () => {
     expect(sent).toEqual(["EVALSHA"])
   })
 
-  it.each(
-    Object.values({
-      fixedWindow: fixedWindow({ limit: 5, window: week }),
-      slidingWindow: slidingWindow({ limit: 5, window: week }),
-      tokenBucket: tokenBucket({ capacity: 5, interval: week, refillRate: 1 }),
-    } satisfies Record<Algorithm["type"], Algorithm>)
-  )("expires $type state with a one-week window", async (algorithm) => {
+  // A window counts until it ends, and the next window still counts it in proportion. A bucket
+  // that spent one token is full again one interval later. The long period keeps the key from
+  // expiring before the test reads its expiry.
+  it.each([
+    { algorithm: fixedWindow({ limit: 5, window: week }), expiry: (reset: number) => reset },
+    {
+      algorithm: slidingWindow({ limit: 5, window: week }),
+      expiry: (reset: number) => reset + week,
+    },
+    {
+      algorithm: tokenBucket({ capacity: 5, interval: week, refillRate: 1 }),
+      expiry: (reset: number) => reset,
+    },
+  ])("expires $algorithm.type state with a one-week window", async ({ algorithm, expiry }) => {
     const store = scriptStore(commands)
     const key = `test:${crypto.randomUUID()}`
-    await store.consume({ algorithm, cost: 1, key })
+    const { reset } = await store.consume({ algorithm, cost: 1, key })
 
-    const ttl = await client.pttl(key)
-
-    expect(ttl).toBeGreaterThan(0)
-    expect(ttl).toBeLessThanOrEqual(2 * week)
+    expect(await client.pexpiretime(key)).toBe(expiry(reset))
   })
 
   it.each(

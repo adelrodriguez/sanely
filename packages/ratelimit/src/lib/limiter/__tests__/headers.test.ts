@@ -23,7 +23,9 @@ describe("headers", () => {
   it("adds Retry-After to a denial", () => {
     expect(
       headers({ ...counts, name: "x", reason: "cache", remaining: 0, success: false })
-    ).toMatchObject({
+    ).toEqual({
+      RateLimit: '"x";r=0;t=1800',
+      "RateLimit-Policy": '"x";q=30;w=3600',
       "Retry-After": "1800",
     })
   })

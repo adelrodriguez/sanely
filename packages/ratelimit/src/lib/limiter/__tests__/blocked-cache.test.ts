@@ -39,8 +39,8 @@ describe("blockedCache", () => {
     for (let index = 0; index <= 10_000; index += 1) cache.block(`k${index}`, 1, denial)
 
     expect(cache.lookup("k0", 1)).toBeUndefined()
-    expect(cache.lookup("k1", 1)).toBeDefined()
-    expect(cache.lookup("k10000", 1)).toBeDefined()
+    expect(cache.lookup("k1", 1)).toEqual({ remaining: 0, reset: 6000, retryAfter: 5000 })
+    expect(cache.lookup("k10000", 1)).toEqual({ remaining: 0, reset: 6000, retryAfter: 5000 })
   })
 
   it("forgets a cleared key", () => {
