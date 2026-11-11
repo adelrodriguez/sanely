@@ -101,9 +101,10 @@ type FlagScope<TIdentity extends Subject> = {
   subscribe(listener: ChangeListener): () => void
   /**
    * Detaches the reader from its provider and drops its decision memory. Later reads still work,
-   * but they skip the store and coalescing and receive no changes. Calling it again does nothing. A
-   * reader made for one request should be disposed when the request ends, for example with `using
-   * flags = createFlags(...)`.
+   * but they skip the store and coalescing and receive no changes. Calling it again does nothing.
+   * If the provider's detach function throws, the reader still drops its decision memory, and
+   * `dispose` rethrows the error. A reader made for one request should be disposed when the request
+   * ends, for example with `using flags = createFlags(...)`.
    */
   dispose(): void
 } & Disposable
@@ -228,8 +229,10 @@ export function createFlags<TIdentity extends Subject, const T extends string = 
   }
 
   const dispose = () => {
-    changes?.close()
+    // Drop the decision memory before detaching, so a provider detach function that throws cannot
+    // leave it live. The detach error still reaches the caller.
     disposeSharing(evaluator.sharing)
+    changes?.close()
   }
   const scope: Omit<FlagScope<TIdentity>, typeof Symbol.dispose> = {
     dispose,

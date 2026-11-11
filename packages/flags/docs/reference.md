@@ -174,7 +174,7 @@ The value that `createFlags` returns without `identify`. It has only `for`, `sub
 | `subscribe(listener)` | Calls `listener(keys?)` after each provider change. Returns a function that removes the listener.                          |
 | `dispose()`           | Detaches the reader from its provider and drops its decision memory. Also available as `using flags = createFlags(...)`.   |
 
-A reader stays attached to its provider until you dispose it, so create one reader for the process, or dispose a reader that you create for one request. After `dispose`, reads still work, but they skip the store and coalescing, and `subscribe` does nothing. A `FlagsProvider` on a disposed reader still renders, but a provider change no longer drops its cached values. Calling `dispose` again does nothing.
+A reader stays attached to its provider until you dispose it, so create one reader for the process, or dispose a reader that you create for one request. After `dispose`, reads still work, but they skip the store and coalescing, and `subscribe` does nothing. A `FlagsProvider` on a disposed reader still renders, but a provider change no longer drops its cached values. Calling `dispose` again does nothing. If the provider's detach function throws, `dispose` still drops the reader's decision memory before it rethrows the error.
 
 The reader calls each `subscribe` listener on a later microtask, and ignores a throw from it. `subscribe` returns a function that does nothing when the provider has no `subscribe`. When the provider's `subscribe` throws, `onError` receives a `SubscribeFailed` report. The listener stays registered, and it receives changes once a later subscription or evaluation attaches the provider.
 
