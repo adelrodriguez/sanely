@@ -74,6 +74,8 @@ describe("createDeploymentMonitor", () => {
     expectTypeOf<DeploymentMonitor>().not.toHaveProperty("destroy")
     // @ts-expect-error -- the schedule belongs to the monitor, not to each subscriber.
     monitor.subscribe(() => null, { checkInterval: "5m" })
+    // @ts-expect-error -- subscribers share the monitor's comparison.
+    monitor.subscribe(() => null, { isCurrent: () => false })
   })
 
   it("rejects a source object", () => {

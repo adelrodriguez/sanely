@@ -146,6 +146,38 @@ describe("deployment monitor", () => {
     expect(monitor.getState().status).toBe("stale")
   })
 
+  it("keeps the configured comparison when subscribers leave during a check", async () => {
+    let resolveTarget: (deployment: Deployment) => void = missingResolver
+    const target = new Promise<Deployment>((resolve) => {
+      resolveTarget = resolve
+    })
+    const monitor = createDeploymentMonitor({
+      checkOnSubscribe: false,
+      environment: new FakeEnvironment(),
+      isCurrent: () => true,
+      running: { id: "running" },
+      target: () => target,
+    })
+    const first: string[] = []
+    const second: string[] = []
+    const unsubscribeFirst = monitor.subscribe((state) => first.push(state.status))
+    const unsubscribeSecond = monitor.subscribe((state) => second.push(state.status))
+    onTestFinished(unsubscribeFirst)
+    onTestFinished(unsubscribeSecond)
+
+    const check = monitor.check()
+    resolveTarget({ id: "different" })
+    await check
+    expect(first.at(-1)).toBe("current")
+    expect(second.at(-1)).toBe("current")
+
+    const nextCheck = monitor.check()
+    unsubscribeFirst()
+    await nextCheck
+    expect(second.at(-1)).toBe("current")
+    expect(monitor.getState().status).toBe("current")
+  })
+
   it("keeps durable status while a successful check updates target knowledge", async () => {
     expect.assertions(5)
 
