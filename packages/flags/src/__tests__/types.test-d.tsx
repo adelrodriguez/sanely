@@ -206,14 +206,13 @@ export function Components() {
       <FlagsProvider flags={serverFlags} identity={{ ...user, tags: ["beta"] }}>
         child
       </FlagsProvider>
-      {/* @ts-expect-error Each object in an identity union must be keyable, also with anonymous. */}
+      {/* The flag cache keys an identity by distinctId, so any identity value renders. */}
       <FlagsProvider flags={anonymousFlags} identity={datedOrAnonymous}>
         child
       </FlagsProvider>
       <FlagsProvider flags={anonymousFlags} identity={userOrAnonymous}>
         child
       </FlagsProvider>
-      {/* @ts-expect-error The flag cache keys the identity, and it cannot key a Date. */}
       <FlagsProvider flags={dateFlags} identity={{ distinctId: "u1", signedUpAt }}>
         child
       </FlagsProvider>

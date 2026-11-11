@@ -1,14 +1,15 @@
 import type { Flag } from "#lib/definition/index.ts"
-import type { FlagReader, FlagSnapshot } from "#lib/flags/index.ts"
+import { type FlagReader, type FlagSnapshot, keyFieldsOf } from "#lib/flags/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
-import { serializeKey } from "#lib/shared/cache-key.ts"
+import { distinctIdKey, getIdentityKey } from "#lib/sharing/evaluation-key.ts"
 import { type AnyFlags, type ChangeWatch, getChangeClock, changedSince } from "./clock"
 import { type CacheInput, evictOnRejection, readCacheOptions } from "./options"
 import { type FlagResult, type SnapshotState, snapshotState } from "./snapshot"
 
 type VersionStore = {
-  // The identity key whose entry the store's readers read.
+  // The entry key whose entry the store's readers read.
   readonly key: string
+  readonly subject: string
   bump: () => void
   getSnapshot: () => number
   subscribe: (listener: () => void) => () => void
@@ -19,11 +20,12 @@ type CacheEntry = {
   pendingExpiresAt?: number
   promise: Promise<readonly FlagResult[]>
   settled: boolean
+  readonly subject: string
   watch: ChangeWatch
 }
 
 /**
- * The cache entries of one list of flags, one for each identity.
+ * The cache entries of one list of flags, one for each entry key.
  */
 export type Bucket = {
   // Every version store that has a listener. `invalidate` and `clear` bump these, so they reach a
@@ -40,12 +42,15 @@ export type Bucket = {
  * the reader's store too. The marks belong to the cache, not to a bucket, so a list of flags that
  * no component has read yet also reads fresh. Each mark is an epoch: a flag reads fresh while its
  * latest mark, or the latest `clear`, is newer than its latest fresh read for that identity.
+ *
+ * A record belongs to a subject, and it marks each flag by its slot: the flag key and the reader's
+ * key fields for that flag. `clear` covers every slot of a subject.
  */
 type FreshRead = { epoch: number; start: number }
 
 /**
- * The marks of one identity. `all` is the epoch of the latest `clear` that covered the identity.
- * `started` holds the latest fresh read of each flag, because only that read retires the flag's
+ * The marks of one subject. `all` is the epoch of the latest `clear` that covered the subject.
+ * `started` holds the latest fresh read of each slot, because only that read retires the slot's
  * mark: a newer fresh read voids the store write of an older one.
  */
 type FreshRecord = {
@@ -58,64 +63,64 @@ type FreshRecord = {
 class FreshMarks {
   #epoch = 0
   #starts = 0
-  // Only identities that `invalidate` or `clear` marked have a record, and a record leaves once
+  // Only subjects that `invalidate` or `clear` marked have a record, and a record leaves once
   // nothing is marked or in flight, so reads without marks keep nothing.
   readonly #records = new Map<string, FreshRecord>()
 
-  mark(identity: string, flagKeys: Iterable<string>): void {
+  mark(subject: string, slots: Iterable<string>): void {
     this.#epoch += 1
-    const record = this.#recordOf(identity)
-    for (const flagKey of flagKeys) record.marked.set(flagKey, this.#epoch)
+    const record = this.#recordOf(subject)
+    for (const slot of slots) record.marked.set(slot, this.#epoch)
   }
 
-  clear(identities: Iterable<string>): void {
+  clear(subjects: Iterable<string>): void {
     this.#epoch += 1
-    for (const identity of identities) this.#recordOf(identity).all = this.#epoch
+    for (const subject of subjects) this.#recordOf(subject).all = this.#epoch
   }
 
   /**
-   * Starts a fresh read when an evaluation of `flags` for `identity` must read fresh, and returns
+   * Starts a fresh read when an evaluation of `slots` for `subject` must read fresh, and returns
    * `undefined` otherwise. It retires no mark, so another list that reads the same flags while this
    * read is in flight also reads fresh.
    */
-  begin(identity: string, flags: readonly Flag[]): FreshRead | undefined {
-    const record = this.#records.get(identity)
+  begin(subject: string, slots: readonly string[]): FreshRead | undefined {
+    const record = this.#records.get(subject)
     if (!record) return undefined
-    const stale = flags.some(
-      ({ key }) => Math.max(record.all, record.marked.get(key) ?? 0) > (record.read.get(key) ?? 0)
+    const stale = slots.some(
+      (slot) => Math.max(record.all, record.marked.get(slot) ?? 0) > (record.read.get(slot) ?? 0)
     )
     if (!stale) return undefined
     this.#starts += 1
-    for (const { key } of flags) record.started.set(key, this.#starts)
+    for (const slot of slots) record.started.set(slot, this.#starts)
     return { epoch: this.#epoch, start: this.#starts }
   }
 
   /**
-   * Retires the marks of `flags` that `fresh` stored, when it is still the latest fresh read of
-   * each flag. Marks made after it started still apply.
+   * Retires the marks of `slots` that `fresh` stored, when it is still the latest fresh read of
+   * each slot. Marks made after it started still apply.
    */
-  read(identity: string, flags: readonly Flag[], fresh: FreshRead): void {
-    const record = this.#records.get(identity)
+  read(subject: string, slots: readonly string[], fresh: FreshRead): void {
+    const record = this.#records.get(subject)
     if (!record) return
-    for (const { key } of flags) {
-      if (record.started.get(key) !== fresh.start) continue
-      record.started.delete(key)
-      record.read.set(key, Math.max(record.read.get(key) ?? 0, fresh.epoch))
-      if ((record.marked.get(key) ?? 0) <= fresh.epoch) record.marked.delete(key)
+    for (const slot of slots) {
+      if (record.started.get(slot) !== fresh.start) continue
+      record.started.delete(slot)
+      record.read.set(slot, Math.max(record.read.get(slot) ?? 0, fresh.epoch))
+      if ((record.marked.get(slot) ?? 0) <= fresh.epoch) record.marked.delete(slot)
     }
     if (record.all === 0 && record.marked.size === 0 && record.started.size === 0) {
-      this.#records.delete(identity)
+      this.#records.delete(subject)
     }
   }
 
-  #recordOf(identity: string): FreshRecord {
-    const record = this.#records.get(identity) ?? {
+  #recordOf(subject: string): FreshRecord {
+    const record = this.#records.get(subject) ?? {
       all: 0,
       marked: new Map(),
       read: new Map(),
       started: new Map(),
     }
-    this.#records.set(identity, record)
+    this.#records.set(subject, record)
     return record
   }
 }
@@ -129,17 +134,86 @@ type FlagCache = {
   ttl: number
 }
 
+/**
+ * How the flag cache keys the flag provider's identity. It keys an identity the way the reader's
+ * store keys a decision: by the type and value of `distinctId`, and by the reader's `key` function
+ * for each flag. It reads no other identity field, so it accepts every identity that `Identity`
+ * allows.
+ */
+export type IdentityKeys = {
+  /**
+   * The identity without its key fields: `identify` for the reader's own identity, `anonymous`, or
+   * the typed `distinctId`.
+   */
+  readonly subject: string
+  /**
+   * The reader's key fields for one flag, or `""` when the reader has no `key` function.
+   */
+  fields(flag: Flag): string
+}
+
 export type FlagsContextValue = {
   cache: FlagCache
   flags: AnyFlags
   identity: Subject | undefined
-  identityKey: string
+  keys: IdentityKeys
 }
 
-export function identityKey(identity: Subject | undefined): string {
-  if (identity === undefined) return "identify"
-  if (identity === anonymous) return "anonymous"
-  return serializeKey(identity, "identity")
+// The flag cache calls the `key` function outside an evaluation, so no signal ever aborts.
+const idle = new AbortController().signal
+
+// A number for each identity object whose `key` function threw, so its entries stay apart from
+// every other identity's.
+const unkeyedIds = new WeakMap<object, number>()
+let nextUnkeyedId = 0
+
+function unkeyedId(identity: object): number {
+  let id = unkeyedIds.get(identity)
+  if (id === undefined) {
+    id = nextUnkeyedId
+    nextUnkeyedId += 1
+    unkeyedIds.set(identity, id)
+  }
+  return id
+}
+
+export function identityKeys(flags: AnyFlags, identity: Subject | undefined): IdentityKeys {
+  if (identity === undefined) return { fields: () => "", subject: "identify" }
+  if (identity === anonymous) return { fields: () => "", subject: "anonymous" }
+  const key = keyFieldsOf(flags)
+  const fields = new Map<Flag, string>()
+  return {
+    fields(flag) {
+      let value = fields.get(flag)
+      if (value === undefined) {
+        try {
+          value = getIdentityKey({ flag, identity, signal: idle }, key)?.fields ?? ""
+        } catch {
+          // The reader reports the failure when it evaluates, and it then shares no decision. The
+          // flag cache shares an entry only for this identity object, which a rerender keeps.
+          value = `unkeyed:${unkeyedId(identity)}`
+        }
+        fields.set(flag, value)
+      }
+      return value
+    },
+    subject: JSON.stringify(distinctIdKey(identity)),
+  }
+}
+
+/**
+ * The key of the entry of `flags` for the identity. A JSON subject or `identify` and `anonymous`
+ * cannot end inside a field, and each field closes itself, so two keys never collide.
+ */
+export function entryKey(keys: IdentityKeys, flags: readonly Flag[]): string {
+  return `${keys.subject}${flags.map((flag) => keys.fields(flag)).join("")}`
+}
+
+/**
+ * The fresh-read slot of each flag: its flag key and its key fields.
+ */
+export function slotsOf(keys: IdentityKeys, flags: readonly Flag[]): string[] {
+  return flags.map((flag) => `${JSON.stringify(flag.key)}${keys.fields(flag)}`)
 }
 
 // Flags with one key can differ in shape and default, so an entry belongs to its exact flags in
@@ -234,7 +308,8 @@ export function storeEntry(
   context: FlagsContextValue,
   bucket: Bucket
 ): Promise<readonly FlagResult[]> {
-  const key = context.identityKey
+  const { keys } = context
+  const key = entryKey(keys, bucket.flags)
   const clock = getChangeClock(context.flags)
   const watch: ChangeWatch = {
     clock,
@@ -245,6 +320,7 @@ export function storeEntry(
     pendingExpiresAt: cache.pendingTtl === undefined ? undefined : Date.now() + cache.pendingTtl,
     promise: Promise.resolve([]),
     settled: false,
+    subject: keys.subject,
     watch,
   }
   const settle = () => {
@@ -256,7 +332,7 @@ export function storeEntry(
     }, 0)
     return null
   }
-  const freshRead = cache.fresh.begin(key, bucket.flags)
+  const freshRead = cache.fresh.begin(keys.subject, slotsOf(keys, bucket.flags))
   const fresh = freshRead !== undefined
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
@@ -269,7 +345,7 @@ export function storeEntry(
     void entry.promise.then(
       (results) => {
         const answered = bucket.flags.filter((_, index) => results[index]?.source === "provider")
-        cache.fresh.read(key, answered, freshRead)
+        cache.fresh.read(keys.subject, slotsOf(keys, answered), freshRead)
         return null
       },
       () => null
@@ -281,7 +357,7 @@ export function storeEntry(
 }
 
 export function getVersionStore(context: FlagsContextValue, bucket: Bucket): VersionStore {
-  const key = context.identityKey
+  const key = entryKey(context.keys, bucket.flags)
   const existing = bucket.stores.get(key)
   if (existing) return existing
   const keys = new Set(bucket.flags.map((flag) => flag.key))
@@ -296,6 +372,7 @@ export function getVersionStore(context: FlagsContextValue, bucket: Bucket): Ver
     },
     getSnapshot: () => version,
     key,
+    subject: context.keys.subject,
     subscribe: (listener) => {
       listeners.add(listener)
       if (listeners.size === 1) {

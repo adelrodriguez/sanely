@@ -17,18 +17,19 @@ import type {
   VariantFlag,
 } from "#lib/definition/index.ts"
 import type { FlagReader, FlagSnapshot } from "#lib/flags/index.ts"
-import type { Anonymous, Subject } from "#lib/identity/index.ts"
-import type { FlagCacheKey } from "#lib/shared/cache-key.ts"
+import type { Subject } from "#lib/identity/index.ts"
 import type { AnyFlags } from "./clock"
 import type { FlagCacheOptions } from "./options"
 import {
   type Bucket,
   createFlagCache,
+  entryKey,
   type FlagsContextValue,
   getBucket,
   getVersionStore,
-  identityKey,
+  identityKeys,
   readEntry,
+  slotsOf,
   snapshotApplies,
   storeEntry,
 } from "./cache"
@@ -52,22 +53,6 @@ type IdentityOf<TFlags extends AnyFlags> = TFlags extends {
   ? TIdentity
   : never
 
-/**
- * Limits the named fields of an identity to what the flag cache can key. The cache serializes the
- * identity, so a field such as a `Date`, a `bigint`, or a class instance is a type error at the
- * `identity` prop instead of a throw during render. An index signature from `Identity` is left
- * alone, so a value typed as the reader's identity still passes.
- */
-// `Anonymous` maps to itself, not `unknown`, so the check of each object in an identity union
-// survives the union with `anonymous`: `unknown | X` would accept anything.
-type CacheableFields<TSubject> = TSubject extends Anonymous
-  ? TSubject
-  : {
-      readonly [
-        K in keyof TSubject as string extends K ? never : number extends K ? never : K
-      ]: FlagCacheKey
-    }
-
 export type FlagsProviderProps<
   TFlags extends AnyFlags,
   T extends string = never,
@@ -89,9 +74,9 @@ export type FlagsProviderProps<
       /**
        * Evaluates for this identity instead of the reader's `identify`.
        */
-      identity?: TIdentity & CacheableFields<TIdentity>
+      identity?: TIdentity
     }
-  : { identity: TIdentity & CacheableFields<TIdentity> })
+  : { identity: TIdentity })
 
 const FlagsContext = createContext<FlagsContextValue | undefined>(undefined)
 
@@ -112,7 +97,8 @@ function useFlagResults(flags: readonly Flag[]): readonly FlagResult[] {
   if (flags.length === 0) return []
   const fromSnapshot = snapshotApplies(context) ? readSnapshot(cache.snapshot, flags) : undefined
   if (fromSnapshot) return fromSnapshot
-  const promise = readEntry(bucket, context.identityKey) ?? storeEntry(cache, context, bucket)
+  const promise =
+    readEntry(bucket, entryKey(context.keys, flags)) ?? storeEntry(cache, context, bucket)
   return use(promise)
 }
 
@@ -144,10 +130,9 @@ export function FlagsProvider<
     setMounted(next)
     cache = next.cache
   }
-  const key = identityKey(identity)
   const value = useMemo<FlagsContextValue>(
-    () => ({ cache, flags, identity, identityKey: key }),
-    [cache, flags, identity, key]
+    () => ({ cache, flags, identity, keys: identityKeys(flags, identity) }),
+    [cache, flags, identity]
   )
   return <FlagsContext value={value}>{children}</FlagsContext>
 }
@@ -190,12 +175,13 @@ export type FlagCacheControls = {
 export function useFlagCache(): FlagCacheControls {
   const context = useFlagsContext()
   return useMemo(() => {
-    const { cache, identityKey: key } = context
+    const { cache, keys } = context
     // A store that a render made but that React has not subscribed yet is only in `stores`, and
     // a layout effect can drop its entry before the subscription. Bumping it too makes React's
     // subscription check see the change.
     const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     const drop = (bucket: Bucket) => {
+      const key = entryKey(keys, bucket.flags)
       bucket.entries.delete(key)
       for (const store of storesOf(bucket)) {
         if (store.key === key) store.bump()
@@ -204,30 +190,30 @@ export function useFlagCache(): FlagCacheControls {
     return {
       clear() {
         cache.snapshot?.entries.clear()
-        // Clear covers the identities that this cache has read for, and the provider's own.
-        const identities = new Set([key])
+        // Clear covers the subjects that this cache has read for, and the provider's own.
+        const subjects = new Set([keys.subject])
         for (const bucket of cache.buckets.values()) {
-          for (const identity of bucket.entries.keys()) identities.add(identity)
-          for (const store of storesOf(bucket)) identities.add(store.key)
+          for (const entry of bucket.entries.values()) subjects.add(entry.subject)
+          for (const store of storesOf(bucket)) subjects.add(store.subject)
         }
-        cache.fresh.clear(identities)
+        cache.fresh.clear(subjects)
         for (const bucket of cache.buckets.values()) {
           bucket.entries.clear()
           for (const store of storesOf(bucket)) store.bump()
         }
       },
       invalidate(flags) {
-        const keys = new Set(flags.map((flag) => flag.key))
-        cache.fresh.mark(key, keys)
-        for (const flagKey of keys) cache.snapshot?.entries.delete(flagKey)
+        const flagKeys = new Set(flags.map((flag) => flag.key))
+        cache.fresh.mark(keys.subject, slotsOf(keys, flags))
+        for (const flagKey of flagKeys) cache.snapshot?.entries.delete(flagKey)
         for (const bucket of cache.buckets.values()) {
-          if (bucket.flags.some((flag) => keys.has(flag.key))) drop(bucket)
+          if (bucket.flags.some((flag) => flagKeys.has(flag.key))) drop(bucket)
         }
       },
       async prefetch(flags) {
         if (flags.length === 0) return
         const bucket = getBucket(cache, flags)
-        await (readEntry(bucket, key) ?? storeEntry(cache, context, bucket))
+        await (readEntry(bucket, entryKey(keys, flags)) ?? storeEntry(cache, context, bucket))
       },
     }
   }, [context])

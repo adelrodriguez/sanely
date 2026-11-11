@@ -13,11 +13,8 @@ export type FlagCacheKey =
  * primitives (for example 0 and "0") never collide. Values outside FlagCacheKey throw instead of
  * silently coercing into an unstable or colliding key.
  */
-export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"): string {
+export function serializeKey(value: unknown, rootPath: "cacheKey"): string {
   const ancestors = new Set<object>()
-
-  const identityRemedy =
-    rootPath === "identity" ? " Change identify() to return supported cache-key values." : ""
 
   function encode(current: unknown, path: string): string {
     if (current === null) {
@@ -41,14 +38,12 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
             typeof constructor === "function" && constructor.name
               ? constructor.name
               : "non-plain object"
-          throw new TypeError(
-            `Unsupported flag cache key at ${path}: ${kind} is not supported.${identityRemedy}`
-          )
+          throw new TypeError(`Unsupported flag cache key at ${path}: ${kind} is not supported.`)
         }
 
         if (ancestors.has(current)) {
           throw new TypeError(
-            `Unsupported flag cache key at ${path}: circular reference is not supported.${identityRemedy}`
+            `Unsupported flag cache key at ${path}: circular reference is not supported.`
           )
         }
 
@@ -58,7 +53,7 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
             for (let index = 0; index < current.length; index += 1) {
               if (!Object.hasOwn(current, index)) {
                 throw new TypeError(
-                  `Unsupported flag cache key at ${path}[${index}]: sparse arrays are not supported.${identityRemedy}`
+                  `Unsupported flag cache key at ${path}[${index}]: sparse arrays are not supported.`
                 )
               }
             }
@@ -84,7 +79,7 @@ export function serializeKey(value: unknown, rootPath: "cacheKey" | "identity"):
       }
       default:
         throw new TypeError(
-          `Unsupported flag cache key at ${path}: ${typeof current} is not supported.${identityRemedy}`
+          `Unsupported flag cache key at ${path}: ${typeof current} is not supported.`
         )
     }
   }

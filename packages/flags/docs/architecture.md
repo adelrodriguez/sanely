@@ -44,7 +44,7 @@ Evaluation owns each call's lifecycle, cancellation, timeout, fallback, and deta
 Flag definitions and providers are frozen values with no state.
 React owns each `FlagsProvider` mount's flag cache, the change clocks of each reader, and subscriptions.
 
-The React integration uses flag definitions, readers, identity helpers, and the cache-key encoding in `shared/`. Its flag cache options and helpers live in `integrations/react/`.
+The React integration uses flag definitions, readers, identity helpers, and the identity part of the evaluation key in `sharing/`, with each reader's `key` function, so the flag cache and the store key an identity the same way. Its flag cache options and helpers live in `integrations/react/`.
 Its source and built entry keep the `use client` directive. React remains an optional peer.
 The testing entry point builds on `defineProvider` and the store type.
 

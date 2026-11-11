@@ -1,8 +1,8 @@
 import type { ChangeBroadcaster } from "#lib/changes/index.ts"
 import type { Decision } from "#lib/definition/decision.ts"
-import type { EvaluationContext, Subject } from "#lib/identity/index.ts"
-import type { FlagCacheKey } from "#lib/shared/cache-key.ts"
+import type { Subject } from "#lib/identity/index.ts"
 import type { MaybePromise } from "#lib/shared/utils.ts"
+import type { KeyFields } from "./evaluation-key"
 import { createResolutionState, type ResolutionState } from "./resolution-state"
 
 /**
@@ -77,7 +77,7 @@ export type CacheOptions<TIdentity extends Subject> = {
    * identify interchangeable evaluations. It keeps the provider, the flag, and `distinctId` in the
    * key, so two flags never share a decision.
    */
-  key?: (context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]
+  key?: KeyFields<TIdentity>
   store?: DecisionStore
 }
 
@@ -87,7 +87,7 @@ export type CacheOptions<TIdentity extends Subject> = {
 export type Sharing<TIdentity extends Subject> = {
   changes: ChangeBroadcaster | undefined
   coalesce: boolean
-  key: ((context: EvaluationContext<TIdentity>) => readonly FlagCacheKey[]) | undefined
+  key: KeyFields<TIdentity> | undefined
   onError:
     | ((report: StoreFailedReport<TIdentity> | SubscribeFailedReport) => MaybePromise<void>)
     | undefined

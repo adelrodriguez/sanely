@@ -88,12 +88,6 @@ describe("serializeKey", () => {
     ).toThrow("Unsupported flag cache key at cacheKey.audience[1].region: bigint is not supported.")
   })
 
-  test("adds identity guidance for unsupported identity values", () => {
-    expect(() => serializeKey({ createdAt: new Date(0) }, "identity")).toThrow(
-      "Unsupported flag cache key at identity.createdAt: Date is not supported. Change identify() to return supported cache-key values."
-    )
-  })
-
   test("rejects circular references and reports where the cycle closes", () => {
     const value: Record<string, unknown> = {}
     value.self = value

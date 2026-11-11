@@ -1087,59 +1087,65 @@ describe("React integration", () => {
   })
 })
 
-describe("identity keys", () => {
-  // Values that `Identity` accepts but that a cache key cannot encode.
-  const dated = (distinctId: string | number, attributes: Partial<Identity> = {}): Identity => ({
-    createdAt: new Date(0),
-    distinctId,
-    n: 1n,
-    tags: new Set(["beta"]),
-    ...attributes,
+// Values that `Identity` accepts but that a cache key cannot encode.
+const dated = (distinctId: string | number, attributes: Partial<Identity> = {}): Identity => ({
+  createdAt: new Date(0),
+  distinctId,
+  n: 1n,
+  tags: new Set(["beta"]),
+  ...attributes,
+})
+
+function planOf(identity: Identity | null): string | null {
+  return typeof identity?.plan === "string" ? identity.plan : null
+}
+
+/**
+ * A reader whose `key` function adds the identity's plan to the key of the flags it names, or of
+ * every flag without names.
+ */
+function makeKeyedFlags(planFlags?: readonly string[]) {
+  const provider = makeProvider()
+  const flags = createFlags({
+    cache: {
+      coalesce: false,
+      key: ({ flag: item, identity }) =>
+        planFlags === undefined || planFlags.includes(item.key) ? [planOf(identity)] : [],
+    },
+    provider: provider.single,
   })
+  return { ...provider, flags }
+}
 
-  function planOf(identity: Identity | null): string | null {
-    return typeof identity?.plan === "string" ? identity.plan : null
-  }
+function callerTree(flags: CallerFlags<Identity>, identity: Identity, children: ReactNode) {
+  return (
+    <FlagsProvider flags={flags} identity={identity}>
+      <Suspense fallback="loading">{children}</Suspense>
+    </FlagsProvider>
+  )
+}
 
-  /**
-   * A reader whose `key` function adds the identity's plan to the key of the flags it names, or of
-   * every flag without names.
-   */
-  function makeKeyedFlags(planFlags?: readonly string[]) {
-    const provider = makeProvider()
-    const flags = createFlags({
-      cache: {
-        coalesce: false,
-        key: ({ flag: item, identity }) =>
-          planFlags === undefined || planFlags.includes(item.key) ? [planOf(identity)] : [],
-      },
-      provider: provider.single,
-    })
-    return { ...provider, flags }
-  }
-
-  function tree(flags: CallerFlags<Identity>, identity: Identity, children: ReactNode) {
-    return (
-      <FlagsProvider flags={flags} identity={identity}>
-        <Suspense fallback="loading">{children}</Suspense>
-      </FlagsProvider>
-    )
-  }
-
+describe("identity keys", () => {
   it("renders an identity typed as Identity that holds a Date, a bigint, and a Set", async () => {
     const { flags, seen } = makeFlags()
     const identity: Identity = dated("u1")
-    await renderAsync(tree(flags, identity, <Value item={beta} />))
+    await renderAsync(callerTree(flags, identity, <Value item={beta} />))
     expect(await screen.findByText("true")).toBeTruthy()
     expect(seen).toEqual(["u1"])
   })
 
   it("shares one entry between identities with one distinctId", async () => {
     const { decideOne, flags } = makeFlags()
-    const { rerender } = await renderAsync(tree(flags, dated("u1"), <Value item={beta} />))
+    const { rerender } = await renderAsync(callerTree(flags, dated("u1"), <Value item={beta} />))
     expect(await screen.findByText("true")).toBeTruthy()
     await act(() => {
-      rerender(tree(flags, dated("u1", { createdAt: new Date(1), plan: "pro" }), <Value item={beta} />))
+      rerender(
+        callerTree(
+          flags,
+          dated("u1", { createdAt: new Date(1), plan: "pro" }),
+          <Value item={beta} />
+        )
+      )
       return Promise.resolve()
     })
     expect(screen.getByText("true")).toBeTruthy()
@@ -1148,44 +1154,52 @@ describe("identity keys", () => {
 
   it("keeps identities with a different distinctId or distinctId type apart", async () => {
     const { flags, seen } = makeFlags()
-    const { rerender } = await renderAsync(tree(flags, dated("1"), <Value item={beta} />))
+    const { rerender } = await renderAsync(callerTree(flags, dated("1"), <Value item={beta} />))
     expect(await screen.findByText("true")).toBeTruthy()
-    for (const distinctId of [1, "2"]) {
-      await act(() => {
-        rerender(tree(flags, dated(distinctId), <Value item={beta} />))
-        return Promise.resolve()
-      })
-      expect(await screen.findByText("true")).toBeTruthy()
-    }
+    await act(() => {
+      rerender(callerTree(flags, dated(1), <Value item={beta} />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+    await act(() => {
+      rerender(callerTree(flags, dated("2"), <Value item={beta} />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
     expect(seen).toEqual(["1", 1, "2"])
   })
 
   it("keeps identities apart when the reader's key function returns other fields", async () => {
     const { decideOne, flags } = makeKeyedFlags()
-    const view = (identity: Identity) => tree(flags, identity, <Value item={beta} />)
+    const view = (identity: Identity) => callerTree(flags, identity, <Value item={beta} />)
     const { rerender } = await renderAsync(view(dated("u1", { plan: "free" })))
     expect(await screen.findByText("true")).toBeTruthy()
 
-    const steps: Array<[Identity, number]> = [
-      // Fields outside the key function's output share the entry.
-      [dated("u1", { createdAt: new Date(1), plan: "free" }), 1],
-      [dated("u1", { plan: "pro" }), 2],
-      [dated("u1", { plan: "free" }), 2],
-    ]
-    for (const [identity, calls] of steps) {
-      await act(() => {
-        rerender(view(identity))
-        return Promise.resolve()
-      })
-      expect(await screen.findByText("true")).toBeTruthy()
-      expect(decideOne).toHaveBeenCalledTimes(calls)
-    }
+    // A field outside the key function's output shares the entry.
+    await act(() => {
+      rerender(view(dated("u1", { createdAt: new Date(1), plan: "free" })))
+      return Promise.resolve()
+    })
+    expect(screen.getByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(1)
+    await act(() => {
+      rerender(view(dated("u1", { plan: "pro" })))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(2)
+    await act(() => {
+      rerender(view(dated("u1", { plan: "free" })))
+      return Promise.resolve()
+    })
+    expect(screen.getByText("true")).toBeTruthy()
+    expect(decideOne).toHaveBeenCalledTimes(2)
   })
 
   it("keys each flag with the key function's output for that flag", async () => {
     const { decideOne, flags } = makeKeyedFlags(["theme"])
     const view = (identity: Identity) =>
-      tree(
+      callerTree(
         flags,
         identity,
         <>
@@ -1218,10 +1232,10 @@ describe("identity keys", () => {
       provider: provider.single,
     })
     const identity = dated("u1")
-    const { rerender } = await renderAsync(tree(flags, identity, <Value item={beta} />))
+    const { rerender } = await renderAsync(callerTree(flags, identity, <Value item={beta} />))
     expect(await screen.findByText("true")).toBeTruthy()
     await act(() => {
-      rerender(tree(flags, identity, <Value item={beta} />))
+      rerender(callerTree(flags, identity, <Value item={beta} />))
       return Promise.resolve()
     })
     expect(screen.getByText("true")).toBeTruthy()
@@ -1231,11 +1245,11 @@ describe("identity keys", () => {
   it("prefetches for an identity that holds a Date, and an equivalent identity reads the entry", async () => {
     const { decideOne, flags } = makeFlags()
     const { capture, controls } = captureCache()
-    const { rerender } = await renderAsync(tree(flags, dated("u1"), capture))
+    const { rerender } = await renderAsync(callerTree(flags, dated("u1"), capture))
     await act(() => controls().prefetch([beta]))
     expect(decideOne).toHaveBeenCalledTimes(1)
     await act(() => {
-      rerender(tree(flags, dated("u1", { createdAt: new Date(1) }), <Value item={beta} />))
+      rerender(callerTree(flags, dated("u1", { createdAt: new Date(1) }), <Value item={beta} />))
       return Promise.resolve()
     })
     expect(await screen.findByText("true")).toBeTruthy()
@@ -1246,7 +1260,7 @@ describe("identity keys", () => {
     const { decideOne, flags, state } = makeKeyedFlags()
     const { capture, controls } = captureCache()
     const view = (identity: Identity) =>
-      tree(
+      callerTree(
         flags,
         identity,
         <>
@@ -1291,7 +1305,7 @@ describe("identity keys", () => {
     const { capture, controls } = captureCache()
     const identity = dated("u1", { plan: "pro" })
     await renderAsync(
-      tree(
+      callerTree(
         flags,
         identity,
         <>
