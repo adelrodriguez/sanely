@@ -102,11 +102,12 @@ jobs:
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          # The package imports `@sanely/core/time`, which resolves to core's build output.
-          pnpm turbo run build --filter=@sanely/core
+          # The package imports `@sanely/core/time` and `@sanely/duration`, which resolve to their
+          # build output.
+          pnpm turbo run build --filter=@sanely/ratelimit^...
           if jq -e --arg script "$SCRIPT" '.scripts[$script]' base/packages/ratelimit/package.json > /dev/null; then
             pnpm --dir base install --frozen-lockfile
-            pnpm --dir base exec turbo run build --filter=@sanely/core
+            pnpm --dir base exec turbo run build --filter=@sanely/ratelimit^...
           else
             echo "The base branch has no $SCRIPT script, so the report checks only the budgets."
           fi
