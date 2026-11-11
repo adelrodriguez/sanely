@@ -21,6 +21,8 @@ This guide shows you how to read flags in React components with `@sanely/flags/r
 
    A reader without `identify` needs an `identity` prop, and TypeScript checks it against the reader's identity type.
 
+   If the current user can change while the provider stays mounted, pass the user as the `identity` prop, even when the reader has `identify`. Without the prop, the flag cache does not see a change in what `identify` returns, and it keeps the earlier user's values until they expire or you call `clear()`.
+
 2. Put a Suspense boundary above each component that reads a flag:
 
    ```tsx
@@ -57,7 +59,7 @@ function Page() {
 }
 ```
 
-A hook outside a `FlagsProvider` throws `FlagsProviderMissingError`.
+A hook or a `FeatureFlag` outside a `FlagsProvider` throws `FlagsProviderMissingError`.
 
 ## Render a feature conditionally
 
