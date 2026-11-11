@@ -1,6 +1,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
 import { act, cleanup, render, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
+import { createRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from "vitest"
 import type {
@@ -19,8 +20,11 @@ function setupDom(): void {
   GlobalRegistrator.register()
 
   onTestFinished(async () => {
-    cleanup()
-    resetRegistry()
+    await act(() => {
+      cleanup()
+      resetRegistry()
+      return Promise.resolve()
+    })
     await GlobalRegistrator.unregister()
   })
 }
@@ -82,6 +86,19 @@ function missingResolver(): never {
 }
 
 describe("react deployment integration", () => {
+  it("finishes queued React work before removing the DOM", () => {
+    setupDom()
+    const container = document.createElement("div")
+    const root = createRoot(container)
+
+    // Leave a scheduler callback queued even though the root has already unmounted.
+    root.render(<output>pending</output>)
+    root.unmount()
+
+    expect(container.childNodes).toHaveLength(0)
+    // The test runner also checks for unhandled errors after setupDom's teardown.
+  })
+
   it("renders unknown with the browser and server reload status", () => {
     expect.assertions(3)
     setupDom()
