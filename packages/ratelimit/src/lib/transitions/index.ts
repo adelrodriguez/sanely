@@ -66,7 +66,7 @@ function applyFixedWindow(
   const count = state?.type === "fixedWindow" && state.window === window ? state.count : 0
 
   if (count + cost > limit) {
-    return { result: { now, remaining: limit - count, reset, success: false } }
+    return { result: { now, remaining: Math.max(0, limit - count), reset, success: false } }
   }
 
   return {

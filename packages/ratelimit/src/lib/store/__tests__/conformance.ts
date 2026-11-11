@@ -40,7 +40,24 @@ export function testStore(createStore: () => Store) {
     tokenBucket: tokenBucket({ capacity: 5, interval: 2000, refillRate: 1 }),
   } satisfies Record<Algorithm["type"], Algorithm>
 
+  // The same algorithms with a lower limit, as after a deploy that lowers a limit in use.
+  const lowered = {
+    fixedWindow: fixedWindow({ limit: 2, window: 2000 }),
+    slidingWindow: slidingWindow({ limit: 2, window: 2000 }),
+    tokenBucket: tokenBucket({ capacity: 2, interval: 2000, refillRate: 1 }),
+  } satisfies Record<Algorithm["type"], Algorithm>
+
   describe.each(Object.values(algorithms))("$type", (algorithm) => {
+    it("reports no units left after the limit drops below the units spent", async () => {
+      const store = createStore()
+      const key = await freshKey(store, algorithm)
+
+      await store.consume({ algorithm, cost: 4, key })
+      const result = await store.consume({ algorithm: lowered[algorithm.type], cost: 1, key })
+
+      expect(result.remaining).toBe(0)
+    })
+
     it("allows exactly the capacity when requests arrive together", async () => {
       const store = createStore()
       const key = await freshKey(store, algorithm)

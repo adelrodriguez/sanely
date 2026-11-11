@@ -20,7 +20,7 @@ if tonumber(state[1]) == window then
 end
 
 if count + cost > limit then
-  return { 0, limit - count, reset, now }
+  return { 0, math.max(0, limit - count), reset, now }
 end
 
 if cost > 0 then
