@@ -13,6 +13,7 @@ import type { ChangeListener } from "#lib/changes/index.ts"
 import type { DecisionSource } from "#lib/definition/decision.ts"
 import type { Flag, FlagValue, FlagValues, VariantFlag } from "#lib/definition/index.ts"
 import type { FlagReader, FlagSnapshot, FlagSnapshotEntry } from "#lib/flags/index.ts"
+import { IdentityNotFoundError } from "#lib/errors/index.ts"
 import { anonymous, distinctIdOf, type Subject } from "#lib/identity/index.ts"
 import { evictOnRejection, type FlagCacheOptions } from "#lib/promise-cache/index.ts"
 import { serializeKey } from "#lib/promise-cache/key.ts"
@@ -358,6 +359,9 @@ function snapshotEntry(cache: FlagCache, flag: Flag): FlagSnapshotEntry | undefi
   const { snapshot } = cache
   const entry = snapshot?.entries.get(flag.key)
   if (!snapshot || !entry || entry.kind !== flag.kind) return undefined
+  // The server resolved no identity for this entry, so its default stands for no one. A snapshot
+  // made that way also has no distinctId, which an anonymous provider would otherwise accept.
+  if (entry.source === "default" && entry.error === IdentityNotFoundError._tag) return undefined
   if (changedSince({ ...snapshot.watch, keys: [flag.key] })) {
     snapshot.entries.delete(flag.key)
     return undefined

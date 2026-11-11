@@ -7,6 +7,7 @@ import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  anonymous,
   type CallerFlags,
   createFlags,
   decision,
@@ -27,6 +28,7 @@ import {
   useFlagCache,
   useFlags,
 } from "#integrations/react/index.tsx"
+import { fakeProvider } from "#testing/index.ts"
 
 const hydrated: Array<{ container: HTMLElement; unmount: () => void }> = []
 
@@ -1005,6 +1007,27 @@ describe("server rendering", () => {
     await renderAsync(<App flags={client.flags} snapshot={snapshot} />)
     expect(await screen.findByText("false:dark")).toBeTruthy()
     expect(client.decide).toHaveBeenCalled()
+  })
+
+  it("evaluates the flags that a snapshot could not evaluate for want of an identity", async () => {
+    const failed = createFlags({
+      identify: () => {
+        throw new Error("no session")
+      },
+      provider: fakeProvider(),
+    })
+    // The server's identity failed, so the snapshot holds defaults and no distinctId.
+    const snapshot = await failed.snapshot([beta, theme])
+    expect(snapshot.distinctId).toBeNull()
+    const client = createFlags({ provider: fakeProvider([[beta, true]]) })
+    await renderAsync(
+      <FlagsProvider flags={client} identity={anonymous} snapshot={snapshot}>
+        <Suspense fallback="loading">
+          <BetaAndTheme />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true:light")).toBeTruthy()
   })
 
   it("drops a snapshot value after a change notification and evaluates", async () => {

@@ -33,6 +33,8 @@ The first render reads each flag from the snapshot without suspending, on the se
 - When the provider reports a change for a flag, the snapshot entry of that flag is dropped.
 - `useFlagCache().invalidate(flags)` and `clear()` drop snapshot entries too.
 - A flag that the snapshot does not have evaluates through the client reader.
+- An entry that fell back because the server resolved no identity evaluates through the client reader too. Such a snapshot has no `distinctId`, the same as an anonymous one.
+- The provider ignores a snapshot whose shape does not parse, and each entry that does not.
 
 `FlagsProvider` reads `snapshot` only when it mounts. A later snapshot prop has no effect.
 
