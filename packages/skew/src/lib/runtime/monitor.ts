@@ -90,7 +90,7 @@ export interface DeploymentMonitor {
 }
 
 // The options after parsing. A monitor without a running deployment is inert.
-interface MonitorSettings {
+interface MonitorConfiguration {
   readonly checkTimeout: number
   readonly environment: RuntimeEnvironment
   readonly isCurrent: IsDeploymentCurrent
@@ -100,7 +100,7 @@ interface MonitorSettings {
 }
 
 class DeploymentMonitorImplementation implements DeploymentMonitor {
-  readonly #settings: MonitorSettings
+  readonly #settings: MonitorConfiguration
   readonly #listeners = new Set<{ readonly listener: (state: DeploymentStatus) => void }>()
   readonly #reloadGuard: ReloadGuard
   readonly #scheduler: DeploymentScheduler
@@ -108,7 +108,7 @@ class DeploymentMonitorImplementation implements DeploymentMonitor {
   #inFlight: Promise<DeploymentStatus> | undefined
   #state: DeploymentStatus
 
-  constructor(settings: MonitorSettings) {
+  constructor(settings: MonitorConfiguration) {
     this.#settings = settings
     const running = settings.running ?? { id: "" }
     this.#reloadGuard = new ReloadGuard(running, settings.environment)
