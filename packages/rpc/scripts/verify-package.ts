@@ -48,6 +48,7 @@ try {
     `import assert from "node:assert/strict"
 import { channel, createClient, createRouter, defineContract, implement } from "@sanely/rpc"
 import { connect, fromWire, toWire } from "@sanely/rpc/wire"
+import { fetchHandler, fetchTransport } from "@sanely/rpc/wire/fetch"
 import { mainPort, nodePort, sendPort } from "@sanely/rpc/wire/message-port"
 import { webSocket, whenOpen } from "@sanely/rpc/wire/web-socket"
 
@@ -60,6 +61,8 @@ for (const value of [
   connect,
   fromWire,
   toWire,
+  fetchHandler,
+  fetchTransport,
   mainPort,
   nodePort,
   sendPort,
@@ -76,10 +79,11 @@ for (const value of [
     join(temporaryDirectory, "consumer.ts"),
     `import type { InferClient, Router, Transport } from "@sanely/rpc"
 import type { Wire, WireResult } from "@sanely/rpc/wire"
+import type { FetchHandlerOptions } from "@sanely/rpc/wire/fetch"
 import type { NodePortLike } from "@sanely/rpc/wire/message-port"
 import type { WebSocketLike } from "@sanely/rpc/wire/web-socket"
 
-export type Exports = [InferClient<never>, Router, Transport, Wire, WireResult, NodePortLike, WebSocketLike]
+export type Exports = [InferClient<never>, Router, Transport, Wire, WireResult, FetchHandlerOptions, NodePortLike, WebSocketLike]
 `
   )
   writeFileSync(
