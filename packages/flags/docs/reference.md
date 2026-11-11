@@ -165,7 +165,7 @@ The value that `createFlags` returns without `identify`. It has only `for` and `
 | `detailsMany(flags, options?)` | A tuple of `EvaluationDetails`      | The details of several flags, in the order of `flags`.             |
 | `snapshot(flags, options?)`    | `Promise<FlagSnapshot>`             | Serializable values of several flags, for a client's first render. |
 
-`options` is `{ signal?: AbortSignal }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. No read rejects.
+`options` is `{ signal?: AbortSignal; fresh?: boolean }`. A signal that aborts makes the evaluation return its default with an `EvaluationAbortedError`. `fresh: true` skips the store and any provider call in flight, asks the provider, and stores its decision. No read rejects.
 
 `getMany`, `detailsMany`, and `snapshot` resolve the identity once. Within one tick, the flags that need provider work share one provider request. A provider with `decide` gets one call with each flag key once. A provider with `decideOne` gets one call for each flag key. Each flag keeps its own hooks, validation, timeout, and fallback. The batch deadline is the longest flag timeout, or none when any flag has none.
 
@@ -324,11 +324,11 @@ A provider change for one of the flags drops its cached value and its snapshot e
 
 Returns `FlagCacheControls` for the nearest `FlagsProvider` and its identity:
 
-| Method              | Description                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend. |
-| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers.                        |
-| `clear()`           | Drops every cached value and the snapshot.                                                                                     |
+| Method              | Description                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prefetch(flags)`   | Evaluates the flags into the cache, so a later `useFlag` or `useFlags` with the same flags in the same order does not suspend.                                               |
+| `invalidate(flags)` | Drops the cached values of these flags, including their snapshot entries, and re-renders their readers. The next evaluation reads fresh, so it skips the reader's store too. |
+| `clear()`           | Drops every cached value and the snapshot. The next evaluations read fresh.                                                                                                  |
 
 ### React types
 

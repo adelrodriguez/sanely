@@ -144,6 +144,9 @@ type Bucket = {
   active: Set<VersionStore>
   entries: Map<string, CacheEntry>
   flags: readonly Flag[]
+  // The identity keys that `invalidate` or `clear` dropped. Their next evaluation reads fresh, so it
+  // skips the reader's store as well as this cache.
+  fresh: Set<string>
   // The store that a render reuses for each identity, while it has a listener.
   stores: Map<string, VersionStore>
 }
@@ -226,7 +229,7 @@ function getBucket(cache: FlagCache, flags: readonly Flag[]): Bucket {
   const key = flags.map((flag) => flagId(flag)).join(",")
   let bucket = cache.buckets.get(key)
   if (!bucket) {
-    bucket = { active: new Set(), entries: new Map(), flags, stores: new Map() }
+    bucket = { active: new Set(), entries: new Map(), flags, fresh: new Set(), stores: new Map() }
     cache.buckets.set(key, bucket)
   }
   return bucket
@@ -311,13 +314,14 @@ function readerOf(context: FlagsContextValue): FlagReader {
 
 async function evaluateFlags(
   reader: FlagReader,
-  flags: readonly Flag[]
+  flags: readonly Flag[],
+  fresh: boolean
 ): Promise<readonly FlagResult[]> {
   const [single] = flags
   if (flags.length === 1 && single) {
-    return [await reader.details(single)]
+    return [await reader.details(single, { fresh })]
   }
-  return await reader.detailsMany(flags)
+  return await reader.detailsMany(flags, { fresh })
 }
 
 function storeEntry(
@@ -347,7 +351,8 @@ function storeEntry(
     }, 0)
     return null
   }
-  entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags), () => {
+  const fresh = bucket.fresh.delete(key)
+  entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
       if (bucket.entries.get(key) === entry) bucket.entries.delete(key)
     }, 0)
@@ -622,6 +627,7 @@ export function useFlagCache(): FlagCacheControls {
     const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     const drop = (bucket: Bucket) => {
       bucket.entries.delete(key)
+      bucket.fresh.add(key)
       for (const store of storesOf(bucket)) {
         if (store.key === key) store.bump()
       }
@@ -630,6 +636,9 @@ export function useFlagCache(): FlagCacheControls {
       clear() {
         cache.snapshot?.entries.clear()
         for (const bucket of cache.buckets.values()) {
+          for (const identity of [...bucket.entries.keys(), ...bucket.stores.keys()]) {
+            bucket.fresh.add(identity)
+          }
           bucket.entries.clear()
           for (const store of storesOf(bucket)) store.bump()
         }

@@ -34,6 +34,11 @@ export type ErrorReport<TIdentity extends Subject = Subject> =
 
 export type ReadOptions = {
   signal?: AbortSignal
+  /**
+   * Skips the store and any provider call in flight, asks the provider, and stores its decision.
+   * Use it after a decision may have changed without a change notification.
+   */
+  fresh?: boolean
 }
 
 /**
@@ -124,8 +129,15 @@ function createReader<TIdentity extends Subject>(
   const decide = evaluator.provider.decideOne
   const reader: FlagReader = {
     details: (flag, options) =>
-      evaluate(evaluator, flag, identify, decide, { signal: options?.signal }),
-    detailsMany: (flags, options) => evaluateMany(evaluator, flags, identify, options?.signal),
+      evaluate(evaluator, flag, identify, decide, {
+        fresh: options?.fresh === true,
+        signal: options?.signal,
+      }),
+    detailsMany: (flags, options) =>
+      evaluateMany(evaluator, flags, identify, {
+        fresh: options?.fresh === true,
+        signal: options?.signal,
+      }),
     async get(flag, options) {
       const result = await reader.details(flag, options)
       return result.value
@@ -143,7 +155,10 @@ function createReader<TIdentity extends Subject>(
         distinctId = distinctIdOf(identity)
         return identity
       }
-      const results = await evaluateMany(evaluator, flags, identifyOnce, options?.signal)
+      const results = await evaluateMany(evaluator, flags, identifyOnce, {
+        fresh: options?.fresh === true,
+        signal: options?.signal,
+      })
       const entries: Record<string, FlagSnapshotEntry> = {}
       flags.forEach((flag, index) => {
         const result = results[index]

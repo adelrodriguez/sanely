@@ -49,6 +49,11 @@ function rejectRound<TIdentity extends Subject>(
 }
 
 /**
+ * How a batch reads: the caller's signal, and whether to skip stored decisions and calls in flight.
+ */
+export type BatchRead = { fresh: boolean; signal: AbortSignal | undefined }
+
+/**
  * Evaluates several flags with one identity resolution. Each flag keeps its own hooks, validation,
  * timeout, fallback, and details. The results keep the order of `flags`.
  */
@@ -56,7 +61,7 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
   evaluator: Evaluator<TIdentity>,
   flags: TFlags,
   identify: IdentitySource<TIdentity>,
-  callerSignal: AbortSignal | undefined
+  read: BatchRead
 ): Promise<{ -readonly [K in keyof TFlags]: EvaluationDetails<TFlags[K]> }> {
   type Results = { -readonly [K in keyof TFlags]: EvaluationDetails<TFlags[K]> }
   if (flags.length === 0) {
@@ -68,6 +73,7 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
   const batchTimeoutMs = timeouts.every((timeout) => timeout !== undefined)
     ? Math.max(...timeouts)
     : undefined
+  const { fresh, signal: callerSignal } = read
   const batchDeadline = createEvaluationSignal(callerSignal, batchTimeoutMs)
   // Each flag's deadline starts now, so the shared identity resolution counts against it.
   const entries = flags.map((flag, index) => ({
@@ -181,6 +187,7 @@ export async function evaluateMany<TIdentity extends Subject, const TFlags exten
         try {
           return await evaluate(evaluator, flag, identifyOnce, decide, {
             deadline: deadline.signal,
+            fresh,
           })
         } finally {
           // Stop this flag's timer as soon as it settles, so its signal never aborts afterward.

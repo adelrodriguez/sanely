@@ -114,8 +114,8 @@ describe("resolveDecision", () => {
     const request = Promise.withResolvers<Decision>()
     const provider = vi.fn(() => request.promise)
 
-    const leader = resolveDecision(config, context, betaAccess, provider, signal())
-    const follower = resolveDecision(config, context, betaAccess, provider, signal())
+    const leader = resolveDecision(config, context, betaAccess, provider, signal(), false)
+    const follower = resolveDecision(config, context, betaAccess, provider, signal(), false)
     expect(config.state.pending.size).toBe(1)
     request.resolve(trueDecision)
 
@@ -132,11 +132,11 @@ describe("resolveDecision", () => {
     const provider = vi.fn(() => request.promise)
 
     const leader = expectRejection(
-      resolveDecision(config, context, betaAccess, provider, signal()),
+      resolveDecision(config, context, betaAccess, provider, signal(), false),
       "Provider failed"
     )
     const follower = expectRejection(
-      resolveDecision(config, context, betaAccess, provider, signal()),
+      resolveDecision(config, context, betaAccess, provider, signal(), false),
       "Provider failed"
     )
     await sleep(0)
@@ -155,8 +155,8 @@ describe("resolveDecision", () => {
     const aborted = new AbortController()
     aborted.abort(new Error("Follower aborted"))
 
-    const leader = resolveDecision(config, context, betaAccess, provider, signal())
-    const follower = resolveDecision(config, context, betaAccess, provider, aborted.signal)
+    const leader = resolveDecision(config, context, betaAccess, provider, signal(), false)
+    const follower = resolveDecision(config, context, betaAccess, provider, aborted.signal, false)
 
     await expectRejection(follower, "Follower aborted")
     request.resolve(trueDecision)
@@ -178,7 +178,8 @@ describe("resolveDecision", () => {
       context,
       betaAccess,
       () => firstRequest.promise,
-      signal()
+      signal(),
+      false
     )
     changes.notify(["beta-access"])
     expect(config.state.pending.size).toBe(0)
@@ -188,7 +189,8 @@ describe("resolveDecision", () => {
       context,
       betaAccess,
       () => secondRequest.promise,
-      signal()
+      signal(),
+      false
     )
     expect(config.state.pending.size).toBe(1)
 
@@ -212,7 +214,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => request.promise,
-      signal()
+      signal(),
+      false
     )
     changes.notify(["other"])
     expect(config.state.pending.size).toBe(1)
@@ -224,8 +227,8 @@ describe("resolveDecision", () => {
     const config = createConfig({ coalesce: false })
     const provider = vi.fn(() => trueDecision)
 
-    await resolveDecision(config, createContext(), betaAccess, provider, signal())
-    await resolveDecision(config, createContext(), betaAccess, provider, signal())
+    await resolveDecision(config, createContext(), betaAccess, provider, signal(), false)
+    await resolveDecision(config, createContext(), betaAccess, provider, signal(), false)
 
     expect(provider).toHaveBeenCalledTimes(2)
     expect(config.state.pending.size).toBe(0)
@@ -237,8 +240,8 @@ describe("resolveDecision", () => {
     const provider = vi.fn(() => trueDecision)
 
     const results = await Promise.all([
-      resolveDecision(config, createContext(anonymous), betaAccess, provider, signal()),
-      resolveDecision(config, createContext(anonymous), betaAccess, provider, signal()),
+      resolveDecision(config, createContext(anonymous), betaAccess, provider, signal(), false),
+      resolveDecision(config, createContext(anonymous), betaAccess, provider, signal(), false),
     ])
 
     expect(results.map((result) => result.source)).toEqual(["provider", "provider"])
@@ -252,7 +255,14 @@ describe("resolveDecision", () => {
     const coalesced = createConfig()
 
     await expect(
-      resolveDecision(direct, createContext(anonymous), betaAccess, () => variantDecision, signal())
+      resolveDecision(
+        direct,
+        createContext(anonymous),
+        betaAccess,
+        () => variantDecision,
+        signal(),
+        false
+      )
     ).rejects.toBeInstanceOf(InvalidDecisionError)
     await expect(
       resolveDecision(
@@ -260,11 +270,19 @@ describe("resolveDecision", () => {
         createContext(),
         betaAccess,
         () => variantDecision,
-        signal()
+        signal(),
+        false
       )
     ).rejects.toBeInstanceOf(InvalidDecisionError)
     await expect(
-      resolveDecision(coalesced, createContext(), betaAccess, () => variantDecision, signal())
+      resolveDecision(
+        coalesced,
+        createContext(),
+        betaAccess,
+        () => variantDecision,
+        signal(),
+        false
+      )
     ).rejects.toBeInstanceOf(InvalidDecisionError)
   })
 
@@ -273,9 +291,23 @@ describe("resolveDecision", () => {
     const config = createConfig({ store })
     const provider = vi.fn(() => trueDecision)
 
-    const first = await resolveDecision(config, createContext(), betaAccess, provider, signal())
+    const first = await resolveDecision(
+      config,
+      createContext(),
+      betaAccess,
+      provider,
+      signal(),
+      false
+    )
     await sleep(0)
-    const second = await resolveDecision(config, createContext(), betaAccess, provider, signal())
+    const second = await resolveDecision(
+      config,
+      createContext(),
+      betaAccess,
+      provider,
+      signal(),
+      false
+    )
 
     expect(first.source).toBe("provider")
     expect(second).toEqual({ decision: trueDecision, source: "cache" })
@@ -287,7 +319,7 @@ describe("resolveDecision", () => {
     const store = createStore()
     const config = createConfig({ coalesce: false, store })
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     await sleep(0)
 
     expect(store.set).toHaveBeenCalledTimes(1)
@@ -303,7 +335,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => trueDecision,
-      signal()
+      signal(),
+      false
     )
     await sleep(0)
 
@@ -328,7 +361,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => trueDecision,
-      signal()
+      signal(),
+      false
     )
     await sleep(0)
 
@@ -346,7 +380,7 @@ describe("resolveDecision", () => {
     })
     const config = createConfig({ store }, undefined, onError)
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     await sleep(0)
     await sleep(0)
 
@@ -368,7 +402,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => trueDecision,
-      signal()
+      signal(),
+      false
     )
 
     expect(resolution.source).toBe("provider")
@@ -394,7 +429,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => trueDecision,
-      signal()
+      signal(),
+      false
     )
     await sleep(0)
 
@@ -416,7 +452,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => request.promise,
-      signal()
+      signal(),
+      false
     )
     await sleep(0)
     changes.notify(["beta-access"])
@@ -433,7 +470,14 @@ describe("resolveDecision", () => {
     const store = createStore()
     const config = createConfig({ store }, changes.subscribe)
 
-    await resolveDecision(config, createContext(user), betaAccess, () => trueDecision, signal())
+    await resolveDecision(
+      config,
+      createContext(user),
+      betaAccess,
+      () => trueDecision,
+      signal(),
+      false
+    )
     await sleep(0)
     expect(config.state.keysByFlag.get("beta-access")?.size).toBe(1)
 
@@ -447,7 +491,8 @@ describe("resolveDecision", () => {
       createContext(user),
       betaAccess,
       () => falseDecision,
-      signal()
+      signal(),
+      false
     )
     expect(again).toEqual({ decision: falseDecision, source: "provider" })
   })
@@ -458,7 +503,7 @@ describe("resolveDecision", () => {
     const store = createStore({ delete: vi.fn(() => deleted.promise) })
     const config = createConfig({ store }, changes.subscribe)
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     await sleep(0)
     changes.notify(["beta-access"])
     await sleep(0)
@@ -469,7 +514,8 @@ describe("resolveDecision", () => {
       createContext(),
       betaAccess,
       () => falseDecision,
-      signal()
+      signal(),
+      false
     )
 
     expect(resolution.source).toBe("provider")
@@ -482,7 +528,7 @@ describe("resolveDecision", () => {
     const store = createStore()
     const config = createConfig({ store }, changes.subscribe)
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     changes.notify(["other"])
     await sleep(0)
 
@@ -499,16 +545,16 @@ describe("resolveDecision", () => {
       .mockImplementation(() => () => null)
     const config = createConfig({}, subscribe, onError)
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     await sleep(0)
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ _tag: "SubscribeFailed", error: expect.any(Error) })
     )
     expect(config.state.subscription.registered).toBe(true)
 
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     expect(subscribe).toHaveBeenCalledTimes(2)
-    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal())
+    await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
     expect(subscribe).toHaveBeenCalledTimes(2)
   })
 })

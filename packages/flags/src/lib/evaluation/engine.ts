@@ -64,7 +64,15 @@ export type Decide<TIdentity extends Subject> = (
  * reader's, to the caller's signal. `deadline` is a signal that the caller already built, such as a
  * batch entry signal that includes the caller signal and the entry timeout.
  */
-export type EvaluationDeadline = { signal: AbortSignal | undefined } | { deadline: AbortSignal }
+export type EvaluationDeadline = (
+  | { signal: AbortSignal | undefined }
+  | { deadline: AbortSignal }
+) & {
+  /**
+   * Skips stored decisions and provider calls in flight, and stores the new decision.
+   */
+  fresh?: boolean
+}
 
 /**
  * Maps a failure to the error that the details report. The identity, provider, and decision steps
@@ -125,7 +133,8 @@ export async function evaluate<TIdentity extends Subject, TFlag extends Flag>(
       context,
       flag,
       (providerSignal) => decide(flag, identity, { signal: providerSignal }),
-      signal
+      signal,
+      deadline.fresh === true
     )
     const { payload } = resolution
     const value = extractDecisionValue(resolution.decision)

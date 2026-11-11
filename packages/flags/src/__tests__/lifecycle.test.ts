@@ -341,6 +341,35 @@ describe("first-class cache", () => {
     expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
+  test("skips the stored decision on a fresh read and stores the new one", async () => {
+    const stored = new Map<string, Decision>()
+    const store: DecisionStore = {
+      get: (key) => Promise.resolve(stored.get(key)),
+      set: (key, value) => {
+        stored.set(key, value)
+        return Promise.resolve()
+      },
+    }
+    const { control, decideOne, provider } = controlledProvider()
+    const flags = createFlags({ cache: { store }, identify, provider })
+
+    expect(await flags.get(betaAccess)).toBe(true)
+    await flushBackground()
+    control.value = false
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: true })
+
+    expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({
+      source: "provider",
+      value: false,
+    })
+    expect(await flags.detailsMany([betaAccess], { fresh: true })).toMatchObject([
+      { source: "provider", value: false },
+    ])
+    await flushBackground()
+    expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+    expect(decideOne).toHaveBeenCalledTimes(3)
+  })
+
   test("adds the identity parts of a custom key to the evaluation key", async () => {
     type TenantIdentity = Identity & { tenant: string }
     const keys: string[] = []

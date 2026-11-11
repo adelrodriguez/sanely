@@ -29,7 +29,7 @@ import {
   useFlagCache,
   useFlags,
 } from "#integrations/react/index.tsx"
-import { fakeProvider } from "#testing/index.ts"
+import { fakeProvider, memoryStore } from "#testing/index.ts"
 
 const hydrated: Array<{ container: HTMLElement; unmount: () => void }> = []
 
@@ -492,6 +492,30 @@ describe("React integration", () => {
     )
     expect(await screen.findByText("false")).toBeTruthy()
     expect(decideOne).toHaveBeenCalledTimes(1)
+  it("asks the provider again on invalidate when the reader has a store", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    const { capture, controls } = captureCache()
+    await renderAsync(
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">
+          <Value item={beta} />
+        </Suspense>
+      </FlagsProvider>
+    )
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
   })
 
   it("re-renders readers on invalidate after React resubscribes them", async () => {

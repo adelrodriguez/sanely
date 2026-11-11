@@ -396,7 +396,8 @@ export async function resolveDecision<TIdentity extends Subject>(
   context: EvaluationContext<TIdentity>,
   flag: Flag,
   provider: (signal: AbortSignal) => MaybePromise<unknown>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  fresh: boolean
 ): Promise<DecisionResolution> {
   const { coalesce, state } = config
   const store = config.store
@@ -418,10 +419,10 @@ export async function resolveDecision<TIdentity extends Subject>(
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
-    const consultation = await raceWithSignal(
-      () => consultStore(config, context, flag, store, key),
-      signal
-    )
+    // A fresh read skips the stored decision but still stores the provider's.
+    const consultation = fresh
+      ? { generation: state.writes.generation }
+      : await raceWithSignal(() => consultStore(config, context, flag, store, key), signal)
     if (consultation.accepted) {
       return { ...consultation.accepted, source: "cache" }
     }
@@ -439,7 +440,8 @@ export async function resolveDecision<TIdentity extends Subject>(
   // The in-flight check, the leadership registration, and the join must stay in one synchronous
   // block: an await between them lets two concurrent evaluations both miss the pending map and
   // both lead, or lets the shared call stop before this evaluation joins it.
-  const existing = state.pending.get(key)
+  // A fresh read starts its own call, which later evaluations join instead of an older one.
+  const existing = fresh ? undefined : state.pending.get(key)
   const call =
     existing && !existing.shared.signal.aborted
       ? existing
