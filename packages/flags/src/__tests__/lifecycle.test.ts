@@ -507,8 +507,8 @@ describe("first-class cache", () => {
   test.each([true, false])(
     "never returns a replaced decision while an older refresh is still storing, with coalesce %s",
     async (coalesce) => {
-      const stored = new Map<string, Decision>([])
-      const writing = { hold: undefined as Promise<void> | undefined }
+      const stored = new Map<string, Decision>()
+      const writing: { hold?: Promise<null> } = {}
       const store: DecisionStore = {
         delete: (key) => Promise.resolve(stored.delete(key)),
         get: (key) => Promise.resolve(stored.get(key)),
@@ -530,19 +530,18 @@ describe("first-class cache", () => {
       await flushBackground()
 
       // Refresh A answers false, and its store write waits.
-      const release = createDeferred<undefined>()
+      const release = createDeferred<null>()
       writing.hold = release.promise
       answer = FALSE
       expect(await flags.get(betaAccess, { fresh: true })).toBe(false)
       // Refresh B starts while A's write waits, and fails.
       answer = new Error("provider down")
-      expect((await flags.details(betaAccess, { fresh: true })).error).toBeInstanceOf(
-        ProviderFailedError
-      )
+      const failed = await flags.details(betaAccess, { fresh: true })
+      expect(failed.error).toBeInstanceOf(ProviderFailedError)
       answer = FALSE
       expect(await flags.details(betaAccess)).toMatchObject({ value: false })
-      release.resolve(undefined)
-      writing.hold = undefined
+      release.resolve(null)
+      delete writing.hold
       await flushBackground()
       expect(await flags.details(betaAccess)).toMatchObject({ value: false })
     }
