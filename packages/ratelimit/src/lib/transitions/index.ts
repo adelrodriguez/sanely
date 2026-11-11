@@ -24,8 +24,9 @@ type TokenBucketState = {
 }
 
 /**
- * The state a store keeps for one key. A store may forget it at `expiresAt`, on the store's clock,
- * because a missing state then gives the same result.
+ * The state a store keeps for one key. From `expiresAt`, on the store's clock, the state counts as
+ * no state, so a store may delete it then. A token bucket that a store kept past `expiresAt` would
+ * otherwise keep its old refill schedule.
  */
 export type State = FixedWindowState | SlidingWindowState | TokenBucketState
 

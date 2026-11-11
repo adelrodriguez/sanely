@@ -328,7 +328,7 @@ Builds a store from one atomic read and write of a key. The package applies the 
 | `update` | `(key: string, apply: (saved: unknown, now: number) => { result: StoreResult; state?: State }) => Promise<StoreResult>` | Reads the value saved for `key` and the store's clock in epoch ms, calls `apply` with them, saves `state` when `apply` returns one, and resolves with `result`. All of it must be one atomic step. |
 | `clear`  | `(key: string) => Promise<void>`                                                                                        | Deletes the value saved for `key`.                                                                                                                                                                 |
 
-`apply` returns no `state` after a denial or for a cost of 0, and the store then saves nothing. A saved value that is not a `State` counts as no state. A state has `expiresAt`, in epoch ms on the store's clock, and the store may delete it from then on.
+`apply` returns no `state` after a denial or for a cost of 0, and the store then saves nothing. A saved value that is not a `State` counts as no state, and so does a state from its `expiresAt`, in epoch ms on the store's clock. The store may delete a state then or at any time later.
 
 ## Errors
 

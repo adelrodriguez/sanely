@@ -25,20 +25,22 @@ export type StateStoreOptions = {
 /**
  * Builds a store from an atomic read and write of one key. The package applies the algorithm, and
  * decides what to save: nothing for a denial or a cost of 0. A saved value that is not a state this
- * package wrote counts as no state.
+ * package wrote, or that is past its `expiresAt`, counts as no state.
  */
 export function stateStore({ clear, update }: StateStoreOptions): Store {
   return {
     clear,
     consume: ({ algorithm, cost, key }) =>
-      update(key, (saved, now) => transition(algorithm, parseState(saved), cost, now)),
+      update(key, (saved, now) => transition(algorithm, parseState(saved, now), cost, now)),
   }
 }
 
-// A saved state is external input: a database returns whatever its row holds.
-function parseState(saved: unknown): State | undefined {
+// A saved state is external input: a database returns whatever its row holds. A state counts from
+// its `expiresAt` as no state, as in the memory store, because a database may delete it later.
+function parseState(saved: unknown, now: number): State | undefined {
   if (typeof saved !== "object" || saved === null) return
   if (!("type" in saved && "expiresAt" in saved && isInteger(saved.expiresAt))) return
+  if (saved.expiresAt <= now) return
 
   const { expiresAt } = saved
 

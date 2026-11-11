@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { fixedWindow, slidingWindow, tokenBucket } from "#lib/algorithms/index.ts"
 import { testStore } from "#lib/store/__tests__/conformance.ts"
+import { memoryStore } from "#lib/stores/memory/index.ts"
 import { stateStore } from "#lib/transitions/state-store.ts"
 
 // A store that keeps each state as JSON, as a database row would. JavaScript runs `update` to the
@@ -60,6 +61,24 @@ describe("stateStore", () => {
       remaining: 4,
       success: true,
     })
+  })
+
+  // The guide lets a database delete expired rows whenever it suits it, so a store that keeps them
+  // must answer like the memory store, which forgets each state at its expiry.
+  it("answers like the memory store when it keeps a row past its expiry", async () => {
+    let now = 0
+    const kept = jsonStore(new Map(), () => now)
+    const memory = memoryStore({ clock: () => now })
+    const algorithm = tokenBucket({ capacity: 1, interval: 1000, refillRate: 1 })
+
+    for (const time of [0, 1500, 2000]) {
+      now = time
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each request must see the state the one before it left.
+      const expected = await memory.consume({ algorithm, cost: 1, key: "k" })
+
+      // oxlint-disable-next-line eslint/no-await-in-loop -- As above.
+      expect(await kept.consume({ algorithm, cost: 1, key: "k" })).toEqual(expected)
+    }
   })
 
   it("saves nothing for a denial or a read", async () => {
