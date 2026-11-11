@@ -75,6 +75,18 @@ function createSuppressedError(error: unknown, suppressed: unknown): Error {
   return wrapped
 }
 
+/**
+ * A cleanup failure. It wraps the thrown value, so a cleanup that throws `undefined` still counts
+ * as a failure.
+ */
+interface DisposalFailure {
+  readonly error: unknown
+}
+
+function addFailure(failure: DisposalFailure | undefined, error: unknown): DisposalFailure {
+  return { error: failure ? createSuppressedError(error, failure.error) : error }
+}
+
 function checkCanRegister(disposed: boolean, name: string) {
   if (disposed) {
     throw new ReferenceError(`${name} already disposed`)
@@ -127,7 +139,7 @@ export class InternalDisposableStack implements Disposable {
 
     this.#disposed = true
 
-    let error: unknown
+    let failure: DisposalFailure | undefined
     const stack = this.#stack
     this.#stack = []
 
@@ -135,13 +147,13 @@ export class InternalDisposableStack implements Disposable {
       try {
         disposer()
       } catch (caughtError) {
-        error = error === undefined ? caughtError : createSuppressedError(caughtError, error)
+        failure = addFailure(failure, caughtError)
       }
     }
 
-    if (error !== undefined) {
+    if (failure) {
       // oxlint-disable-next-line typescript/only-throw-error -- Preserve raw disposer failures.
-      throw error
+      throw failure.error
     }
   }
 }
@@ -184,7 +196,7 @@ class AsyncDisposerStack implements AsyncDisposer {
 
     this.#disposed = true
 
-    let error: unknown
+    let failure: DisposalFailure | undefined
     const stack = this.#stack
     this.#stack = []
 
@@ -194,13 +206,13 @@ class AsyncDisposerStack implements AsyncDisposer {
         // oxlint-disable-next-line no-await-in-loop
         await disposer()
       } catch (caughtError) {
-        error = error === undefined ? caughtError : createSuppressedError(caughtError, error)
+        failure = addFailure(failure, caughtError)
       }
     }
 
-    if (error !== undefined) {
+    if (failure) {
       // oxlint-disable-next-line typescript/only-throw-error -- Preserve raw async disposer failures.
-      throw error
+      throw failure.error
     }
   }
 }
