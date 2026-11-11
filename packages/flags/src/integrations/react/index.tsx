@@ -256,11 +256,19 @@ function prune(cache: FlagCache, bucket: Bucket): void {
   }
 }
 
+// A reader from `createFlags` with `identify` reads directly, and one without it reads only through
+// `for`. The check must name a method that only the direct reader has, so the type checker rejects
+// a rename here that would send every read through `for` with no identity.
+const directReadMethod = "get" satisfies Exclude<keyof FlagReader, keyof AnyFlags>
+
+function isDirectReader(flags: AnyFlags): flags is AnyFlags & FlagReader {
+  return directReadMethod in flags
+}
+
 function readerOf(context: FlagsContextValue): FlagReader {
   const { flags, identity } = context
-  if (identity === undefined && "get" in flags) {
-    // `get` marks a reader that resolves its own identity.
-    return flags as AnyFlags & FlagReader
+  if (identity === undefined && isDirectReader(flags)) {
+    return flags
   }
   // A reader without `identify` and without an identity falls back to the defaults with
   // `IdentityNotFoundError`, because `for` rejects a missing identity.
