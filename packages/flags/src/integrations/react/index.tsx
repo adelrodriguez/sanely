@@ -636,7 +636,8 @@ export function useFlagCache(): FlagCacheControls {
       clear() {
         cache.snapshot?.entries.clear()
         for (const bucket of cache.buckets.values()) {
-          for (const identity of [...bucket.entries.keys(), ...bucket.stores.keys()]) {
+          const identities = [...bucket.entries.keys(), ...[...bucket.active].map(({ key }) => key)]
+          for (const identity of identities) {
             bucket.fresh.add(identity)
           }
           bucket.entries.clear()

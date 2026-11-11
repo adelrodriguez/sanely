@@ -516,6 +516,13 @@ describe("React integration", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("false")).toBeTruthy()
+
+    provider.state.value = true
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("true")).toBeTruthy()
   })
 
   it("re-renders readers on invalidate after React resubscribes them", async () => {
