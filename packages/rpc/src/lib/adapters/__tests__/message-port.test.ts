@@ -397,23 +397,28 @@ describe("relayPort", () => {
 describe("sendPort", () => {
   type Posted = { channel: string; message: unknown; transfer?: unknown[] }
 
+  // Keeps listeners by event name, so a test fires the exact event Electron would.
   function createFakeWebContents(options: { loading: boolean; url: string }): {
     win: Parameters<typeof sendPort>[0]
     posted: Posted[]
-    finishLoad: () => void
+    fire: (event: string) => void
   } {
     const posted: Posted[] = []
-    let onLoad: (() => void) | undefined
+    const listeners = new Map<string, () => void>()
 
     return {
-      finishLoad: () => onLoad?.(),
+      fire: (event) => {
+        const listener = listeners.get(event)
+        listeners.delete(event)
+        listener?.()
+      },
       posted,
       win: {
         webContents: {
           getURL: () => options.url,
           isLoading: () => options.loading,
-          once: (_event, listener) => {
-            onLoad = listener
+          once: (event, listener) => {
+            listeners.set(event, listener)
           },
           postMessage: (channel, message, transfer) => {
             posted.push({ channel, message, transfer })
@@ -423,16 +428,31 @@ describe("sendPort", () => {
     }
   }
 
-  test("ships the port once a still-loading page finishes", () => {
+  test("ships the port once a still-loading page stops loading", () => {
     const { main } = createPortPair()
-    const { win, posted, finishLoad } = createFakeWebContents({ loading: true, url: "" })
+    const { win, posted, fire } = createFakeWebContents({ loading: true, url: "" })
 
     sendPort(win, main, "app:port")
 
     // Nothing moves before the page can receive it.
     expect(posted).toEqual([])
 
-    finishLoad()
+    fire("did-stop-loading")
+
+    expect(posted).toEqual([{ channel: "app:port", message: null, transfer: [main] }])
+  })
+
+  test("ships the port after loadURL resolves while the page still reports loading", () => {
+    const { main } = createPortPair()
+    // Electron fires did-finish-load, resolves loadURL, and only then fires did-stop-loading,
+    // which is when isLoading() turns false. A wait for did-finish-load here would never end.
+    const { win, posted, fire } = createFakeWebContents({
+      loading: true,
+      url: "https://app.local/",
+    })
+
+    sendPort(win, main, "app:port")
+    fire("did-stop-loading")
 
     expect(posted).toEqual([{ channel: "app:port", message: null, transfer: [main] }])
   })
@@ -450,13 +470,13 @@ describe("sendPort", () => {
 
   test("waits for the first load when no page has been loaded yet", () => {
     const { main } = createPortPair()
-    const { win, posted, finishLoad } = createFakeWebContents({ loading: false, url: "" })
+    const { win, posted, fire } = createFakeWebContents({ loading: false, url: "" })
 
     sendPort(win, main, "app:port")
 
     expect(posted).toEqual([])
 
-    finishLoad()
+    fire("did-stop-loading")
 
     expect(posted).toEqual([{ channel: "app:port", message: null, transfer: [main] }])
   })

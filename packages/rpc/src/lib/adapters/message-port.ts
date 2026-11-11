@@ -254,16 +254,17 @@ export type PortWindowLike = {
   webContents: {
     getURL(): string
     isLoading(): boolean
-    once(event: "did-finish-load", listener: () => void): unknown
+    once(event: "did-stop-loading", listener: () => void): unknown
     postMessage(channel: string, message: unknown, transfer?: unknown[]): void
   }
 }
 
 /**
  * Main-process end of the hand-off: ships one end of a `MessageChannelMain` to a window once the
- * page can receive it. If a page has already finished loading, the port posts immediately —
- * `loadURL()` resolves on `did-finish-load`, so a caller that awaited it would otherwise register
- * for an event that already fired and the hand-off would silently never happen.
+ * page can receive it. If the page has stopped loading, the port posts immediately. Otherwise it
+ * posts on `did-stop-loading`, the event that turns `isLoading()` false. Electron resolves
+ * `loadURL()` on `did-finish-load`, while `isLoading()` is still true, so waiting for
+ * `did-finish-load` after an awaited `loadURL()` would wait for an event that already fired.
  *
  * A transferred port is spent, so a reload needs a fresh `MessageChannelMain` and another
  * `sendPort` call (from your own `did-finish-load` handler). A _failed_ navigation
@@ -280,7 +281,7 @@ export function sendPort(win: PortWindowLike, port: MainPortLike, type: string):
     return
   }
 
-  webContents.once("did-finish-load", () => {
+  webContents.once("did-stop-loading", () => {
     webContents.postMessage(type, null, [port])
   })
 }
