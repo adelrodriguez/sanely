@@ -25,6 +25,7 @@ The status shows whether a package is published to npm or still private.
 | [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Published |
 | [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Published |
 | [`@sanely/request`](packages/request)     | Read the client IP address and location from a request.                                                                        | None                                                      | Published |
+| [`@sanely/words`](packages/words)         | Generate friendly, safe-for-work names from curated word lists.                                                                | None                                                      | Private   |
 
 The private [`@sanely/core`](packages/core) workspace holds shared definitions.
 Libraries can reuse internal workspaces without adding third-party runtime dependencies.

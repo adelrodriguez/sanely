@@ -1,0 +1,7 @@
+export { isCategory, lists } from "#lib/lists/index.ts"
+export type { Category, WordList } from "#lib/lists/index.ts"
+export { count } from "#lib/names/count.ts"
+export { InvalidOptionError, NotEnoughWordsError } from "#lib/names/errors.ts"
+export type { NotEnoughWordsReason } from "#lib/names/errors.ts"
+export { generate } from "#lib/names/index.ts"
+export type { CountOptions, GenerateOptions } from "#lib/names/options.ts"
