@@ -91,6 +91,14 @@ describe("Fault", () => {
     expect(fault.stack?.split("\n")).toStrictEqual(["ExampleFault: new message", ...(frames ?? [])])
   })
 
+  it("writes the message from withMessage into a stack that was already read", () => {
+    const fault = new ExampleFault()
+    const frames = fault.stack?.split("\n").slice(1)
+    fault.withMessage("new message")
+
+    expect(fault.stack?.split("\n")).toStrictEqual(["ExampleFault: new message", ...(frames ?? [])])
+  })
+
   it("writes a directly assigned message into the stack when the cause changes", () => {
     const fault = new ExampleFault().withCause("not an error")
     const frames = fault.stack?.split("\n").slice(1)

@@ -45,16 +45,21 @@ function toStackBase(stack: string | undefined, header: string): StackBase {
   return headed ? { frames: kept, kind: "headed" } : { kind: "headless", stack: kept }
 }
 
-// Returns the stack that describes the fault's current message and cause. The runtime writes
-// the header on the first read of `stack`, so the base is read only when a change needs it:
-// a subclass sets its message after super(), and a stack read in the constructor would
-// keep the tag as its message.
-function renderStack(fault: Fault): string | undefined {
+// The runtime writes the header on the first read of `stack`, so the base is read only when
+// a change needs it: a subclass sets its message after super(), and a stack read in the
+// constructor would keep the tag as its message.
+function getStackBase(fault: Fault): StackBase {
   let base = stackBases.get(fault)
   if (base === undefined) {
     base = toStackBase(fault.stack, getHeader(fault))
     stackBases.set(fault, base)
   }
+  return base
+}
+
+// Returns the stack that describes the fault's current message and cause.
+function renderStack(fault: Fault): string | undefined {
+  const base = getStackBase(fault)
   if (base.kind === "missing") return undefined
 
   const head = base.kind === "headed" ? `${getHeader(fault)}${base.frames}` : base.stack
@@ -197,9 +202,10 @@ export abstract class Fault<
   }
 
   withMessage(message: string): this {
+    // Read the base while the stack header still holds the old message.
+    getStackBase(this)
     this.message = message
-    // Before the base is read, the runtime still writes the new message into the header.
-    if (stackBases.has(this)) this.stack = renderStack(this)
+    this.stack = renderStack(this)
     return this
   }
 
