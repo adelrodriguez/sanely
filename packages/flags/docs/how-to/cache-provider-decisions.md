@@ -4,17 +4,25 @@ This guide shows you how to store provider decisions, drop them when the provide
 
 ## Add a store
 
-1. Write a store with `get`, `set`, and an optional `delete`. The store controls serialization and expiry:
+1. Write a store with `get`, `set`, and optionally `delete` and `deleteFlags`. The store controls serialization and expiry. This one keeps a set of keys for each flag, so `deleteFlags` can find a flag's decisions:
 
    ```typescript
    import type { DecisionStore, Decision } from "@sanely/flags"
 
    const store: DecisionStore = {
      get: (key) => redis.get<Decision>(key),
-     set: async (key, decision) => {
+     set: async (key, decision, { flagKey }) => {
        await redis.set(key, decision, { ex: 60 })
+       await redis.sadd(`flag-keys:${flagKey}`, key)
+       await redis.sadd("flag-keys", flagKey)
      },
      delete: (key) => redis.del(key),
+     deleteFlags: async (flagKeys) => {
+       for (const flagKey of flagKeys ?? (await redis.smembers("flag-keys"))) {
+         const keys = await redis.smembers(`flag-keys:${flagKey}`)
+         if (keys.length > 0) await redis.del(...keys, `flag-keys:${flagKey}`)
+       }
+     },
    }
    ```
 
@@ -28,7 +36,7 @@ This guide shows you how to store provider decisions, drop them when the provide
      identify,
      cache: { store },
      onError: (report) => {
-       if (report._tag === "StoreFailed") logger.warn(report.operation, report.key, report.error)
+       if (report._tag === "StoreFailed") logger.warn(report.operation, report.error)
      },
    })
    ```
@@ -37,7 +45,7 @@ A store failure does not fail the evaluation. The package discards an invalid st
 
 ## Drop decisions when the provider changes a flag
 
-Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags and deletes their stored decisions. Give the store a `deleteFlags` method, so it can delete every stored decision of a flag, including the ones that other processes stored. `set` passes each decision's `flagKey` for that. A store with only `delete` loses just the entries that this reader read or wrote. See [`DecisionStore`](../reference.md#decisionstore).
+Give the provider a [`subscribe` function](./write-a-provider.md#report-flag-changes). A change notification drops the running provider calls for the changed flags. With a store that has `deleteFlags`, it also deletes their stored decisions, including the ones that other processes stored. A store without `deleteFlags` keeps them until it expires them. See [`DecisionStore`](../reference.md#decisionstore).
 
 If `subscribe` throws, `onError` receives a `SubscribeFailed` report, and the evaluation does not fail. The next evaluation tries to attach again.
 

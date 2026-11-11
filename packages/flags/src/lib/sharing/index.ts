@@ -22,11 +22,14 @@ import { createResolutionState } from "./resolution-state"
  * or normalize them for the provider.
  */
 export type DecisionStore = {
+  /**
+   * Deletes one stored decision that no longer fits its flag.
+   */
   delete?(key: string): Promise<unknown>
   /**
    * Deletes every stored decision of these flag keys, or of every flag without keys, including the
-   * decisions that other processes stored. A change notification calls it. A store with it needs no
-   * `delete`, and the reader keeps no index of the keys it stored.
+   * decisions that other processes stored. A change notification calls it. Without it, a store
+   * keeps its decisions after a change until it expires them.
    */
   deleteFlags?(flagKeys?: readonly string[]): Promise<unknown>
   get(key: string): Promise<Decision | null | undefined>
@@ -99,7 +102,7 @@ export type Sharing<TIdentity extends Subject> = {
     | undefined
   // The provider's name, which the default evaluation key holds.
   provider: string
-  state: ResolutionState<TIdentity>
+  state: ResolutionState
   store: DecisionStore | undefined
 }
 
@@ -218,23 +221,6 @@ function deleteCacheEntry<TIdentity extends Subject>(
   void mutateStore(config, context, key, "delete", () => store.delete?.(key))
 }
 
-function indexCacheKey<TIdentity extends Subject>(
-  config: Sharing<TIdentity>,
-  context: EvaluationContext<TIdentity>,
-  store: DecisionStore,
-  key: string
-): void {
-  // A store with `deleteFlags` finds a flag's entries itself, so the reader indexes nothing.
-  if (!store.delete || store.deleteFlags || !config.changes) {
-    return
-  }
-
-  const { state } = config
-  const keys = state.keysByFlag.get(context.flag.key) ?? new Map<string, TIdentity | null>()
-  keys.set(key, context.identity)
-  state.keysByFlag.set(context.flag.key, keys)
-}
-
 /**
  * Calls the store's `deleteFlags` for a change, after the writes of the changed flags that already
  * started, so none of them lands after the delete. Until it completes, reads of those flags skip
@@ -278,25 +264,25 @@ function deleteFlags<TIdentity extends Subject>(
 }
 
 /**
- * Drops the reader's decision memory for good: calls in flight, the key index, and open write
- * tickets. The reader's later reads skip the store and coalescing, so nothing attaches again.
+ * Drops the reader's decision memory for good: calls in flight and open write tickets. The reader's
+ * later reads skip the store and coalescing, so nothing attaches again.
  */
 export function disposeSharing<TIdentity extends Subject>(config: Sharing<TIdentity>): void {
   const { state } = config
   state.disposed = true
   state.pending.clear()
   state.tickets.clear()
-  state.keysByFlag.clear()
   state.writes.generation += 1
 }
 
 /**
  * Adds the listener that invalidates this reader's decision memory to the change broadcaster: it
- * drops in-flight coalesced calls and deletes indexed store entries for the changed flags, and
- * invalidates every pending cache write regardless of which flags changed. Added on the first
- * evaluation that touches cache or coalescing and never removed, so the provider stays attached for
- * the reader's lifetime. A throwing `subscribe` never fails the evaluation: it is reported through
- * `onError` and the evaluation continues without invalidation. The next evaluation tries again.
+ * drops in-flight coalesced calls for the changed flags, asks a store with `deleteFlags` to delete
+ * their decisions, and invalidates every pending cache write regardless of which flags changed.
+ * Added on the first evaluation that touches cache or coalescing and never removed, so the provider
+ * stays attached for the reader's lifetime. A throwing `subscribe` never fails the evaluation: it
+ * is reported through `onError` and the evaluation continues without invalidation. The next
+ * evaluation tries again.
  */
 function attachInvalidationSubscription<TIdentity extends Subject>(
   config: Sharing<TIdentity>
@@ -323,29 +309,15 @@ function attachInvalidationSubscription<TIdentity extends Subject>(
         state.pending.delete(pendingKey)
       }
     }
-    // Invalidate open write tickets independently of the key index, which only fills when the
-    // store can delete: a decision fetched before the change must never be written after it.
+    // Invalidate open write tickets for every store: a decision fetched before the change must
+    // never be written after it.
     const { writes } = state
     writes.generation += 1
-    // Only a write to the store indexes a key, so without a store there is nothing to delete.
-    const store = config.store
-    if (!store) {
-      return
-    }
-    if (store.deleteFlags) {
-      deleteFlags(config, store.deleteFlags.bind(store), changedFlagKeys)
-      return
-    }
-    const flagKeys = changedFlagKeys ?? [...state.keysByFlag.keys()]
-    for (const flagKey of flagKeys) {
-      const cacheKeys = state.keysByFlag.get(flagKey)
-      if (!cacheKeys) {
-        continue
-      }
-      state.keysByFlag.delete(flagKey)
-      for (const [cacheKey, identity] of cacheKeys) {
-        deleteCacheEntry(config, { flagKey, identity }, store, cacheKey)
-      }
+    // Only a store with `deleteFlags` can find a flag's stored decisions. Any other store keeps
+    // them until it expires them.
+    const remove = config.store?.deleteFlags?.bind(config.store)
+    if (remove) {
+      deleteFlags(config, remove, changedFlagKeys)
     }
   })
 }
@@ -447,9 +419,6 @@ function writeThrough<TIdentity extends Subject>(
     if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
       return
     }
-    // A change during the read removed this key from the index, so index it again for the decision
-    // that this write stores.
-    indexCacheKey(config, context, store, key)
     return store.set(key, decision, { flagKey: context.flag.key })
   })
 }
@@ -542,7 +511,6 @@ export async function resolveDecision<TIdentity extends Subject>(
 
   let write: WriteTicket | undefined
   if (store) {
-    indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
     // A fresh read skips the stored decision but still stores the provider's. Its ticket voids
     // the older tickets of its key, so a slower older call cannot store over its decision.

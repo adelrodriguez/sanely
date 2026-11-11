@@ -1,6 +1,5 @@
 import type { Decision } from "#lib/definition/decision.ts"
 import type { Flag } from "#lib/definition/index.ts"
-import type { Subject } from "#lib/identity/index.ts"
 import type { SharedSignal } from "#lib/shared/signals.ts"
 
 /**
@@ -42,11 +41,10 @@ export type FlagDeletes = { all: number; byFlag: Map<string, number> }
  * bookkeeping. Created once per `createFlags` call, so two readers never share state, even when
  * built from the same options.
  */
-export type ResolutionState<TIdentity extends Subject> = {
+export type ResolutionState = {
   // A disposed reader keeps no decision memory: its reads go straight to the provider.
   disposed: boolean
   flagDeletes: FlagDeletes
-  keysByFlag: Map<string, Map<string, TIdentity | null>>
   mutations: Map<string, StoreMutations>
   pending: Map<string, PendingResolution>
   // The invalidation listener never leaves the change broadcaster, so its unsubscribe function is
@@ -62,11 +60,10 @@ export type ResolutionState<TIdentity extends Subject> = {
   tickets: Map<string, { epoch: number; open: number }>
 }
 
-export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {
+export function createResolutionState(): ResolutionState {
   return {
     disposed: false,
     flagDeletes: { all: 0, byFlag: new Map() },
-    keysByFlag: new Map(),
     mutations: new Map(),
     pending: new Map(),
     subscription: { registered: false },

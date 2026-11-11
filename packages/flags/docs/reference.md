@@ -137,12 +137,9 @@ type DecisionStore = {
 }
 ```
 
-The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider. With a provider `subscribe`, a change notification deletes the stored decisions of the changed flags:
+The package reads the store before the provider work, and writes the provider decision after it validates. The store owns serialization and expiry. A store failure never fails the evaluation, and an invalid stored decision goes to the provider, which `delete` removes when the store has it.
 
-- With `deleteFlags`, the package calls it with the changed flag keys, or with none for a notification that names no flags. The store deletes those flags' decisions, including those that other processes stored. `set` passes each decision's `flagKey` so that the store can find them. The package waits for the writes of those flags that already started, and reads of those flags skip the store until the delete completes.
-- With only `delete`, the package deletes the entries that this reader read or wrote since it was created, and it remembers each of those keys until its flag changes. A decision that another process stored stays until the store expires it.
-
-Give a store that several processes share `deleteFlags`, or an expiry.
+With a provider `subscribe` and a store with `deleteFlags`, a change notification calls `deleteFlags` with the changed flag keys, or with none for a notification that names no flags. The store deletes those flags' decisions, including those that other processes stored. `set` passes each decision's `flagKey` so that the store can find them. The package waits for the writes of those flags that already started, and reads of those flags skip the store until the delete completes. A store without `deleteFlags` keeps its decisions after a change until it expires them.
 
 ## Readers
 

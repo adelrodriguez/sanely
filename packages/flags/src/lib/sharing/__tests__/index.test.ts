@@ -60,6 +60,7 @@ function createConfig(
 
 type StoreFunctions = {
   delete: (key: string) => Promise<unknown>
+  deleteFlags: (flagKeys?: readonly string[]) => Promise<unknown>
   get: (key: string) => Promise<Decision | null | undefined>
   set: (key: string, decision: Decision) => Promise<void>
 }
@@ -68,6 +69,13 @@ function createStore(overrides: Partial<StoreFunctions> = {}) {
   const decisions = new Map<string, Decision>()
   return {
     delete: vi.fn(overrides.delete ?? ((key: string) => Promise.resolve(decisions.delete(key)))),
+    deleteFlags: vi.fn(
+      overrides.deleteFlags
+        ?? (() => {
+          decisions.clear()
+          return Promise.resolve()
+        })
+    ),
     get: vi.fn(overrides.get ?? ((key: string) => Promise.resolve(decisions.get(key)))),
     set: vi.fn(
       overrides.set
@@ -390,7 +398,7 @@ describe("resolveDecision", () => {
     expect(operations).toEqual(expect.arrayContaining(["validate", "delete", "set"]))
   })
 
-  test("skips the store when no delete method exists", async () => {
+  test("keeps an invalid stored decision when the store cannot delete it", async () => {
     const onError = vi.fn()
     const { delete: _delete, ...withoutDelete } = createStore({
       get: () => Promise.resolve({ type: "variant", variant: "x" }),
@@ -407,7 +415,7 @@ describe("resolveDecision", () => {
     )
 
     expect(resolution.source).toBe("provider")
-    expect(config.state.keysByFlag.size).toBe(0)
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ operation: "validate" }))
   })
 
   test("reports a failing key function and calls the provider directly", async () => {
@@ -465,7 +473,7 @@ describe("resolveDecision", () => {
     expect(store.set).not.toHaveBeenCalled()
   })
 
-  test("deletes the stored decisions of changed flags", async () => {
+  test("asks the store to delete the decisions of changed flags", async () => {
     const changes = createProvider()
     const store = createStore()
     const config = createConfig({ store }, changes.subscribe)
@@ -479,13 +487,10 @@ describe("resolveDecision", () => {
       false
     )
     await sleep(0)
-    expect(config.state.keysByFlag.get("beta-access")?.size).toBe(1)
-
     changes.notify()
     await sleep(0)
 
-    expect(store.delete).toHaveBeenCalledTimes(1)
-    expect(config.state.keysByFlag.size).toBe(0)
+    expect(store.deleteFlags).toHaveBeenCalledWith(undefined)
     const again = await resolveDecision(
       config,
       createContext(user),
@@ -494,13 +499,13 @@ describe("resolveDecision", () => {
       signal(),
       false
     )
-    expect(again).toEqual({ decision: falseDecision, source: "provider" })
+    expect(again).toMatchObject({ decision: falseDecision, source: "provider" })
   })
 
-  test("skips the store read while a delete for the key is pending", async () => {
+  test("skips the store read while a delete for the flag is pending", async () => {
     const changes = createProvider()
-    const deleted = Promise.withResolvers<boolean>()
-    const store = createStore({ delete: vi.fn(() => deleted.promise) })
+    const deleted = Promise.withResolvers<null>()
+    const store = createStore({ deleteFlags: vi.fn(() => deleted.promise) })
     const config = createConfig({ store }, changes.subscribe)
 
     await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
@@ -520,19 +525,29 @@ describe("resolveDecision", () => {
 
     expect(resolution.source).toBe("provider")
     expect(store.get).not.toHaveBeenCalled()
-    deleted.resolve(true)
+    deleted.resolve(null)
   })
 
-  test("ignores a change for a flag without stored keys", async () => {
+  test("keeps the stored decisions of flags that a change does not name", async () => {
     const changes = createProvider()
-    const store = createStore()
+    const store = createStore({ deleteFlags: vi.fn(() => Promise.resolve()) })
     const config = createConfig({ store }, changes.subscribe)
 
     await resolveDecision(config, createContext(), betaAccess, () => trueDecision, signal(), false)
+    await sleep(0)
     changes.notify(["other"])
     await sleep(0)
 
-    expect(store.delete).not.toHaveBeenCalled()
+    expect(store.deleteFlags).toHaveBeenCalledWith(["other"])
+    const again = await resolveDecision(
+      config,
+      createContext(),
+      betaAccess,
+      () => falseDecision,
+      signal(),
+      false
+    )
+    expect(again.source).toBe("cache")
   })
 
   test("reports a failing subscribe and retries on the next evaluation", async () => {
