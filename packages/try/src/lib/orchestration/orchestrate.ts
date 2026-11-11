@@ -70,7 +70,6 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
     // The failure that stopped the graph, kept even after catch maps it. A record, so a task that
     // throws undefined still counts.
     let stoppedBy: { error: unknown } | undefined
-    let cleanup: Cleanup
 
     try {
       outcome = { mapped: await this.race(graph.run()) }
@@ -79,11 +78,16 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
       outcome = await this.#mapFailure(graph, error)
     } finally {
       await graph.waitForTasksToSettle()
-      cleanup = await graph.dispose().then(
-        (): Cleanup => ({ status: "done" }),
-        (error: unknown): Cleanup => ({ error, status: "threw" })
-      )
     }
+
+    // Control state may have changed while tasks ran or settled, and it takes priority over the
+    // outcome; the shared chain reports cancellation over the graph deadline when both fired. Read
+    // it before the cleanup runs, so the time that cleanup takes never changes the result.
+    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
+    const cleanup = await graph.dispose().then(
+      (): Cleanup => ({ status: "done" }),
+      (error: unknown): Cleanup => ({ error, status: "threw" })
+    )
 
     // A Panic is programmer misuse, so it overrides any result or failure, as in run(): even one
     // that settled after catch mapped an earlier failure, or after cancellation or the deadline.
@@ -101,17 +105,12 @@ class OrchestrationExecution extends BaseExecution<Promise<unknown>> {
     // call's own policy failure, or else the task failure that stopped the graph, as the suppressed
     // error, so the cleanup does not hide it.
     if (cleanup.status === "threw") {
-      const controlFailure = this.checkDidControlFail(stoppedBy?.error)
-      const suppressed = controlFailure ? { error: controlFailure } : stoppedBy
+      const suppressed = controlError ? { error: controlError } : stoppedBy
 
       throw new Panic("TASK_CLEANUP_THROW", {
         cause: suppressed ? createSuppressedError(cleanup.error, suppressed.error) : cleanup.error,
       })
     }
-
-    // Control state may have changed while tasks ran or settled, and it takes priority over the
-    // outcome; the shared chain reports cancellation over the graph deadline when both fired.
-    const controlError = this.checkDidControlFail("thrown" in outcome ? outcome.thrown : undefined)
 
     if (controlError) {
       return controlError
