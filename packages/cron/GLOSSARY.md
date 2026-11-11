@@ -1,6 +1,6 @@
 # Cron
 
-`@sanely/cron` is a zero-dependency TypeScript package with one model of a schedule, the `Schedule` object. It converts a schedule to an exact standard 5-field cron expression, parses a schedule from a cron phrase or a schedule object, and writes a schedule back as a cron phrase.
+`@sanely/cron` is a TypeScript package with no external dependencies and one model of a schedule, the `Schedule` object. It converts a schedule to an exact standard 5-field cron expression, parses a schedule from a cron phrase or a schedule object, and writes a schedule back as a cron phrase.
 
 ## Language
 
