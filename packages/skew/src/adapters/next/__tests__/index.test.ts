@@ -202,6 +202,25 @@ describe("next adapter", () => {
     })
   })
 
+  it("matches the header rule on the endpoint path without its query string and fragment", async () => {
+    expect.assertions(2)
+    const wrapped = await resolveNextConfig(
+      withDeploymentCheck(
+        { basePath: "/app" },
+        { deploymentId: "A", endpoint: "/descriptor.json?tenant=a#top" }
+      )
+    )
+
+    expect(JSON.parse(readEmbedJson(wrapped))).toMatchObject({
+      endpoint: "/app/descriptor.json?tenant=a#top",
+    })
+    await expect(readHeaders(wrapped)).resolves.toContainEqual({
+      basePath: false,
+      headers: [{ key: "Cache-Control", value: "no-store" }],
+      source: "/app/descriptor.json",
+    })
+  })
+
   it("does not add a base-path override for an empty base path", async () => {
     expect.assertions(1)
     const wrapped = await resolveNextConfig(
