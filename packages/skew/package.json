@@ -55,6 +55,9 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "@sanely/duration": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
     "@sanely/core": "workspace:*",
