@@ -388,11 +388,9 @@ export function createDeploymentMonitor<const T extends string = never>(
     options.checkInterval ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkInterval
   )
   if (checkInterval < MINIMUM_CHECK_INTERVAL) {
-    // eslint-disable-next-line no-console -- Excessive polling is a deployment configuration error.
     console.warn(`[deployment-check] Increased checkInterval to ${MINIMUM_CHECK_INTERVAL}ms.`)
   }
   if (running === undefined && process.env.NODE_ENV !== "production" && "document" in globalThis) {
-    // eslint-disable-next-line no-console -- Missing adapter data must be visible in development.
     console.warn(
       "[deployment-check] The monitor is inert because no adapter registered a deployment embed."
     )
