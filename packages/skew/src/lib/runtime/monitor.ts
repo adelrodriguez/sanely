@@ -7,7 +7,7 @@ import { DEFAULT_DESCRIPTOR_ENDPOINT, fetchDescriptor } from "#lib/protocol/fetc
 import type { RuntimeEnvironment, TimerHandle } from "./environment"
 import type { DeploymentSchedule } from "./scheduler"
 import { createBrowserEnvironment } from "./environment"
-import { milliseconds } from "./milliseconds"
+import { milliseconds } from "./options"
 import {
   DEFAULT_DEPLOYMENT_SCHEDULE,
   DeploymentScheduler,
@@ -407,6 +407,7 @@ export function createDeploymentMonitor<const T extends string = never>(
   const embed = readEmbed()
   const running = options.running ?? readRunningDeployment(embed)
   const checkInterval = milliseconds(
+    "checkInterval",
     options.checkInterval ?? DEFAULT_DEPLOYMENT_SCHEDULE.checkInterval
   )
   if (checkInterval < MINIMUM_CHECK_INTERVAL) {
@@ -421,7 +422,7 @@ export function createDeploymentMonitor<const T extends string = never>(
   const target = options.target ?? embed?.endpoint ?? DEFAULT_DESCRIPTOR_ENDPOINT
 
   return new DeploymentMonitorImplementation({
-    checkTimeout: milliseconds(options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT),
+    checkTimeout: milliseconds("checkTimeout", options.checkTimeout ?? DEFAULT_CHECK_TIMEOUT),
     environment: options.environment ?? (browserEnvironment ??= createBrowserEnvironment()),
     isCurrent: options.isCurrent ?? ((left, right) => left.id === right.id),
     running,

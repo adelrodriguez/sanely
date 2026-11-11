@@ -28,13 +28,21 @@ export const monitor = createDeploymentMonitor({ checkInterval: "1m" })
 | `running`          | `Deployment`                                           | The running deployment in the embed | The deployment that produced this page. Set it for a preview or a test.                                                                                                                        |
 | `isCurrent`        | `(running: Deployment, target: Deployment) => boolean` | Exact deployment ID match           | Decides whether the running deployment is current for a target. Must be pure.                                                                                                                  |
 | `checkInterval`    | `number \| string`                                     | `300000`                            | Milliseconds or a time expression, such as `"5m"`, between checks while the page is visible. Values below `10000` change to `10000`, with a warning.                                           |
-| `checkTimeout`     | `number \| string`                                     | `30000`                             | Milliseconds or a time expression, such as `"10s"`, before a check stops with a timeout error. Must be finite. You cannot turn it off.                                                         |
+| `checkTimeout`     | `number \| string`                                     | `30000`                             | Milliseconds or a time expression, such as `"10s"`, before a check stops with a timeout error. You cannot turn it off.                                                                         |
 | `checkOnReconnect` | `boolean`                                              | `true`                              | Check when the browser comes back online.                                                                                                                                                      |
 | `checkOnSubscribe` | `boolean`                                              | `true`                              | Check when the first subscriber attaches.                                                                                                                                                      |
 | `checkOnVisible`   | `boolean`                                              | `true`                              | Check when the page becomes visible or the browser restores it from the back-forward cache.                                                                                                    |
 | `environment`      | `RuntimeEnvironment`                                   | The browser environment             | Timers, events, storage, and reload. Replace it in tests or in a runtime that is not a browser.                                                                                                |
 
-`checkInterval` and `checkTimeout` take milliseconds or a time expression from `@sanely/duration`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from `@sanely/duration` first. `createDeploymentMonitor` throws `InvalidTimeExpressionError` for a string that is not a time expression.
+`checkInterval` and `checkTimeout` take milliseconds or a time expression from `@sanely/duration`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from `@sanely/duration` first. Each time option must be a whole number of milliseconds from 1 to 2147483647, about 24.8 days, which is the longest delay a timer can wait for. `createDeploymentMonitor` throws `InvalidOptionError` for any other value, including a string that is not a time expression.
+
+### `InvalidOptionError`
+
+An `Error` with `name` set to `"InvalidOptionError"`. `option` names the option, such as `"checkTimeout"`, and `value` holds the value that `createDeploymentMonitor` rejected.
+
+```ts
+createDeploymentMonitor({ checkInterval: "30d" }) // throws InvalidOptionError, option "checkInterval"
+```
 
 ## `DeploymentMonitor`
 

@@ -4,6 +4,7 @@ import { describe, expectTypeOf, it } from "vitest"
 import type { NextConfigExport } from "#adapters/next/index.ts"
 import type {
   Deployment,
+  InvalidOptionError,
   DeploymentMonitor,
   DeploymentMonitorOptions,
   DeploymentStatus,
@@ -81,6 +82,13 @@ describe("createDeploymentMonitor", () => {
   it("rejects a source object", () => {
     // @ts-expect-error -- the running deployment comes from the embed or from options.running.
     createDeploymentMonitor({ resolveTarget: () => Promise.resolve({ id: "target" }) })
+  })
+})
+
+describe("InvalidOptionError", () => {
+  it("names the option and the value it rejected", () => {
+    expectTypeOf<InvalidOptionError["option"]>().toEqualTypeOf<string>()
+    expectTypeOf<InvalidOptionError["value"]>().toEqualTypeOf<unknown>()
   })
 })
 
