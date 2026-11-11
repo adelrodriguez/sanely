@@ -507,7 +507,9 @@ export async function resolveDecision<TIdentity extends Subject>(
   if (store) {
     indexCacheKey(config, context, store, key)
     attachInvalidationSubscription(config)
-    // A fresh read skips the stored decision but still stores the provider's.
+    // A fresh read skips the stored decision but still stores the provider's. It also voids the
+    // write tickets of older calls, so a slower older call cannot store over its decision.
+    if (fresh) state.writes.generation += 1
     const consultation = fresh
       ? { generation: state.writes.generation }
       : await raceWithSignal(() => consultStore(config, context, flag, store, key), signal)

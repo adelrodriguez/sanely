@@ -342,6 +342,42 @@ describe("first-class cache", () => {
     expect(await staging.details(betaAccess)).toMatchObject({ source: "provider", value: false })
   })
 
+  test.each([true, false])(
+    "keeps a fresh decision when an older call finishes later, with coalesce %s",
+    async (coalesce) => {
+      const stored = new Map<string, Decision>()
+      const older = createDeferred<Decision>()
+      const answers: Array<() => Promise<Decision>> = [
+        () => older.promise,
+        () => Promise.resolve(FALSE),
+      ]
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: (key) => Promise.resolve(stored.get(key)),
+            set: (key, value) => {
+              stored.set(key, value)
+              return Promise.resolve()
+            },
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => answers.shift()?.() ?? TRUE, name: "test" }),
+      })
+
+      const first = flags.details(betaAccess)
+      await flushBackground()
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({ value: false })
+      await flushBackground()
+      older.resolve(TRUE)
+      await first
+      await flushBackground()
+
+      expect(await flags.details(betaAccess)).toMatchObject({ source: "cache", value: false })
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {
