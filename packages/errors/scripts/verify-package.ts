@@ -1,15 +1,15 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, rmSync, writeFileSync } from "node:fs"
-import type * as FaultErrorsContract from "../src/errors"
-import type * as FaultContract from "../src/index"
 
 const rootSpecifier = "@sanely/errors"
 const errorsSpecifier = "@sanely/errors/errors"
 const typesSpecifier = "@sanely/errors/types"
 
-const Fault = (await import(rootSpecifier)) as typeof FaultContract
-const FaultErrors = (await import(errorsSpecifier)) as typeof FaultErrorsContract
-const FaultTypes = (await import(typesSpecifier)) as object
+// The specifiers resolve to the built package, which the type checker does not read, so each
+// module is checked at run time.
+const Fault: object = await import(rootSpecifier)
+const FaultErrors: object = await import(errorsSpecifier)
+const FaultTypes: object = await import(typesSpecifier)
 
 function assertExports(namespace: object, expected: string[], entrypoint: string): void {
   const actual = Object.keys(namespace)
@@ -54,14 +54,22 @@ assertExports(
 )
 assertExports(FaultTypes, [], "@sanely/errors/types")
 
+const fromSerializable: unknown = "fromSerializable" in Fault ? Fault.fromSerializable : undefined
+const InvalidPayloadError: unknown =
+  "InvalidPayloadError" in FaultErrors ? FaultErrors.InvalidPayloadError : undefined
+
+if (typeof fromSerializable !== "function" || typeof InvalidPayloadError !== "function") {
+  throw new Error("fromSerializable and InvalidPayloadError must be functions")
+}
+
 let thrown: unknown
 try {
-  Fault.fromSerializable({ __fault: false })
+  fromSerializable.call(Fault, { __fault: false })
 } catch (error) {
   thrown = error
 }
 
-if (!(thrown instanceof FaultErrors.InvalidPayloadError)) {
+if (!(thrown instanceof InvalidPayloadError)) {
   throw new Error("Root behavior and @sanely/errors/errors do not share error constructor identity")
 }
 

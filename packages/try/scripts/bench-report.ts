@@ -9,19 +9,6 @@ const VITEST_REPORT_PATH = join(OUTPUT_DIR, "vitest.json")
 const LATEST_REPORT_PATH = join(OUTPUT_DIR, "latest.json")
 const SUMMARY_PATH = join(OUTPUT_DIR, "summary.md")
 
-type RawBenchmarkTask = {
-  latency?: {
-    mean?: unknown
-    samplesCount?: unknown
-  }
-  name?: unknown
-}
-
-type RawBenchmark = {
-  name?: unknown
-  tasks?: unknown
-}
-
 type RawBenchmarkPayload = {
   testResults?: unknown
 }
@@ -47,8 +34,14 @@ export type BenchmarkArtifact = {
   }
 }
 
-export function parseRawBenchmarkPayload(text: string) {
-  return JSON.parse(text) as RawBenchmarkPayload
+export function parseRawBenchmarkPayload(text: string): RawBenchmarkPayload {
+  const payload: unknown = JSON.parse(text)
+
+  if (!isRecord(payload)) {
+    throw new Error("Benchmark payload is not an object")
+  }
+
+  return { testResults: payload.testResults }
 }
 
 export function normalizeBenchmarkPayload(
@@ -146,14 +139,18 @@ function normalizeBenchmarks(value: unknown) {
 
     return file.assertionResults.flatMap((test) =>
       isRecord(test) && Array.isArray(test.benchmarks)
-        ? test.benchmarks.map((benchmark: RawBenchmark) => {
-            if (!Array.isArray(benchmark.tasks)) {
-              throw new Error(`Benchmark ${describeName(benchmark.name)} is missing tasks`)
+        ? test.benchmarks.map((benchmark: unknown) => {
+            if (!isRecord(benchmark) || !Array.isArray(benchmark.tasks)) {
+              throw new Error(
+                `Benchmark ${describeName(isRecord(benchmark) ? benchmark.name : undefined)} is missing tasks`
+              )
             }
+
+            const tasks: unknown[] = benchmark.tasks
 
             return {
               name: normalizeRequiredString(benchmark.name, "Benchmark is missing name"),
-              tasks: benchmark.tasks as RawBenchmarkTask[],
+              tasks,
             }
           })
         : []
@@ -161,11 +158,16 @@ function normalizeBenchmarks(value: unknown) {
   })
 }
 
-function normalizeTask(task: RawBenchmarkTask, group: string) {
+function normalizeTask(task: unknown, group: string) {
+  if (!isRecord(task)) {
+    throw new Error("Benchmark task is not an object")
+  }
+
   const name = normalizeRequiredString(task.name, "Benchmark task is missing name")
-  const meanMs = normalizeFiniteNumber(task.latency?.mean, `Benchmark ${name} is missing mean`)
+  const latency = isRecord(task.latency) ? task.latency : {}
+  const meanMs = normalizeFiniteNumber(latency.mean, `Benchmark ${name} is missing mean`)
   const samples = normalizeFiniteNumber(
-    task.latency?.samplesCount,
+    latency.samplesCount,
     `Benchmark ${name} is missing samplesCount`
   )
   const avgNs = meanMs * 1e6

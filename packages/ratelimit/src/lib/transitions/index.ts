@@ -77,14 +77,16 @@ function applyFixedWindow(
 }
 
 function applySlidingWindow(
-  { limit, window: size }: SlidingWindow,
+  algorithm: SlidingWindow,
   state: State | undefined,
   cost: number,
   now: number
 ): Transition {
+  const { limit, window: size } = algorithm
   const window = Math.floor(now / size)
   const start = window * size
-  const { current, previous } = slidingWindowCounts(state, window)
+  const counts = slidingWindowCounts(state, window)
+  const { current, previous } = counts
   // The previous window counts in proportion to how much of it the sliding period still covers.
   const used = Math.floor((previous * (size - (now - start))) / size) + current
 
@@ -93,7 +95,7 @@ function applySlidingWindow(
       result: {
         now,
         remaining: Math.max(0, limit - used),
-        reset: slidingWindowRetry({ cost, current, limit, previous, size, start }),
+        reset: slidingWindowRetry(algorithm, counts, start, cost),
         success: false,
       },
     }
@@ -123,21 +125,12 @@ function slidingWindowCounts(state: State | undefined, window: number) {
 // needs floor(previous * (size - elapsed) / size) <= limit - current - cost. When the current
 // window alone is too full, the request waits for the next window, where `current` becomes the
 // previous count. Integer arithmetic keeps this identical to the Redis script.
-function slidingWindowRetry({
-  cost,
-  current,
-  limit,
-  previous,
-  size,
-  start,
-}: {
+function slidingWindowRetry(
+  { limit, window: size }: SlidingWindow,
+  { current, previous }: ReturnType<typeof slidingWindowCounts>,
+  start: number,
   cost: number
-  current: number
-  limit: number
-  previous: number
-  size: number
-  start: number
-}) {
+) {
   const room = limit - current - cost
 
   if (room >= 0) {

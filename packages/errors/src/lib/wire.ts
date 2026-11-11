@@ -2,6 +2,12 @@
 // decoding (reviver.ts). This module must stay dependency-free so the
 // lib import graph remains a DAG.
 
+// The DOM types declare that `JSON.stringify` returns a string, but it returns undefined for
+// undefined, a function, a symbol, or a `toJSON` that returns one of them.
+export function stringifyJson(value: unknown): string | undefined {
+  return JSON.stringify(value)
+}
+
 export type SerializableValue =
   | string
   | number
@@ -59,7 +65,7 @@ export function normalizeThrown(value: unknown): SerializableValue {
   if (typeof value === "function") return "[Function]"
 
   try {
-    const serialized = JSON.stringify(value) as string | undefined
+    const serialized = stringifyJson(value)
     if (serialized === undefined) return stringifyFallback(value)
 
     const parsed: unknown = JSON.parse(serialized)

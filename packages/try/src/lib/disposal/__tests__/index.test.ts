@@ -292,6 +292,31 @@ describe("disposer shim", () => {
       expect(calls).toEqual(["async"])
     })
 
+    it("falls back to the sync dispose method, including an inherited one, and calls it on the resource", async () => {
+      const calls: unknown[] = []
+      const stack = disposer()
+      const prototype: DisposableLike = {
+        [DISPOSE](this: unknown) {
+          calls.push(this)
+        },
+      }
+      const resource: object = Object.create(prototype)
+
+      stack.use(resource as Disposable)
+
+      await stack.dispose()
+
+      expect(calls).toEqual([resource])
+    })
+
+    it("throws a TypeError for a resource without a dispose method", () => {
+      const stack = disposer()
+
+      expect(() => stack.use({ [ASYNC_DISPOSE]: "not a function" } as never)).toThrow(
+        new TypeError("Object not disposable")
+      )
+    })
+
     it("fails fast before reading an async disposer from an already disposed async stack", async () => {
       const stack = disposer()
       let getterCalls = 0

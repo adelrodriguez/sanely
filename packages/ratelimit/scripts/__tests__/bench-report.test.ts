@@ -45,6 +45,14 @@ function run(cases: Case[]) {
   return spawnSync(process.execPath, [script, directory], { encoding: "utf8" })
 }
 
+function runFile(content: unknown) {
+  const directory = mkdtempSync(join(tmpdir(), "bench-report-"))
+  directories.push(directory)
+  writeFileSync(join(directory, "unit.1.json"), JSON.stringify(content))
+
+  return spawnSync(process.execPath, [script, directory], { encoding: "utf8" })
+}
+
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { force: true, recursive: true })
 })
@@ -55,6 +63,18 @@ describe("bench-report", () => {
 
     expect(result.stdout).toContain("✅ No regressions")
     expect(result.status).toBe(0)
+  })
+
+  it("fails with the missing field when a file is not a benchmark report", () => {
+    const [first] = report(budgeted).testResults
+    const result = runFile({
+      testResults: [{ assertionResults: first?.assertionResults.map(({ title }) => ({ title })) }],
+    })
+
+    expect(result.stderr).toContain(
+      "unit.1.json is not a Vitest benchmark report: ancestorTitles is missing"
+    )
+    expect(result.status).toBe(1)
   })
 
   it("fails when a budget matches no benchmark case", () => {

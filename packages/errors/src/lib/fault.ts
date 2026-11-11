@@ -4,6 +4,7 @@ import {
   type SerializableCause,
   type SerializableFault,
   type SerializableValue,
+  stringifyJson,
 } from "./wire"
 
 export type FlattenField = "message" | "description"
@@ -155,7 +156,7 @@ function valueToMessage(value: unknown): string {
   if (typeof value === "object") {
     try {
       // JSON.stringify returns undefined when toJSON returns undefined or a function.
-      const serialized = JSON.stringify(value) as string | undefined
+      const serialized = stringifyJson(value)
       return serialized ?? Object.prototype.toString.call(value)
     } catch {
       return Object.prototype.toString.call(value)

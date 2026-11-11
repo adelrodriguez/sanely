@@ -22,7 +22,9 @@ const UNITS = ["ms", "s", "m", "h", "d", "w", "mo", "y", "seconds", "Minutes", "
 const FUNCTIONS = ["ms", "seconds", "minutes", "hours", "days", "weeks", "months", "years"]
 
 function pick<T>(values: readonly T[], index: number): T {
-  return values[index % values.length] as T
+  const value = values[index % values.length]
+  if (value === undefined) throw new Error("pick needs a list without undefined entries")
+  return value
 }
 
 function expression(index: number): string {

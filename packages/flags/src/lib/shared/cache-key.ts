@@ -31,9 +31,10 @@ export function serializeKey(value: unknown, rootPath: "cacheKey"): string {
       case "string":
         return `string:${JSON.stringify(current)}`
       case "object": {
-        const prototype = Object.getPrototypeOf(current)
+        const prototype: object | null = Object.getPrototypeOf(current)
         if (!Array.isArray(current) && prototype !== Object.prototype && prototype !== null) {
-          const constructor = (prototype as { constructor?: unknown }).constructor
+          // A prototype may lack a constructor, or hold a non-function one.
+          const { constructor }: { constructor?: unknown } = prototype
           const kind =
             typeof constructor === "function" && constructor.name
               ? constructor.name
@@ -62,16 +63,13 @@ export function serializeKey(value: unknown, rootPath: "cacheKey"): string {
               .join(",")}]`
           }
 
-          const keys = Object.keys(current)
-
-          keys.sort()
-          const entries = keys.map(
-            (key) =>
-              `${JSON.stringify(key)}:${encode(
-                (current as Record<string, unknown>)[key],
-                `${path}.${key}`
-              )}`
-          )
+          // Each value is read after the sort, so getters run in key order.
+          const entries = Object.keys(current)
+            .toSorted()
+            .map((key) => {
+              const item: unknown = Reflect.get(current, key)
+              return `${JSON.stringify(key)}:${encode(item, `${path}.${key}`)}`
+            })
           return `object:{${entries.join(",")}}`
         } finally {
           ancestors.delete(current)

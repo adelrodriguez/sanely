@@ -140,7 +140,7 @@ function createRegistry<const M extends Record<string, AnyFaultCtor>>(
   const tags: string[] = []
 
   for (const [registryKey, ctor] of entries) {
-    const ctorTag = (ctor as { _tag?: unknown })._tag
+    const ctorTag = "_tag" in ctor ? ctor._tag : undefined
     if (ctorTag !== registryKey) {
       throw new RegistryTagMismatchError({
         ctorTag: typeof ctorTag === "string" ? ctorTag : String(ctorTag),
