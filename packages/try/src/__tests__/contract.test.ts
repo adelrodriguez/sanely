@@ -291,3 +291,158 @@ describe("nested terminal calls", () => {
     expectUnhandled(result, failure)
   })
 })
+
+/**
+ * Each orchestration API runs one task that registers `cleanups` on `this.$disposer`, then throws
+ * `failure` when one is given.
+ */
+interface CleanupOrchestration {
+  name: string
+  call(cleanups: Array<() => unknown>, failure?: Error): Promise<unknown>
+  /**
+   * Whether a task failure stops the graph, rather than staying a settled outcome.
+   */
+  stopsOnFailure: boolean
+}
+
+const cleanupOrchestrations: CleanupOrchestration[] = [
+  {
+    call: (cleanups, failure) =>
+      try$.all({
+        a() {
+          for (const cleanup of cleanups) {
+            this.$disposer.defer(async () => {
+              await cleanup()
+            })
+          }
+
+          if (failure) {
+            throw failure
+          }
+
+          return 1
+        },
+      }),
+    name: "all",
+    stopsOnFailure: true,
+  },
+  {
+    call: (cleanups, failure) =>
+      try$.allSettled({
+        a() {
+          for (const cleanup of cleanups) {
+            this.$disposer.defer(async () => {
+              await cleanup()
+            })
+          }
+
+          if (failure) {
+            throw failure
+          }
+
+          return 1
+        },
+      }),
+    name: "allSettled",
+    stopsOnFailure: false,
+  },
+  {
+    call: (cleanups, failure) =>
+      try$.flow({
+        a() {
+          for (const cleanup of cleanups) {
+            this.$disposer.defer(async () => {
+              await cleanup()
+            })
+          }
+
+          if (failure) {
+            throw failure
+          }
+
+          return this.$exit(1)
+        },
+      }),
+    name: "flow",
+    stopsOnFailure: true,
+  },
+]
+
+describe.each(cleanupOrchestrations)("$name reports a task cleanup failure", (orchestration) => {
+  it("throws a Panic whose cause is the cleanup error, after every cleanup runs", async () => {
+    const calls: string[] = []
+    const cleanupError = new Error("cleanup")
+
+    const error: unknown = await orchestration
+      .call([
+        () => {
+          calls.push("first")
+        },
+        () => {
+          throw cleanupError
+        },
+      ])
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error_: unknown) => error_
+      )
+
+    expectPanic(error, "TASK_CLEANUP_THROW")
+    expect((error as Panic).cause).toBe(cleanupError)
+    expect(calls).toEqual(["first"])
+  })
+
+  it("keeps the task failure as the suppressed error when that failure stopped the graph", async () => {
+    const cleanupError = new Error("cleanup")
+    const failure = new Error("boom")
+
+    const error: unknown = await orchestration
+      .call(
+        [
+          async () => {
+            await Promise.resolve()
+            throw cleanupError
+          },
+        ],
+        failure
+      )
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error_: unknown) => error_
+      )
+
+    expectPanic(error, "TASK_CLEANUP_THROW")
+
+    if (orchestration.stopsOnFailure) {
+      expect((error as Panic).cause).toMatchObject({
+        error: cleanupError,
+        name: "SuppressedError",
+        suppressed: failure,
+      })
+    } else {
+      expect((error as Panic).cause).toBe(cleanupError)
+    }
+  })
+})
+
+describe("task cleanup failures", () => {
+  it("lets a task Panic win over a cleanup failure", async () => {
+    const error: unknown = await try$
+      .all({
+        async a(): Promise<unknown> {
+          this.$disposer.defer(() => {
+            throw new Error("cleanup")
+          })
+
+          // Reading its own result is misuse, so the task throws a Panic.
+          return await this.$result.a
+        },
+      })
+      .then(
+        () => expect.unreachable("should have thrown"),
+        (error_: unknown) => error_
+      )
+
+    expectPanic(error, "TASK_SELF_REFERENCE")
+  })
+})
