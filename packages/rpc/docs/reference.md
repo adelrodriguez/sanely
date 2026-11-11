@@ -8,6 +8,8 @@
 - `@sanely/rpc/wire/message-port`
 - `@sanely/rpc/wire/web-socket`
 
+`@sanely/rpc/wire` also exports everything from the three `@sanely/rpc/wire/*` entry points.
+
 ## `@sanely/rpc`
 
 ### `channel`
@@ -41,7 +43,7 @@ Returns `tree` unchanged. Branches are plain objects, and leaves are channels. T
 Returns a `Router`. `resolvers` takes one of two shapes:
 
 - A flat map from dotted path to resolver. The context type defaults to `void`. Use `createRouter.$context<Session>()` to fix it while inferring the contract, or pass both type arguments: `createRouter<typeof contract, Session>(contract, resolvers)`.
-- A tree of handlers from `implement()` with the same shape as the contract. The context type comes from the handlers. Keys that aren't in the contract are ignored.
+- A handler tree of fragments from `implement()`, with the same shape as the contract. The context type comes from the fragments. Keys that aren't in the contract are ignored.
 
 A missing resolver is a compile error. At runtime it throws a `SetupError` with code `missing-resolver`.
 
@@ -61,7 +63,7 @@ const notesRouter = createSessionRouter(notesContract, {
 })
 ```
 
-The factory accepts both flat resolver maps and handler trees from `implement()`. Handler fragments must accept the fixed context type. Missing leaves, misplaced fragments, and resolver input/output types are checked as with `createRouter`.
+The factory accepts both flat resolver maps and handler trees of fragments from `implement()`. Fragments must accept the fixed context type. Missing leaves, misplaced fragments, and resolver input/output types are checked as with `createRouter`.
 
 This is a type-level operation, not a bound context value. `dispatch` still requires `{ context }` when the fixed type isn't `void`. The original `createRouter` keeps its default `void` context and handler-tree inference.
 
@@ -172,16 +174,16 @@ Returns `true` if `node` is a leaf.
 
 The class of every failure that the package raises during a call. `code` selects the extra fields.
 
-| `code`               | Raised when                                                    | Extra fields                      |
-| -------------------- | -------------------------------------------------------------- | --------------------------------- |
-| `application`        | A resolver throws it to send its own failure to the caller     | `data`                            |
-| `validation`         | The input fails its schema                                     | `issues`                          |
-| `output-validation`  | A round-trip resolver returns a value that fails `output`      | `issues`                          |
-| `unknown-channel`    | The path isn't in the contract                                 | `path`                            |
-| `internal`           | `toWire` or `connect` hid a failure from the caller            |                                   |
-| `timeout`            | A `connect` call gets no response within its `timeout`         | `path`, `timeout` in milliseconds |
-| `closed`             | A `connect` session closes, or a socket closes before it opens | `cause`                           |
-| `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`          |                                   |
+| `code`               | Raised when                                                                         | Extra fields                      |
+| -------------------- | ----------------------------------------------------------------------------------- | --------------------------------- |
+| `application`        | A resolver throws it to send its own failure to the caller                          | `data`                            |
+| `validation`         | The input fails its schema                                                          | `issues`                          |
+| `output-validation`  | A round-trip resolver returns a value that fails `output`                           | `issues`                          |
+| `unknown-channel`    | The path isn't in the contract                                                      | `path`                            |
+| `internal`           | `toWire` or `connect` hid a failure from the caller                                 |                                   |
+| `timeout`            | A `connect` call gets no response within its `timeout`                              | `path`, `timeout` in milliseconds |
+| `closed`             | A `connect` session closes, or `whenOpen`'s socket errors or closes before it opens | `cause`                           |
+| `malformed-envelope` | `fromWire` receives a value that isn't a `WireResult`                               |                                   |
 
 `issues` holds the Standard Schema issues. `data` holds any value the wire can carry, and the package never inspects it. Validate it where you rebuild the error.
 
@@ -213,7 +215,7 @@ The class of every wiring mistake. It is thrown when you build something, and it
 | `ResolverArgs<Input, Context>`             | A resolver's argument, `{ input, context, signal }`     |
 | `Router<Context>`                          | The value `createRouter` and `mergeRouters` return      |
 | `DispatchOptions<Context>`                 | The third argument of `dispatch`, `{ context, signal }` |
-| `Implementer`, `Fragment`, `FragmentTree`  | The builder, its handlers, and a tree of handlers       |
+| `Implementer`, `Fragment`, `FragmentTree`  | The builder, one fragment, and a handler tree           |
 | `ChannelErrorDetail`, `SetupErrorDetail`   | The `code` and extra fields of each error class         |
 
 ## `@sanely/rpc/wire`
@@ -310,13 +312,18 @@ Returns `(request: Request) => Promise<Response>`. The last segment of the reque
 | `expose`   | `(error: unknown) => boolean`   | Decides which failures the caller sees as-is, as in `toWire`                                                                                        |
 | `onHidden` | `(error: unknown) => void`      | Receives every hidden failure, except one caused by a client that disconnected                                                                      |
 
-| Outcome                                 | Status |
-| --------------------------------------- | ------ |
-| Success                                 | 200    |
-| `validation`, or a body that isn't JSON | 400    |
-| `unknown-channel`                       | 404    |
-| A method other than `POST`              | 405    |
-| `internal` and every other failure      | 500    |
+| Outcome                                                  | Status |
+| -------------------------------------------------------- | ------ |
+| Success                                                  | 200    |
+| `validation`, or a body that isn't JSON                  | 400    |
+| `unknown-channel`                                        | 404    |
+| A method other than `POST`                               | 405    |
+| `application`                                            | 422    |
+| `internal`, `output-validation`, or a non-`ChannelError` | 500    |
+| `closed` or `malformed-envelope`                         | 502    |
+| `timeout`                                                | 504    |
+
+A failure that `toWire` hides crosses as `internal`, so `output-validation`, `closed`, `malformed-envelope`, and `timeout` get their own status only when `expose` accepts them.
 
 The request's `signal` reaches the resolver, so a client that disconnects aborts it.
 
@@ -332,6 +339,8 @@ Returns a `Transport<{ signal?: AbortSignal }>` that calls a `fetchHandler` at `
 A call's `signal` cancels the request, and the call rejects with `signal.reason`. A response that isn't an envelope rejects with a `ChannelError` with code `malformed-envelope`. A network failure rejects with the error `fetch` raised.
 
 Payloads must survive `JSON.stringify`. A call with an `undefined` payload sends no body, so `undefined` and `null` stay distinct.
+
+`FetchHandlerOptions<Context>` and `FetchTransportOptions` are the option types of `fetchHandler` and `fetchTransport`.
 
 ## `@sanely/rpc/wire/message-port`
 
@@ -373,13 +382,26 @@ Call `relayPort` before the preload awaits anything. Electron drops an IPC messa
 
 If `relayPort` or `receivePort` gets no `target` and there is no global `window`, it throws a `SetupError` with code `no-window`.
 
+These types describe the parameters:
+
+| Type                  | Describes                                                            |
+| --------------------- | -------------------------------------------------------------------- |
+| `MainPortLike`        | An Electron `MessagePortMain`, the parameter of `mainPort`           |
+| `DomPortLike`         | A DOM `MessagePort`, the parameter of `domPort`                      |
+| `NodePortLike`        | A `node:worker_threads` port, the parameter of `nodePort`            |
+| `PortWindowLike`      | A `BrowserWindow`, the `win` parameter of `sendPort`                 |
+| `PortIpcRendererLike` | Electron's `ipcRenderer`, the parameter of `relayPort`               |
+| `MessageWindowLike`   | A DOM `window`, the `target` option of `relayPort` and `receivePort` |
+
 ## `@sanely/rpc/wire/web-socket`
 
-| Export              | Description                                                                       |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `webSocket(socket)` | Wraps a browser `WebSocket`, a Node `WebSocket`, or a `ws` socket as a `Wire`     |
-| `whenOpen(socket)`  | Resolves with `socket` once it can send. Rejects with `closed` if it closes first |
+| Export              | Description                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `webSocket(socket)` | Wraps a browser `WebSocket`, a Node `WebSocket`, or a `ws` socket as a `Wire`                                                            |
+| `whenOpen(socket)`  | Resolves with `socket` once it can send. Rejects with a `ChannelError` with code `closed` if the socket errors or closes before it opens |
 
 `webSocket` sends JSON frames. Payloads must survive `JSON.stringify`.
+
+`WebSocketLike` is the parameter type of both functions. A browser `WebSocket`, a Node `WebSocket`, and a `ws` socket all match it.
 
 `whenOpen` removes its listeners once it settles. On a `ws` socket, Node throws on an unhandled `error` event, so attach your own `error` listener.

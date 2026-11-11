@@ -65,13 +65,13 @@ Tutorial:
 
 How-to guides:
 
-- [Split handlers across files](./docs/how-to/split-handlers-across-files.md)
-- [Pass per-call options like an `AbortSignal`](./docs/how-to/pass-per-call-options.md)
-- [Cancel a call and stop its resolver](./docs/how-to/cancel-calls.md)
-- [Serve a contract over HTTP](./docs/how-to/serve-over-http.md)
-- [Call the Electron main process over IPC](./docs/how-to/call-electron-main-over-ipc.md)
-- [Call in both directions over Electron MessagePorts](./docs/how-to/call-over-electron-message-ports.md)
-- [Write your own transport](./docs/how-to/write-a-transport.md)
+- [How to split resolvers across files](./docs/how-to/split-handlers-across-files.md)
+- [How to pass per-call options](./docs/how-to/pass-per-call-options.md)
+- [How to cancel a call](./docs/how-to/cancel-calls.md)
+- [How to serve a contract over HTTP](./docs/how-to/serve-over-http.md)
+- [How to call the Electron main process over IPC](./docs/how-to/call-electron-main-over-ipc.md)
+- [How to call in both directions over Electron MessagePorts](./docs/how-to/call-over-electron-message-ports.md)
+- [How to write your own transport](./docs/how-to/write-a-transport.md)
 
 Reference:
 

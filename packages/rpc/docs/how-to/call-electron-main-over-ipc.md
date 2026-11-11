@@ -22,7 +22,7 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
 
    `ipcRenderer.invoke` rethrows only an error's message, so the handler wraps each outcome with `toWire`. The envelope keeps a `ChannelError`'s code and fields. By default, `toWire` hides server-side failures behind the code `internal`. Pass `expose` to send more, and `onHidden` to log what it hides.
 
-   If each feature has its own router, merge them first with `mergeRouters(filesRouter, settingsRouter)` and run the same loop over the result. See [How to split handlers across files](./split-handlers-across-files.md#serve-several-routers-as-one).
+   If each feature has its own router, merge them first with `mergeRouters(filesRouter, settingsRouter)` and run the same loop over the result. See [How to split resolvers across files](./split-handlers-across-files.md#serve-several-routers-as-one).
 
 2. In the preload, expose only the transport function. The client is a Proxy, and `contextBridge` can't pass a Proxy because it structured-clones what it exposes.
 
