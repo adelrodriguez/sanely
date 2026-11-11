@@ -1,7 +1,6 @@
 {
   "name": "@sanely/request",
   "version": "0.0.1",
-  "private": true,
   "description": "Read the client IP address and location from a request",
   "keywords": [],
   "homepage": "https://github.com/adelrodriguez/sanely/tree/main/packages/request#readme",
