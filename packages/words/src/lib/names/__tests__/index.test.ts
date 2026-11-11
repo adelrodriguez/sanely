@@ -119,36 +119,26 @@ describe("generate", () => {
       )
     })
 
-    it("decides a tight limit for many words quickly", () => {
-      // The shortest 8-word name: the shortest prefix, the 7 shortest nouns, and 7 separators.
+    it.each([8, 16])("decides the tightest limit for %i words quickly", (segments) => {
+      // The shortest name: the shortest prefix, the shortest nouns, and the separators.
       const shortest =
         Math.min(...[...prefixWords].map((word) => word.length))
         + [...nounWords]
           .map((word) => word.length)
           .toSorted((a, b) => a - b)
-          .slice(0, 7)
-          .reduce((total, length) => total + length, 7)
+          .slice(0, segments - 1)
+          .reduce((total, length) => total + length, segments - 1)
       const start = performance.now()
 
-      expect(() => generate({ maxLength: shortest - 1, segments: 8 })).toThrow(NotEnoughWordsError)
-      expect(generate({ maxLength: shortest, segments: 8 })).toHaveLength(shortest)
+      expect(() => generate({ maxLength: shortest - 1, segments })).toThrow(NotEnoughWordsError)
+      expect(generate({ maxLength: shortest, segments })).toHaveLength(shortest)
       expect(performance.now() - start).toBeLessThan(500)
     })
   })
 
-  it("generates a long default name quickly", () => {
-    const start = performance.now()
-    const words = generate({ segments: 1000 }).split("-")
-
-    expect(new Set(words).size).toBe(1000)
-    expect(performance.now() - start).toBeLessThan(500)
-  })
-
-  it("rejects more words than the lists hold before searching", () => {
-    const start = performance.now()
-
-    expect(() => generate({ segments: 5000 })).toThrow(new NotEnoughWordsError("unique"))
-    expect(performance.now() - start).toBeLessThan(500)
+  it("rejects more than 16 words before searching", () => {
+    expect(() => generate({ segments: 17 })).toThrow(InvalidOptionError)
+    expect(() => generate({ segments: 5000 })).toThrow(InvalidOptionError)
   })
 
   it("throws NotEnoughWordsError when the lists hold too few distinct words", () => {

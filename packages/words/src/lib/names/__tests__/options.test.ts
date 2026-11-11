@@ -37,6 +37,8 @@ describe("resolveSettings", () => {
   it.each([
     [{ segments: 1 }, "segments"],
     [{ segments: 2.5 }, "segments"],
+    [{ segments: 17 }, "segments"],
+    [{ pattern: Array.from({ length: 17 }, () => "animal") }, "pattern.length"],
     [{ pattern: ["animal"] }, "pattern.length"],
     [{ pattern: "animal" }, "pattern"],
     [{ pattern: ["animal", "colour"] }, "pattern[1]"],

@@ -60,8 +60,8 @@ describe("count", () => {
     ).toBe(2n)
   })
 
-  it("returns 0 for more words than the lists hold", () => {
-    expect(count({ segments: 5000 })).toBe(0n)
+  it("rejects more than 16 words", () => {
+    expect(() => count({ segments: 5000 })).toThrow(InvalidOptionError)
   })
 
   it("returns 0 when the lists hold too few distinct words", () => {

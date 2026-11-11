@@ -15,7 +15,7 @@ type Shape<N extends string> =
   | {
       /**
        * The number of words. The first word is an adjective or a color, and the rest are nouns from
-       * the other built-in lists. At least 2. Defaults to 2.
+       * the other built-in lists. From 2 to 16. Defaults to 2.
        */
       segments?: number
       pattern?: never
@@ -24,7 +24,7 @@ type Shape<N extends string> =
   | {
       /**
        * The list for each word, in order: a built-in category or the name of a custom list. Its
-       * length sets the number of words. At least 2.
+       * length sets the number of words, from 2 to 16.
        */
       pattern: ReadonlyArray<NoInfer<Category | N>>
       /**
@@ -77,6 +77,9 @@ export interface Settings {
 }
 
 const MIN_WORDS = 2
+// Fitting a name within maxLength takes longer as names get longer, so a limit keeps every call
+// fast. Readable names have far fewer words.
+const MAX_WORDS = 16
 
 // Built-in lists hold distinct words, but a word can appear in more than one list.
 const defaultPools = {
@@ -104,8 +107,13 @@ function wordList(option: string, value: unknown): WordList {
 }
 
 function wordCount(option: string, value: unknown) {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < MIN_WORDS) {
-    throw new InvalidOptionError(option, value, `an integer of at least ${MIN_WORDS}`)
+  if (
+    typeof value !== "number"
+    || !Number.isSafeInteger(value)
+    || value < MIN_WORDS
+    || value > MAX_WORDS
+  ) {
+    throw new InvalidOptionError(option, value, `an integer from ${MIN_WORDS} to ${MAX_WORDS}`)
   }
 
   return value
@@ -146,8 +154,7 @@ function patternPools(pattern: unknown, custom: ReadonlyMap<string, WordList>): 
   })
 }
 
-// Default pools keep one identity per common word count, so their word groups are built once.
-const CACHED_WORD_COUNTS = 16
+// Default pools keep one identity per word count, so their word groups are built once.
 const segmentPoolsByCount = new Map<number, WordList[]>()
 
 function segmentPools(segments: unknown): WordList[] {
@@ -156,7 +163,7 @@ function segmentPools(segments: unknown): WordList[] {
   if (cached) return cached
 
   const pools = [defaultPools.prefix, ...Array.from({ length: count - 1 }, () => defaultPools.noun)]
-  if (count <= CACHED_WORD_COUNTS) segmentPoolsByCount.set(count, pools)
+  segmentPoolsByCount.set(count, pools)
   return pools
 }
 

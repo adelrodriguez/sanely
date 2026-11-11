@@ -23,8 +23,8 @@ A name never repeats a word. Each word is chosen uniformly from the words of its
 
 | Option      | Type                     | Default       | Description                                                                                       |
 | ----------- | ------------------------ | ------------- | ------------------------------------------------------------------------------------------------- |
-| `segments`  | `number`                 | `2`           | The number of words in a default name. At least 2. Not allowed with `pattern`.                    |
-| `pattern`   | `(Category \| N)[]`      | none          | The list for each word, in order. Its length sets the number of words, at least 2.                |
+| `segments`  | `number`                 | `2`           | The number of words in a default name, from 2 to 16. Not allowed with `pattern`.                  |
+| `pattern`   | `(Category \| N)[]`      | none          | The list for each word, in order. Its length sets the number of words, from 2 to 16.              |
 | `lists`     | `{ [K in N]: WordList }` | none          | Custom lists that `pattern` can name. A name must not reuse a category. Needs `pattern`.          |
 | `omit`      | `WordList`               | none          | Words to exclude from every list, built-in and custom.                                            |
 | `separator` | `string`                 | `"-"`         | The text between words. Must not be empty.                                                        |
