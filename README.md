@@ -12,19 +12,19 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for workspace changes and releases, and 
 
 ## Packages
 
-Migrated packages contain their source libraries. The other packages still contain the starter.
+The status shows whether a package is published to npm or still private.
 
-| Package                                   | What it does                                                                                                                   | Replaces                                                  | Status   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | -------- |
-| [`@sanely/try`](packages/try)             | A better try/catch for TypeScript.                                                                                             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Migrated |
-| [`@sanely/errors`](packages/errors)       | Extensible error handling for TypeScript.                                                                                      | [`faultier`](https://github.com/adelrodriguez/faultier)   | Migrated |
-| [`@sanely/ratelimit`](packages/ratelimit) | Atomic rate limiting with pluggable stores.                                                                                    | [`richter`](https://github.com/adelrodriguez/richter)     | Migrated |
-| [`@sanely/flags`](packages/flags)         | Type-safe feature flag library for TypeScript applications.                                                                    | [`gated`](https://github.com/adelrodriguez/gated)         | Migrated |
-| [`@sanely/duration`](packages/duration)   | Parse human-readable time expressions into any unit, and format durations into human-readable strings.                         | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Migrated |
-| [`@sanely/cron`](packages/cron)           | A small, type-safe English-like language that compiles to exact cron expressions.                                              | None                                                      | Migrated |
-| [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Migrated |
-| [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Migrated |
-| [`@sanely/request`](packages/request)     | Read the client IP address and location from a request.                                                                        | None                                                      | Migrated |
+| Package                                   | What it does                                                                                                                   | Replaces                                                  | Status    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | --------- |
+| [`@sanely/try`](packages/try)             | A better try/catch for TypeScript.                                                                                             | [`tryharder`](https://github.com/adelrodriguez/tryharder) | Published |
+| [`@sanely/errors`](packages/errors)       | Extensible error handling for TypeScript.                                                                                      | [`faultier`](https://github.com/adelrodriguez/faultier)   | Published |
+| [`@sanely/ratelimit`](packages/ratelimit) | Atomic rate limiting with pluggable stores.                                                                                    | [`richter`](https://github.com/adelrodriguez/richter)     | Published |
+| [`@sanely/flags`](packages/flags)         | Type-safe feature flag library for TypeScript applications.                                                                    | [`gated`](https://github.com/adelrodriguez/gated)         | Published |
+| [`@sanely/duration`](packages/duration)   | Parse human-readable time expressions into any unit, and format durations into human-readable strings.                         | [`humanspan`](https://github.com/adelrodriguez/humanspan) | Published |
+| [`@sanely/cron`](packages/cron)           | Type-safe schedules that compile to exact cron expressions.                                                                    | None                                                      | Published |
+| [`@sanely/rpc`](packages/rpc)             | Type-safe RPC from a Standard Schema contract, over any transport: Electron IPC, workers, WebSockets, HTTP, or message queues. | [`typedport`](https://github.com/adelrodriguez/typedport) | Published |
+| [`@sanely/skew`](packages/skew)           | Keep your deployments fresh.                                                                                                   | [`crispen`](https://github.com/adelrodriguez/crispen)     | Published |
+| [`@sanely/request`](packages/request)     | Read the client IP address and location from a request.                                                                        | None                                                      | Published |
 
 The private [`@sanely/core`](packages/core) workspace holds shared definitions.
 Libraries can reuse internal workspaces without adding third-party runtime dependencies.
@@ -45,7 +45,7 @@ Cron, duration, ratelimit, and skew bundle core's JavaScript and types, so consu
 - `src/lib/` holds the library logic. Oxlint checks its declared dependency direction with `no-restricted-imports`.
 - Code imports with `#` subpath imports, such as `#lib/shared/errors.ts`.
 - Tests sit in a `__tests__/` folder beside the file they test, with the same name. `src/__tests__/types.test-d.ts` tests the public types with `expectTypeOf`.
-- `scripts/` holds the build checks that every package shares, and `setup-repo.sh`, which creates or updates the `main` ruleset on GitHub.
+- `scripts/` holds the build and compatibility checks that packages share, and `setup-repo.sh`, which creates or updates the `main` ruleset on GitHub.
 - `turbo/generators/` holds the `new-package` generator. Its templates are the starter for every package.
 - `tooling/tsconfig/` holds the TypeScript configurations. Each package's `tsconfig.json` extends `@tooling/tsconfig/library.json`, and the root `tsconfig.json` extends `@tooling/tsconfig/base.json`.
 
@@ -60,7 +60,7 @@ Run these from the root. Turborepo runs the package tasks and caches their resul
 | `pnpm run analyze`      | Package consistency, and unused files, exports, and dependencies     |
 | `pnpm run build`        | Builds every package                                                 |
 | `pnpm run dev`          | Rebuilds every package when its source changes                       |
-| `pnpm run test`         | Unit tests                                                           |
+| `pnpm run test`         | Tests for the custom lint rules, then unit tests                     |
 | `pnpm run test:compat`  | Runs each built package with the globals of the `engines.node` floor |
 | `pnpm run build:verify` | Builds, packs, installs, and type-checks each package as a consumer  |
 | `pnpm run generate`     | Runs a Turborepo generator, such as `new-package`                    |
@@ -68,10 +68,13 @@ Run these from the root. Turborepo runs the package tasks and caches their resul
 
 ## CI
 
-| Workflow         | Jobs                                                                 |
-| ---------------- | -------------------------------------------------------------------- |
-| `adamantite.yml` | `check`, `analyze`                                                   |
-| `test.yml`       | `unit`, `types-perf`, `compat`                                       |
-| `build.yml`      | `build`                                                              |
-| `release.yml`    | Waits for the jobs above, then versions or publishes with Changesets |
-| `pullfrog.yml`   | Pullfrog review agent                                                |
+| Workflow                          | Jobs                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `adamantite.yml`                  | `check`, `analyze`                                                                                      |
+| `test.yml`                        | `unit`, `types-perf`, a `compat (<package>)` job for each package, and `compat`, which reports them all |
+| `build.yml`                       | `build`                                                                                                 |
+| `release.yml`                     | Waits for the `adamantite`, `test`, and `build` workflows, then versions or publishes with Changesets   |
+| `ratelimit-stores.yml`            | Store and runtime tests for `@sanely/ratelimit`, when core, duration, or ratelimit changes              |
+| `ratelimit-performance-check.yml` | Ratelimit benchmarks on a pull request with the `performance-check` label                               |
+| `try-benchmarks.yml`              | `@sanely/try` benchmarks, weekly or on demand                                                           |
+| `pullfrog.yml`                    | Pullfrog review agent, on demand                                                                        |
