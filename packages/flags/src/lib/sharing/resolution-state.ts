@@ -14,10 +14,6 @@ export type PendingResolution = {
    */
   accepted: Promise<{ decision: Decision; payload: unknown }>
   flag: Flag
-  /**
-   * Settles when the call's store write has finished or was skipped. It never rejects.
-   */
-  stored: Promise<unknown>
   flagKey: string
   promise: Promise<unknown>
   shared: SharedSignal
@@ -61,9 +57,9 @@ export type ResolutionState<TIdentity extends Subject> = {
   // one is always safe. It is cheaper than tracking which flags a notification covers.
   writes: { generation: number }
   // The open write tickets of each evaluation key. A fresh read advances its key's epoch, which
-  // voids only that key's older tickets. A key leaves the map when its last ticket closes, so the
-  // map holds only keys with a read in flight.
-  tickets: Map<string, { epoch: number; open: number }>
+  // voids only that key's older tickets, and counts in `fresh` until its store write completes.
+  // A key leaves the map once neither count holds, so the map holds only keys with work in flight.
+  tickets: Map<string, { epoch: number; fresh: number; open: number }>
 }
 
 export function createResolutionState<TIdentity extends Subject>(): ResolutionState<TIdentity> {

@@ -405,6 +405,33 @@ describe("first-class cache", () => {
     }
   )
 
+  test.each([true, false])(
+    "returns a fresh decision even when its store write stalls, with coalesce %s",
+    async (coalesce) => {
+      const flags = createFlags({
+        cache: {
+          coalesce,
+          store: {
+            get: () => Promise.resolve(null),
+            // A store write that never finishes.
+            set: () =>
+              new Promise(() => {
+                // Never settles.
+              }),
+          },
+        },
+        identify,
+        provider: defineProvider({ decideOne: () => TRUE, name: "test" }),
+        timeout: 50,
+      })
+
+      expect(await flags.details(betaAccess, { fresh: true })).toMatchObject({
+        source: "provider",
+        value: true,
+      })
+    }
+  )
+
   test("skips the stored decision on a fresh read and stores the new one", async () => {
     const stored = new Map<string, Decision>()
     const store: DecisionStore = {

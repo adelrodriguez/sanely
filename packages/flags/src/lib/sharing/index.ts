@@ -366,8 +366,10 @@ async function consultStore<TIdentity extends Subject>(
   const generationBeforeRead = state.writes.generation
   // The delete for an earlier change has not completed, so the store can hold a stale decision.
   const { flagDeletes } = state
+  // A fresh write of this key has not completed, so the store can hold the decision it replaces.
   if (
-    state.mutations.get(key)?.deletes
+    (state.tickets.get(key)?.fresh ?? 0) > 0
+    || state.mutations.get(key)?.deletes
     || flagDeletes.all > 0
     || (flagDeletes.byFlag.get(flag.key) ?? 0) > 0
   ) {
@@ -398,9 +400,17 @@ async function consultStore<TIdentity extends Subject>(
 /**
  * A read's permission to store the decision it fetches. A change notification voids every open
  * ticket through `generation`, and a fresh read voids the older tickets of its key through `epoch`.
- * Each ticket closes once: when its write runs, or when its read ends without one.
+ * Each ticket closes once: when its write starts, or when its read ends without one. A fresh ticket
+ * also holds its key's store until the write completes, so reads of the key skip a store that may
+ * still hold the decision being replaced.
  */
-type WriteTicket = { epoch: number; generation: number; key: string; store: DecisionStore }
+type WriteTicket = {
+  epoch: number
+  fresh: boolean
+  generation: number
+  key: string
+  store: DecisionStore
+}
 
 function openTicket<TIdentity extends Subject>(
   config: Sharing<TIdentity>,
@@ -410,19 +420,32 @@ function openTicket<TIdentity extends Subject>(
   fresh: boolean
 ): WriteTicket {
   const { tickets } = config.state
-  const entry = tickets.get(key) ?? { epoch: 0, open: 0 }
-  if (fresh) entry.epoch += 1
+  const entry = tickets.get(key) ?? { epoch: 0, fresh: 0, open: 0 }
+  if (fresh) {
+    entry.epoch += 1
+    entry.fresh += 1
+  }
   entry.open += 1
   tickets.set(key, entry)
-  return { epoch: entry.epoch, generation, key, store }
+  return { epoch: entry.epoch, fresh, generation, key, store }
 }
 
-function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
+function updateTicket<TIdentity extends Subject>(
+  config: Sharing<TIdentity>,
+  ticket: WriteTicket,
+  release: { fresh: boolean; open: boolean }
+): void {
   const { tickets } = config.state
   const entry = tickets.get(ticket.key)
   if (!entry) return
-  entry.open -= 1
-  if (entry.open === 0) tickets.delete(ticket.key)
+  if (release.open) entry.open -= 1
+  if (release.fresh && ticket.fresh) entry.fresh -= 1
+  if (entry.open === 0 && entry.fresh === 0) tickets.delete(ticket.key)
+}
+
+// Closes a ticket whose read ends without a write.
+function closeTicket<TIdentity extends Subject>(config: Sharing<TIdentity>, ticket: WriteTicket) {
+  updateTicket(config, ticket, { fresh: true, open: true })
 }
 
 function writeThrough<TIdentity extends Subject>(
@@ -436,14 +459,20 @@ function writeThrough<TIdentity extends Subject>(
   // during the write queues its delete after the write.
   return mutateStore(config, storeContext(context), key, "set", () => {
     const epoch = config.state.tickets.get(key)?.epoch
-    closeTicket(config, ticket)
+    updateTicket(config, ticket, { fresh: false, open: true })
     if (config.state.writes.generation !== ticket.generation || epoch !== ticket.epoch) {
+      updateTicket(config, ticket, { fresh: true, open: false })
       return
     }
     // A change during the read removed this key from the index, so index it again for the decision
     // that this write stores.
     indexCacheKey(config, context, store, key)
-    return store.set(key, decision, { flagKey: context.flag.key })
+    // The fresh hold ends when the write completes, failed or not.
+    return Promise.resolve()
+      .then(() => store.set(key, decision, { flagKey: context.flag.key }))
+      .finally(() => {
+        updateTicket(config, ticket, { fresh: true, open: false })
+      })
   })
 }
 
@@ -473,22 +502,21 @@ function startSharedCall<TIdentity extends Subject>(
   const accepted = promise.then((decision) => accept(decision, context.flag))
   void accepted.catch(() => null)
   // Each evaluation reports its own invalid decision. The call only skips storing it.
-  const stored = write
-    ? accepted.then(
-        ({ decision }) => writeThrough(config, context, write, decision),
-        () => {
-          closeTicket(config, write)
-          return null
-        }
-      )
-    : Promise.resolve(null)
+  if (write) {
+    void accepted.then(
+      ({ decision }) => writeThrough(config, context, write, decision),
+      () => {
+        closeTicket(config, write)
+        return null
+      }
+    )
+  }
   const call: PendingResolution = {
     accepted,
     flag: context.flag,
     flagKey: context.flag.key,
     promise,
     shared,
-    stored,
   }
   state.pending.set(key, call)
   const settle = () => {
@@ -557,11 +585,7 @@ export async function resolveDecision<TIdentity extends Subject>(
       if (write) closeTicket(config, write)
       throw error
     }
-    if (write) {
-      const stored = writeThrough(config, context, write, accepted.decision)
-      // A fresh read returns once its decision is stored, so a later read of the store sees it.
-      if (fresh) await raceWithSignal(() => stored, signal)
-    }
+    if (write) void writeThrough(config, context, write, accepted.decision)
     return { ...accepted, source: "provider" }
   }
 
@@ -585,7 +609,5 @@ export async function resolveDecision<TIdentity extends Subject>(
     flag === call.flag
       ? await raceWithSignal(() => call.accepted, signal)
       : accept(await raceWithSignal(() => call.promise, signal), flag)
-  // A fresh read always starts its own call, so it returns once that call stored its decision.
-  if (fresh) await raceWithSignal(() => call.stored, signal)
   return { ...resolution, source: "provider" }
 }
