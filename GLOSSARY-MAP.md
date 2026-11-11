@@ -13,6 +13,7 @@ Each package is its own context. A package gets its glossary at `packages/<name>
 - [`@sanely/rpc`](./packages/rpc/GLOSSARY.md): calls channels from a Standard Schema contract over any transport
 - [`@sanely/skew`](./packages/skew/GLOSSARY.md): detects stale clients after a deployment
 - [`@sanely/request`](./packages/request/GLOSSARY.md): reads the client IP address and location from a request
+- [`@sanely/words`](./packages/words/GLOSSARY.md): generates friendly names from word lists
 - [`@sanely/core`](./packages/core/GLOSSARY.md): shared time units and their aliases
 
 ## Relationships

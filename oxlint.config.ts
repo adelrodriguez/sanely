@@ -84,6 +84,10 @@ const dependencies: Record<string, Record<string, string[]>> = {
     policies: ["disposal", "shared"],
     shared: ["disposal"],
   },
+  words: {
+    lists: [],
+    names: ["lists"],
+  },
 }
 
 const publicEntries = [
