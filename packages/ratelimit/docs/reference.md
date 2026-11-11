@@ -10,12 +10,12 @@ The package has five entry points:
 
 ## Algorithms
 
-Every duration is a whole number of milliseconds, up to 2^50 ms (about 35,000 years). Every count is a positive safe integer. An invalid value throws `InvalidOptionError`.
+Every duration is a whole number of milliseconds, up to 2^50 ms (about 35,000 years). Give it as a number, such as `3_600_000`, or as a time expression, such as `"1h"`. The type checker checks a literal time expression and gives the reason for an invalid one. A string from config needs `isTimeExpression` from [`@sanely/duration`](../../duration) first. Every count is a positive safe integer. An invalid value throws `InvalidOptionError`.
 
 ### `fixedWindow({ limit, window })`
 
 ```typescript
-function fixedWindow(options: WindowOptions): FixedWindow
+function fixedWindow<const T extends string>(options: WindowOptions<T>): FixedWindow
 ```
 
 Allows `limit` units in each window. Windows start at multiples of `window` since the epoch, so a window of one day starts at midnight UTC.
@@ -23,13 +23,13 @@ Allows `limit` units in each window. Windows start at multiples of `window` sinc
 ```typescript
 import { fixedWindow } from "@sanely/ratelimit"
 
-fixedWindow({ limit: 2_000, window: 86_400_000 }) // At most 2,000 units per day.
+fixedWindow({ limit: 2_000, window: "1d" }) // At most 2,000 units per day.
 ```
 
 ### `slidingWindow({ limit, window })`
 
 ```typescript
-function slidingWindow(options: WindowOptions): SlidingWindow
+function slidingWindow<const T extends string>(options: WindowOptions<T>): SlidingWindow
 ```
 
 Allows `limit` units in any period of `window`. The count is the current window's count plus the previous window's count, weighted by how much of the previous window the last full window length still covers.
@@ -37,13 +37,13 @@ Allows `limit` units in any period of `window`. The count is the current window'
 ```typescript
 import { slidingWindow } from "@sanely/ratelimit"
 
-slidingWindow({ limit: 30, window: 3_600_000 }) // At most 30 units in any hour.
+slidingWindow({ limit: 30, window: "1h" }) // At most 30 units in any hour.
 ```
 
 ### `tokenBucket({ refillRate, interval, capacity })`
 
 ```typescript
-function tokenBucket(options: TokenBucketOptions): TokenBucket
+function tokenBucket<const T extends string>(options: TokenBucketOptions<T>): TokenBucket
 ```
 
 Holds up to `capacity` tokens and adds `refillRate` tokens every `interval`. A new bucket starts full. A full refill must take at most 2^50 ms.
@@ -51,26 +51,26 @@ Holds up to `capacity` tokens and adds `refillRate` tokens every `interval`. A n
 ```typescript
 import { tokenBucket } from "@sanely/ratelimit"
 
-tokenBucket({ refillRate: 5, interval: 60_000, capacity: 50 }) // 50 tokens, 5 more every minute.
+tokenBucket({ refillRate: 5, interval: "1m", capacity: 50 }) // 50 tokens, 5 more every minute.
 ```
 
 ### Algorithm options
 
-| Type                 | Field        | Description                               |
-| -------------------- | ------------ | ----------------------------------------- |
-| `WindowOptions`      | `limit`      | The most units in one window.             |
-| `WindowOptions`      | `window`     | The window length in milliseconds.        |
-| `TokenBucketOptions` | `refillRate` | The tokens added every `interval`.        |
-| `TokenBucketOptions` | `interval`   | The time between refills in milliseconds. |
-| `TokenBucketOptions` | `capacity`   | The most tokens the bucket holds.         |
+| Type                 | Field        | Description                        |
+| -------------------- | ------------ | ---------------------------------- |
+| `WindowOptions`      | `limit`      | The most units in one window.      |
+| `WindowOptions`      | `window`     | The window length.                 |
+| `TokenBucketOptions` | `refillRate` | The tokens added every `interval`. |
+| `TokenBucketOptions` | `interval`   | The time between refills.          |
+| `TokenBucketOptions` | `capacity`   | The most tokens the bucket holds.  |
 
 ## Limiters
 
 ### `buildLimiter(options)`
 
 ```typescript
-function buildLimiter<Supported extends Algorithm>(
-  options: BuildLimiterOptions<Supported>
+function buildLimiter<Supported extends Algorithm, const T extends string>(
+  options: BuildLimiterOptions<Supported, T>
 ): DefineLimiter<Supported>
 ```
 
@@ -80,7 +80,7 @@ Binds a store and shared settings, and returns a limiter factory. Settings on a 
 | --------- | ----------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `store`   | `Store<Supported>`      | Required    | The store that holds the counts.                                                                                                                                                   |
 | `prefix`  | `string`                | None        | Goes before the limiter name in every key, joined with `:`. Printable ASCII only. Results and headers do not show it.                                                              |
-| `timeout` | `number`                | `1000`      | Milliseconds to wait for the store before the result is a store error.                                                                                                             |
+| `timeout` | `number \| string`      | `1000`      | How long to wait for the store before the result is a store error.                                                                                                                 |
 | `cache`   | `boolean`               | `true`      | Remember denials in this process until they reset, and skip the store when the same cost comes again. Each limiter remembers at most 10,000 denials, and forgets the oldest first. |
 | `mode`    | `"enforce" \| "dryRun"` | `"enforce"` | `"dryRun"` counts normally but allows denied requests.                                                                                                                             |
 
@@ -88,15 +88,19 @@ Binds a store and shared settings, and returns a limiter factory. Settings on a 
 import { buildLimiter } from "@sanely/ratelimit"
 import { memoryStore } from "@sanely/ratelimit/stores/memory"
 
-const limiter = buildLimiter({ store: memoryStore(), timeout: 500 })
+const limiter = buildLimiter({ store: memoryStore(), timeout: "500ms" })
 ```
 
 ### The limiter factory
 
 ```typescript
 type DefineLimiter<Supported extends Algorithm> = {
-  <Input>(options: LimiterOptions<Supported> & { identify: Identify<Input> }): Limiter<Input>
-  (options: LimiterOptions<Supported> & { identify?: undefined }): Limiter
+  <Input, const T extends string>(
+    options: LimiterOptions<Supported, T> & { identify: Identify<Input> }
+  ): Limiter<Input>
+  <const T extends string>(
+    options: LimiterOptions<Supported, T> & { identify?: undefined }
+  ): Limiter
 }
 ```
 
@@ -111,7 +115,7 @@ Defines one limiter. It takes these options, and also `timeout`, `cache`, and `m
 ```typescript
 const perIp = limiter({
   name: "api:ip",
-  algorithm: slidingWindow({ limit: 30, window: 3_600_000 }),
+  algorithm: slidingWindow({ limit: 30, window: "1h" }),
   identify: (request: Request) => getClientIp(request),
 })
 ```

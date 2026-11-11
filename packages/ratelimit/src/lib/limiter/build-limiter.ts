@@ -1,8 +1,9 @@
+import type { ValidateTimeExpression } from "@sanely/duration"
 import { MS_PER_SECOND } from "@sanely/core/time"
 import type { Algorithm } from "#lib/algorithms/index.ts"
 import type { Store, StoreResult } from "#lib/store/index.ts"
 import { capacityOf, windowOf } from "#lib/algorithms/index.ts"
-import { positiveInteger, printable } from "#lib/options/index.ts"
+import { milliseconds, printable } from "#lib/options/index.ts"
 import type { Identity } from "./identity.ts"
 import { blockedCache } from "./blocked-cache.ts"
 import { StoreError } from "./errors.ts"
@@ -16,11 +17,12 @@ const DEFAULT_TIMEOUT = MS_PER_SECOND
  */
 export type Mode = "enforce" | "dryRun"
 
-export type LimiterSettings = {
+export type LimiterSettings<T extends string = never> = {
   /**
-   * How long to wait for the store in milliseconds. Defaults to 1000.
+   * How long to wait for the store in milliseconds, or a time expression such as `"500ms"`.
+   * Defaults to 1000.
    */
-  readonly timeout?: number
+  readonly timeout?: number | ValidateTimeExpression<T>
   /**
    * Remember denials in this process until they reset, to skip the store. Defaults to `true`.
    */
@@ -31,7 +33,10 @@ export type LimiterSettings = {
   readonly mode?: Mode
 }
 
-export type BuildLimiterOptions<Supported extends Algorithm> = LimiterSettings & {
+export type BuildLimiterOptions<
+  Supported extends Algorithm,
+  T extends string = never,
+> = LimiterSettings<T> & {
   readonly store: Store<Supported>
   /**
    * Goes before the limiter name in every key, joined with `:`. Limiters share counts when
@@ -41,7 +46,10 @@ export type BuildLimiterOptions<Supported extends Algorithm> = LimiterSettings &
   readonly prefix?: string
 }
 
-export type LimiterOptions<Supported extends Algorithm> = LimiterSettings & {
+export type LimiterOptions<
+  Supported extends Algorithm,
+  T extends string = never,
+> = LimiterSettings<T> & {
   /**
    * Labels results and headers, and goes into every key. Printable ASCII only.
    */
@@ -136,33 +144,32 @@ export type Limiter<in Input = Identity> = {
 }
 
 export type DefineLimiter<Supported extends Algorithm> = {
-  <Input>(
-    options: LimiterOptions<Supported> & { readonly identify: Identify<Input> }
+  <Input, const T extends string = never>(
+    options: LimiterOptions<Supported, T> & { readonly identify: Identify<Input> }
   ): Limiter<Input>
-  (options: LimiterOptions<Supported> & { readonly identify?: undefined }): Limiter
+  <const T extends string = never>(
+    options: LimiterOptions<Supported, T> & { readonly identify?: undefined }
+  ): Limiter
 }
 
 /**
  * Binds a store and shared settings, and returns a function that defines limiters. Settings on a
  * limiter override the settings given here.
  */
-export function buildLimiter<Supported extends Algorithm>({
+export function buildLimiter<Supported extends Algorithm, const T extends string = never>({
   store,
   prefix,
   ...defaults
-}: BuildLimiterOptions<Supported>): DefineLimiter<Supported> {
+}: BuildLimiterOptions<Supported, T>): DefineLimiter<Supported> {
   const namespace = prefix === undefined ? "" : `${printable("prefix", prefix)}:`
 
   function define<Input>(
-    options: LimiterOptions<Supported>,
+    options: LimiterOptions<Supported, string>,
     identify: Identify<Input>
   ): Limiter<Input> {
     const name = printable("name", options.name)
     const { algorithm } = options
-    const timeout = positiveInteger(
-      "timeout",
-      options.timeout ?? defaults.timeout ?? DEFAULT_TIMEOUT
-    )
+    const timeout = milliseconds("timeout", options.timeout ?? defaults.timeout ?? DEFAULT_TIMEOUT)
     const mode = options.mode ?? defaults.mode ?? "enforce"
     const blocks = (options.cache ?? defaults.cache ?? true) ? blockedCache() : undefined
     const limit = capacityOf(algorithm)
@@ -252,12 +259,16 @@ export function buildLimiter<Supported extends Algorithm>({
     }
   }
 
-  function limiter<Input>(
-    options: LimiterOptions<Supported> & { readonly identify: Identify<Input> }
+  function limiter<Input, const L extends string = never>(
+    options: LimiterOptions<Supported, L> & { readonly identify: Identify<Input> }
   ): Limiter<Input>
-  function limiter(options: LimiterOptions<Supported> & { readonly identify?: undefined }): Limiter
+  function limiter<const L extends string = never>(
+    options: LimiterOptions<Supported, L> & { readonly identify?: undefined }
+  ): Limiter
   function limiter<Input>(
-    options: LimiterOptions<Supported> & { readonly identify?: Identify<Input> | undefined }
+    options: LimiterOptions<Supported, string> & {
+      readonly identify?: Identify<Input> | undefined
+    }
   ): Limiter<Input> | Limiter {
     if (options.identify === undefined) return define(options, (identity: Identity) => identity)
 

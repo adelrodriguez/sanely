@@ -7,7 +7,7 @@ This guide shows you how to make one request spend several units, such as the nu
    ```typescript
    const perUserTokens = limiter({
      name: "llm:user",
-     algorithm: fixedWindow({ limit: 100_000, window: ms("1d") }),
+     algorithm: fixedWindow({ limit: 100_000, window: "1d" }),
      identify: (c: Context) => c.get("userId"),
    })
    ```

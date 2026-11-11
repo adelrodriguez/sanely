@@ -7,7 +7,7 @@ This guide shows you how to see how often a new limit would deny requests before
    ```typescript
    const perDevice = limiter({
      name: "suggestions:device",
-     algorithm: slidingWindow({ limit: 10, window: ms("1h") }),
+     algorithm: slidingWindow({ limit: 10, window: "1h" }),
      identify: deviceOf,
      mode: "dryRun",
    })

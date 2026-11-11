@@ -100,6 +100,13 @@ const timeImports = {
   message: "Import shared time definitions through @sanely/core/time.",
 }
 
+// Ratelimit reads its periods with @sanely/duration, which it depends on at run time.
+const ratelimitImports = {
+  group: [...timeImports.group, "!@sanely/duration"],
+  message:
+    "Import shared time definitions through @sanely/core/time, and time expressions through @sanely/duration.",
+}
+
 const workspaceImports: Record<string, { group: string[]; message: string }> = {
   core: {
     group: ["@sanely/**"],
@@ -107,7 +114,7 @@ const workspaceImports: Record<string, { group: string[]; message: string }> = {
   },
   cron: timeImports,
   duration: timeImports,
-  ratelimit: timeImports,
+  ratelimit: ratelimitImports,
   skew: timeImports,
 }
 
@@ -304,7 +311,7 @@ export default defineConfig({
     //                                                <- limiter
     //
     // These rules follow the generic `src/lib` rules above, because a later override replaces the
-    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` and `timeImports` for that reason. A
+    // rule options of an earlier one. Each rule repeats `ratelimitEntryPoints` and `ratelimitImports` for that reason. A
     // folder without a rule of its own may import nothing else in lib. The last rule lets tests
     // cross these lines.
     {
@@ -315,7 +322,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/**"],
                 message:
@@ -337,7 +344,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/**"],
                 message: "options and expiring-map import nothing else in lib.",
@@ -355,7 +362,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/**", "!#lib/options/**"],
                 message: "algorithms import only options.",
@@ -373,7 +380,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**"],
                 message: "The store contract imports only algorithms.",
@@ -391,7 +398,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/**", "!#lib/algorithms/**", "!#lib/store/**"],
                 message: "transitions import only algorithms and the store contract.",
@@ -409,7 +416,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/stores/**", "#lib/limiter/**"],
                 message:
@@ -428,7 +435,7 @@ export default defineConfig({
           {
             patterns: [
               ratelimitEntryPoints,
-              timeImports,
+              ratelimitImports,
               {
                 group: ["#lib/stores/**", "#lib/transitions/**"],
                 message:

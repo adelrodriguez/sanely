@@ -1,3 +1,5 @@
+import { safeParse } from "@sanely/duration"
+
 export class InvalidOptionError extends Error {
   override readonly name = "InvalidOptionError"
   readonly option: string
@@ -25,4 +27,23 @@ export function printable(option: string, value: string) {
   }
 
   return value
+}
+
+/**
+ * Reads a length of time given in milliseconds or as a time expression, such as `"1h"`.
+ */
+export function milliseconds(option: string, value: number | string) {
+  if (typeof value === "number") return positiveInteger(option, value)
+
+  const parsed = safeParse(value)
+
+  if (parsed === null || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new InvalidOptionError(
+      option,
+      value,
+      "a time expression for a positive whole number of milliseconds"
+    )
+  }
+
+  return parsed
 }

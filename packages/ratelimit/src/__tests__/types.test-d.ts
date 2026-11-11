@@ -2,6 +2,7 @@ import type { RedisClient } from "bun"
 import type { Redis } from "ioredis"
 import type { Valkey } from "iovalkey"
 import type { RedisClientType } from "redis"
+import { isTimeExpression } from "@sanely/duration"
 import { describe, expectTypeOf, it } from "vitest"
 import type {
   FixedWindow,
@@ -13,7 +14,7 @@ import type {
   Store,
   StoreError,
 } from "#index.ts"
-import { buildLimiter, fixedWindow, rateLimit, tokenBucket } from "#index.ts"
+import { buildLimiter, fixedWindow, rateLimit, slidingWindow, tokenBucket } from "#index.ts"
 import { bunRedisStore } from "#stores/bun-redis.ts"
 import { memoryStore } from "#stores/memory.ts"
 import { redisStore } from "#stores/redis.ts"
@@ -33,6 +34,7 @@ declare const ioredis: Redis
 declare const nodeRedis: RedisClientType
 declare const iovalkey: Valkey
 declare const bun: RedisClient
+declare const configured: string
 
 describe("limiter", () => {
   it("takes its input type from identify", () => {
@@ -144,6 +146,33 @@ describe("client stores", () => {
     void valkeyStore(nodeRedis)
     // @ts-expect-error -- node-redis has no `send`, which the Bun store calls.
     void bunRedisStore(nodeRedis)
+  })
+})
+
+describe("periods", () => {
+  it("take milliseconds or a time expression", () => {
+    fixedWindow({ limit: 1, window: "1m" })
+    slidingWindow({ limit: 1, window: "1 hour" })
+    tokenBucket({ capacity: 1, interval: "500ms", refillRate: 1 })
+    buildLimiter({ store: memoryStore(), timeout: "1s" })({ algorithm, name: "a", timeout: 250 })
+    limiter({ algorithm, identify: (request: Request) => request.ip, name: "b", timeout: "2s" })
+  })
+
+  it("reject an invalid time expression literal", () => {
+    // @ts-expect-error -- "M" is ambiguous between minutes and months.
+    fixedWindow({ limit: 1, window: "1M" })
+    // @ts-expect-error -- a time expression starts with a number.
+    tokenBucket({ capacity: 1, interval: "soon", refillRate: 1 })
+    // @ts-expect-error -- a compound expression needs parse from @sanely/duration.
+    buildLimiter({ store: memoryStore(), timeout: "1m 30s" })
+    // @ts-expect-error -- a decimal point needs a digit after it.
+    limiter({ algorithm, name: "c", timeout: "1.s" })
+  })
+
+  it("take a runtime string only after isTimeExpression narrows it", () => {
+    // @ts-expect-error -- a plain string is not checked.
+    fixedWindow({ limit: 1, window: configured })
+    if (isTimeExpression(configured)) fixedWindow({ limit: 1, window: configured })
   })
 })
 

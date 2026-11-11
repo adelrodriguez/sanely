@@ -39,7 +39,7 @@ const local = buildLimiter({ store: memoryStore() })
 
 const perIpLocal = local({
   name: "suggestions:ip",
-  algorithm: slidingWindow({ limit: 10, window: ms("1h") }),
+  algorithm: slidingWindow({ limit: 10, window: "1h" }),
   identify: ipOf,
 })
 
@@ -53,4 +53,4 @@ Give the local limiter a lower limit, because each instance counts separately. W
 
 By default, ioredis and the Bun client queue commands until they reconnect, so each request waits for the full `timeout`. To fail at once instead, set `enableOfflineQueue: false` on the client.
 
-To wait a different time for the store, set `timeout` in milliseconds on `buildLimiter` or on one limiter. The default is `1000`.
+To wait a different time for the store, set `timeout` on `buildLimiter` or on one limiter, in milliseconds or as a time expression such as `"500ms"`. The default is `1000`.

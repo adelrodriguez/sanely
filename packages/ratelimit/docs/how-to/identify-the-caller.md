@@ -9,7 +9,7 @@ Without `identify`, you pass the identity itself to `rateLimit`:
 ```typescript
 import { fixedWindow, rateLimit } from "@sanely/ratelimit"
 
-const perKey = limiter({ name: "api:key", algorithm: fixedWindow({ limit: 100, window: 60_000 }) })
+const perKey = limiter({ name: "api:key", algorithm: fixedWindow({ limit: 100, window: "1m" }) })
 
 await rateLimit(perKey, apiKey)
 ```
@@ -20,12 +20,11 @@ Add `identify` to turn your input into an identity. Its parameter type becomes t
 
 ```typescript
 import type { Context } from "hono"
-import { ms } from "@sanely/duration"
 import { slidingWindow } from "@sanely/ratelimit"
 
 const perDevice = limiter({
   name: "suggestions:device",
-  algorithm: slidingWindow({ limit: 10, window: ms("1h") }),
+  algorithm: slidingWindow({ limit: 10, window: "1h" }),
   identify: (c: Context) => c.req.header("x-device-id") ?? null,
 })
 
@@ -53,7 +52,7 @@ To set a global limit, return `null` for every request:
 ```typescript
 const daily = limiter({
   name: "suggestions:daily",
-  algorithm: fixedWindow({ limit: 2_000, window: ms("1d") }),
+  algorithm: fixedWindow({ limit: 2_000, window: "1d" }),
   identify: () => null,
 })
 ```
