@@ -43,9 +43,12 @@ interface Source {
 // platform, `ip` reads only these headers, so a client cannot forge the result.
 const PLATFORMS = {
   "app-engine": [{ format: "single", header: "x-appengine-user-ip" }],
+  // Cloudflare sets CF-Connecting-IPv6 only under Pseudo IPv4, and otherwise passes a client's value
+  // through, so it comes second. Under Pseudo IPv4, CF-Connecting-IP holds a Class E address, which
+  // is not global, so `ip` reaches CF-Connecting-IPv6.
   cloudflare: [
-    { format: "single", header: "cf-connecting-ipv6" },
     { format: "single", header: "cf-connecting-ip" },
+    { format: "single", header: "cf-connecting-ipv6" },
   ],
   cloudfront: [{ format: "with-port", header: "cloudfront-viewer-address" }],
   firebase: [

@@ -43,7 +43,7 @@ In a header that lists several addresses, such as `X-Forwarded-For` or `Forwarde
 | `platform`     | Headers, in order                                        |
 | -------------- | -------------------------------------------------------- |
 | `"app-engine"` | `X-Appengine-User-IP`                                    |
-| `"cloudflare"` | `CF-Connecting-IPv6`, `CF-Connecting-IP`                 |
+| `"cloudflare"` | `CF-Connecting-IP`, `CF-Connecting-IPv6`                 |
 | `"cloudfront"` | `CloudFront-Viewer-Address`                              |
 | `"firebase"`   | `X-Fah-Client-IP`, `X-Forwarded-For`                     |
 | `"fly-io"`     | `Fly-Client-IP`                                          |

@@ -330,15 +330,21 @@ describe("ip with a platform", () => {
     }
   )
 
-  it("reads the platform's headers in order", () => {
+  it("prefers CF-Connecting-IP to a CF-Connecting-IPv6 that a client can send", () => {
     const options: IpOptions = { platform: "cloudflare" }
+    const request = headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "2606:4700::" })
 
-    expect(
-      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "2606:4700::" }), options)
-    ).toBe("2606:4700::")
-    expect(
-      ip(headers({ "cf-connecting-ip": "1.1.1.1", "cf-connecting-ipv6": "::1" }), options)
-    ).toBe("1.1.1.1")
+    expect(ip(request, options)).toBe("1.1.1.1")
+  })
+
+  it("reads CF-Connecting-IPv6 when Pseudo IPv4 puts a Class E address in CF-Connecting-IP", () => {
+    const options: IpOptions = { platform: "cloudflare" }
+    const request = headers({
+      "cf-connecting-ip": "240.16.0.1",
+      "cf-connecting-ipv6": "2606:4700::",
+    })
+
+    expect(ip(request, options)).toBe("2606:4700::")
   })
 
   it("prefers the platform's headers to the connection, which is the platform's edge", () => {
