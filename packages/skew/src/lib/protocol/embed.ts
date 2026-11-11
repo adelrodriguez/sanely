@@ -5,6 +5,10 @@ export interface DeploymentEmbed {
     readonly builtAt?: string
   }
   readonly endpoint?: string
+  /**
+   * A window event that the build fires when it fails to load code.
+   */
+  readonly loadErrorEvent?: string
 }
 
 // The global that adapters assign the embed to. `declare global` below must use the same name.
@@ -34,6 +38,7 @@ export function readEmbed(): DeploymentEmbed | undefined {
 
 interface EmbedCandidate {
   readonly endpoint?: unknown
+  readonly loadErrorEvent?: unknown
   readonly running?: unknown
   readonly v?: unknown
 }
@@ -48,9 +53,16 @@ function checkIsEmbed(value: unknown): value is DeploymentEmbed {
     return false
   }
 
-  const { v, running, endpoint } = value
+  const { v, running, endpoint, loadErrorEvent } = value
 
   if (v !== 1 || (endpoint !== undefined && typeof endpoint !== "string")) {
+    return false
+  }
+
+  if (
+    loadErrorEvent !== undefined
+    && (typeof loadErrorEvent !== "string" || loadErrorEvent.length === 0)
+  ) {
     return false
   }
 

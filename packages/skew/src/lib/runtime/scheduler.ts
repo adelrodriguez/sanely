@@ -6,6 +6,10 @@ export interface DeploymentSchedule {
   readonly checkOnReconnect: boolean
   readonly checkOnSubscribe: boolean
   readonly checkOnVisible: boolean
+  /**
+   * The window event that starts a check when the build fails to load code.
+   */
+  readonly loadErrorEvent?: RuntimeEventType
 }
 
 export const DEFAULT_DEPLOYMENT_SCHEDULE: DeploymentSchedule = {
@@ -42,6 +46,10 @@ export class DeploymentScheduler {
       this.#environment.addEventListener("online", this.#onOnline)
     }
 
+    if (this.#schedule.loadErrorEvent !== undefined) {
+      this.#environment.addEventListener(this.#schedule.loadErrorEvent, this.#onLoadError)
+    }
+
     this.#startInterval()
   }
 
@@ -51,6 +59,14 @@ export class DeploymentScheduler {
     this.#removeListener("visibilitychange", this.#onVisibilityChange)
     this.#removeListener("pageshow", this.#onPageShow)
     this.#removeListener("online", this.#onOnline)
+    if (this.#schedule.loadErrorEvent !== undefined) {
+      this.#removeListener(this.#schedule.loadErrorEvent, this.#onLoadError)
+    }
+  }
+
+  // The listener never cancels the event, so the failed import still rejects in the app.
+  readonly #onLoadError = (): void => {
+    this.#check()
   }
 
   readonly #onOnline = (): void => {

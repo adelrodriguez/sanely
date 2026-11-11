@@ -1,10 +1,18 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, onTestFinished, vi } from "vitest"
+import type { DeploymentEmbed } from "#lib/protocol/embed.ts"
 import type { DeploymentMonitorOptions } from "#lib/runtime/monitor.ts"
 import { createDeploymentMonitor } from "#lib/runtime/monitor.ts"
 import { FakeEnvironment } from "./helpers.ts"
 
 function noop(): boolean {
   return false
+}
+
+function setEmbed(embed: DeploymentEmbed): void {
+  globalThis.__DEPLOYMENT_CHECK__ = embed
+  onTestFinished(() => {
+    globalThis.__DEPLOYMENT_CHECK__ = undefined
+  })
 }
 
 function createScheduledMonitor(options: DeploymentMonitorOptions = {}) {
@@ -21,9 +29,10 @@ function createScheduledMonitor(options: DeploymentMonitorOptions = {}) {
   return { environment, monitor }
 }
 
-function createCountingMonitor() {
+function createCountingMonitor(options: DeploymentMonitorOptions = {}) {
   const counter = { checks: 0 }
   const { environment, monitor } = createScheduledMonitor({
+    ...options,
     target: () => {
       counter.checks += 1
       return Promise.resolve({ id: "running" })
@@ -202,5 +211,79 @@ describe("deployment scheduler", () => {
 
     unsubscribe()
     warning.mockRestore()
+  })
+
+  describe("load error event", () => {
+    it("checks when the embed's load error event fires", async () => {
+      expect.assertions(2)
+
+      setEmbed({ loadErrorEvent: "vite:preloadError", running: { id: "running" }, v: 1 })
+      const { counter, environment, monitor, unsubscribe } = createCountingMonitor()
+
+      environment.fire("vite:preloadError")
+
+      expect(counter.checks).toBe(1)
+
+      await monitor.check()
+
+      expect(counter.checks).toBe(1)
+
+      unsubscribe()
+    })
+
+    it("sends one request for a burst of load errors", async () => {
+      expect.assertions(1)
+
+      setEmbed({ loadErrorEvent: "vite:preloadError", running: { id: "running" }, v: 1 })
+      const { counter, environment, monitor, unsubscribe } = createCountingMonitor()
+
+      environment.fire("vite:preloadError")
+      environment.fire("vite:preloadError")
+      environment.fire("vite:preloadError")
+
+      expect(counter.checks).toBe(1)
+
+      await monitor.check()
+
+      unsubscribe()
+    })
+
+    it("detaches the load error listener on the last unsubscribe", () => {
+      expect.assertions(2)
+
+      setEmbed({ loadErrorEvent: "vite:preloadError", running: { id: "running" }, v: 1 })
+      const { environment, monitor } = createScheduledMonitor()
+      const unsubscribe = monitor.subscribe(noop)
+
+      expect(environment.listenerCount("vite:preloadError")).toBe(1)
+
+      unsubscribe()
+
+      expect(environment.listenerCount("vite:preloadError")).toBe(0)
+    })
+
+    it("attaches no load error listener when checkOnLoadError is off", () => {
+      expect.assertions(1)
+
+      setEmbed({ loadErrorEvent: "vite:preloadError", running: { id: "running" }, v: 1 })
+      const { environment, monitor } = createScheduledMonitor({ checkOnLoadError: false })
+      const unsubscribe = monitor.subscribe(noop)
+
+      expect(environment.listenerCount("vite:preloadError")).toBe(0)
+
+      unsubscribe()
+    })
+
+    it("attaches no load error listener when the embed names no event", () => {
+      expect.assertions(1)
+
+      setEmbed({ running: { id: "running" }, v: 1 })
+      const { environment, monitor } = createScheduledMonitor()
+      const unsubscribe = monitor.subscribe(noop)
+
+      expect(environment.listenerCount("vite:preloadError")).toBe(0)
+
+      unsubscribe()
+    })
   })
 })

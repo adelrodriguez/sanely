@@ -54,6 +54,7 @@ function deploymentCheck(options?: ViteAdapterOptions): Plugin
 A Vite plugin that runs only in `vite build`. Put it after the framework plugin. It needs `vite` 5 or later.
 
 - It adds the embed as the first `<script>` in `<head>` of each HTML page.
+- It names `vite:preloadError` as the embed's load error event, so the monitor checks when a lazy chunk fails to load.
 - For a local endpoint, it writes the descriptor as a file in the build output. The path is the endpoint without its leading `/`.
 - It adds Vite `base` in front of a local endpoint when `base` starts with `/`. When `base` is relative (`./`) or a full URL, the endpoint stays an absolute path on the application origin.
 

@@ -26,6 +26,40 @@ describe("deployment embed", () => {
     expect(readEmbed()).toStrictEqual(embed)
   })
 
+  it("reads a load error event", () => {
+    expect.assertions(1)
+
+    const embed: DeploymentEmbed = {
+      loadErrorEvent: "vite:preloadError",
+      running: { id: "abc123" },
+      v: 1,
+    }
+    setEmbed(embed)
+
+    expect(readEmbed()).toStrictEqual(embed)
+  })
+
+  it.each([
+    ["an empty string", ""],
+    ["a number", 1],
+  ])("ignores an embed whose load error event is %s", (_label, loadErrorEvent) => {
+    expect.assertions(2)
+
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {
+      /* silence the expected warning */
+    })
+    onTestFinished(() => {
+      warning.mockRestore()
+    })
+    vi.stubGlobal("__DEPLOYMENT_CHECK__", { loadErrorEvent, running: { id: "abc123" }, v: 1 })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+
+    expect(readEmbed()).toBeUndefined()
+    expect(warning).toHaveBeenCalledOnce()
+  })
+
   it("returns undefined when the embed is missing", () => {
     expect.assertions(1)
     expect(readEmbed()).toBeUndefined()
