@@ -34,6 +34,28 @@ export function retryOptions(policy: RetryOptions): RetryPolicy {
   }
 }
 
+/**
+ * How many times `delayMs` each backoff waits after attempt `n`. Every backoff scales `delayMs`, so
+ * a policy without a delay never waits, whatever its backoff or jitter. A new backoff kind does not
+ * compile until it has an entry here.
+ */
+const backoffGrowth: Record<RetryPolicy["backoff"], (attempt: number) => number> = {
+  constant: () => 1,
+  exponential: (attempt) => 2 ** (attempt - 1),
+  linear: (attempt) => attempt,
+}
+
+/**
+ * The retry options that `runSync` accepts: the ones that never wait between attempts. That is the
+ * number form, or a policy without a delay. {@link checkIsSyncRetryPolicy} applies the same rule to
+ * a policy at run time.
+ */
+export type SyncRetryOptions = number | (RetryPolicy & { readonly delayMs?: 0 })
+
+export function checkIsSyncRetryPolicy(policy: RetryPolicy) {
+  return (policy.delayMs ?? 0) === 0
+}
+
 export function calculateRetryDelay(attempt: number, config: BuilderConfig): number {
   const policy = config.retry
 
@@ -41,25 +63,10 @@ export function calculateRetryDelay(attempt: number, config: BuilderConfig): num
     return 0
   }
 
-  const baseDelay = policy.delayMs ?? 0
-  let delay = 0
-
-  switch (policy.backoff) {
-    case "constant":
-      delay = baseDelay
-      break
-    case "linear":
-      delay = baseDelay * attempt
-      break
-    case "exponential":
-      delay = baseDelay * 2 ** (attempt - 1)
-
-      if (policy.maxDelayMs !== undefined) {
-        delay = Math.min(delay, policy.maxDelayMs)
-      }
-
-      break
-  }
+  const delay = Math.min(
+    (policy.delayMs ?? 0) * backoffGrowth[policy.backoff](attempt),
+    policy.maxDelayMs ?? Number.POSITIVE_INFINITY
+  )
 
   if (!policy.jitter || delay <= 0) {
     return delay

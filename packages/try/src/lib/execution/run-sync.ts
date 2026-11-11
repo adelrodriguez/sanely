@@ -1,5 +1,6 @@
 import type { BuilderConfig, BaseTryCtx } from "#lib/policies/options.ts"
 import type { NonPromise } from "#lib/shared/utils.ts"
+import { checkIsSyncRetryPolicy } from "#lib/policies/retry.ts"
 import { Panic, type PanicCode, type UnhandledException } from "#lib/shared/errors.ts"
 import { checkIsPromiseLike, discardOutcome, invariant } from "#lib/shared/utils.ts"
 import type { RunnerError } from "./base"
@@ -124,15 +125,12 @@ export function executeRunSync<T, E, Ctx extends BaseTryCtx>(
   config: BuilderConfig,
   input: SyncRunInput<T, E, Ctx>
 ): T | E | RunnerError {
-  // Builder typing blocks async-only retry policies, but calling executeRunSync
-  // directly and unsafe casts still need a runtime guard here.
-  const isSyncSafeRetryPolicy =
-    config.retry === undefined
-    || (config.retry.backoff === "constant"
-      && !config.retry.jitter
-      && (config.retry.delayMs ?? 0) <= 0)
-
-  invariant(isSyncSafeRetryPolicy, new Panic("RUN_SYNC_ASYNC_RETRY_POLICY"))
+  // The builder types hide runSync for a policy that may wait. Untyped code and casts still reach
+  // this point, so check the policy before any work starts.
+  invariant(
+    config.retry === undefined || checkIsSyncRetryPolicy(config.retry),
+    new Panic("RUN_SYNC_ASYNC_RETRY_POLICY")
+  )
 
   using execution = new RunSyncExecution<T, E, Ctx>(config, input)
   return execution.execute()

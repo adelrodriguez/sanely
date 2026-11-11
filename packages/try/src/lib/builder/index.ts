@@ -26,7 +26,7 @@ import type {
 import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "#lib/execution/run-sync.ts"
 import { executeRun, type AsyncRunInput, type RunTryFn } from "#lib/execution/run.ts"
 import { orchestrate } from "#lib/orchestration/orchestrate.ts"
-import { retryOptions } from "#lib/policies/retry.ts"
+import { retryOptions, type SyncRetryOptions } from "#lib/policies/retry.ts"
 import { assertValidTimeout } from "#lib/policies/timeout.ts"
 
 type ConfigRunErrors = TimeoutError | CancellationError
@@ -63,6 +63,18 @@ type AsyncExecutionBuilderSurface<
   E extends ConfigRunErrors,
   HasRetry extends boolean,
 > = AsyncPolicyBuilderSurface<E, HasRetry, false>
+/**
+ * Surface after `retry`. `runSync` stays available only when the policy never waits and no earlier
+ * `timeout` or `signal` can interrupt the work. Those builders add their failure to `E`, so an
+ * empty `E` means that neither is in the chain.
+ */
+type RetryBuilderSurface<E extends ConfigRunErrors, IsSyncPolicy extends boolean> = [E] extends [
+  never,
+]
+  ? IsSyncPolicy extends true
+    ? ExecutionBuilderSurface<E, true>
+    : AsyncExecutionBuilderSurface<E, true>
+  : AsyncExecutionBuilderSurface<E, true>
 
 export class RunBuilder<
   E extends ConfigRunErrors = never,
@@ -99,13 +111,17 @@ export class RunBuilder<
   // ordering is behavior-invariant (wraps always cover the full retry scope),
   // so no runtime method-hiding is needed.
 
-  retry<N extends number>(policy: N & ValidateRetryLimit<N>): ExecutionBuilderSurface<E, true>
+  retry<N extends number>(
+    policy:
+      | (N & ValidateRetryLimit<N>)
+      | (Exclude<SyncRetryOptions, number> & { limit: N & ValidateRetryLimit<N> })
+  ): RetryBuilderSurface<E, true>
   retry<N extends number>(
     policy: RetryPolicy & { limit: N & ValidateRetryLimit<N> }
-  ): AsyncExecutionBuilderSurface<E, true>
+  ): RetryBuilderSurface<E, false>
   retry<const P extends RetryOptions>(
     policy: P & ValidateRetryOptions<P>
-  ): AsyncExecutionBuilderSurface<E, true>
+  ): RetryBuilderSurface<E, [P] extends [SyncRetryOptions] ? true : false>
   retry(policy: RetryOptions): ExecutionBuilderSurface<E, true> {
     return new RunBuilder<E, true, false>({
       ...this.config,
