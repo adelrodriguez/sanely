@@ -2,6 +2,10 @@ import { Panic } from "#lib/shared/errors.ts"
 import { assertUnreachable, invariant } from "#lib/shared/utils.ts"
 import type { BuilderConfig, RetryOptions, RetryPolicy, TryCtx } from "./options.ts"
 
+function checkIsValidDelay(ms: number): boolean {
+  return Number.isFinite(ms) && ms >= 0
+}
+
 export function retryOptions(policy: RetryOptions): RetryPolicy {
   const limit = typeof policy === "number" ? policy : policy.limit
 
@@ -15,6 +19,9 @@ export function retryOptions(policy: RetryOptions): RetryPolicy {
       limit: policy,
     }
   }
+
+  invariant(checkIsValidDelay(policy.delayMs ?? 0), new Panic("RETRY_INVALID_DELAY"))
+  invariant(checkIsValidDelay(policy.maxDelayMs ?? 0), new Panic("RETRY_INVALID_DELAY"))
 
   const base = {
     delayMs: policy.delayMs ?? 0,
@@ -63,9 +70,11 @@ export function calculateRetryDelay(attempt: number, config: BuilderConfig): num
     return 0
   }
 
+  // Without maxDelayMs, cap the delay at the largest safe integer, so a growing backoff stays finite
+  // and jitter never multiplies an infinite delay.
   const delay = Math.min(
     (policy.delayMs ?? 0) * backoffGrowth[policy.backoff](attempt),
-    policy.maxDelayMs ?? Number.POSITIVE_INFINITY
+    policy.maxDelayMs ?? Number.MAX_SAFE_INTEGER
   )
 
   if (!policy.jitter || delay <= 0) {

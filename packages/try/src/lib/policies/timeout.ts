@@ -1,6 +1,6 @@
 import { defineDisposeAlias } from "#lib/disposal/index.ts"
 import { Panic, TimeoutError } from "#lib/shared/errors.ts"
-import { discardOutcome, invariant, resolveWithAbort } from "#lib/shared/utils.ts"
+import { discardOutcome, invariant, resolveWithAbort, startTimer } from "#lib/shared/utils.ts"
 
 /**
  * Single source of truth for timeout validation: used eagerly by the builder at `.timeout()` call
@@ -17,9 +17,13 @@ export class TimeoutController {
    * Aborts with a {@link TimeoutError} when the deadline expires.
    */
   readonly signal: AbortSignal = this.#controller.signal
-  readonly #startedAt = Date.now()
+  /**
+   * The deadline is measured on the monotonic clock, so a change to the system clock never moves
+   * it.
+   */
+  readonly #startedAt = performance.now()
   readonly #timeoutMs: number
-  #timeoutId: ReturnType<typeof setTimeout> | undefined
+  #cancelTimer: (() => void) | undefined
   declare [Symbol.dispose]: () => void
 
   constructor(timeoutMs: number) {
@@ -31,7 +35,7 @@ export class TimeoutController {
       return
     }
 
-    this.#timeoutId = setTimeout(() => {
+    this.#cancelTimer = startTimer(() => {
       this.#abort()
     }, this.#timeoutMs)
   }
@@ -50,7 +54,7 @@ export class TimeoutController {
   }
 
   get #remaining() {
-    const elapsed = Date.now() - this.#startedAt
+    const elapsed = performance.now() - this.#startedAt
 
     return this.#timeoutMs - elapsed
   }
@@ -93,9 +97,7 @@ export class TimeoutController {
   }
 
   dispose(): void {
-    if (this.#timeoutId !== undefined) {
-      clearTimeout(this.#timeoutId)
-    }
+    this.#cancelTimer?.()
   }
 }
 defineDisposeAlias(TimeoutController.prototype)

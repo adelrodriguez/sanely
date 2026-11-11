@@ -54,4 +54,36 @@ export async function resolveWithAbort<V, E>(
   return await Promise.race([Promise.resolve(promise), abortPromise])
 }
 
+/**
+ * The longest delay that `setTimeout` keeps. Node.js and browsers store the delay in a signed
+ * 32-bit integer and run a longer timer after 1 ms.
+ */
+const MAX_TIMER_DELAY_MS = 2_147_483_647
+
+/**
+ * Calls `callback` once `ms` milliseconds have passed, and returns a function that cancels the
+ * call. A delay above the timer limit runs as a chain of shorter timers, so it never ends early.
+ */
+export function startTimer(callback: () => void, ms: number): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const schedule = (remainingMs: number) => {
+    const chunkMs = Math.min(remainingMs, MAX_TIMER_DELAY_MS)
+
+    timer = setTimeout(() => {
+      if (remainingMs > chunkMs) {
+        schedule(remainingMs - chunkMs)
+      } else {
+        callback()
+      }
+    }, chunkMs)
+  }
+
+  schedule(ms)
+
+  return () => {
+    clearTimeout(timer)
+  }
+}
+
 export type NonPromise<T> = T extends PromiseLike<unknown> ? never : T

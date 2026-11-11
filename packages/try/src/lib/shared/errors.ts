@@ -3,6 +3,7 @@ export type PanicCode =
   | "CATCH_HANDLER_THROW"
   | "FLOW_NO_EXIT"
   | "ORCHESTRATION_UNSUPPORTED_POLICY"
+  | "RETRY_INVALID_DELAY"
   | "RETRY_INVALID_LIMIT"
   | "RUN_SYNC_ASYNC_RETRY_POLICY"
   | "RUN_SYNC_CATCH_PROMISE"
@@ -23,6 +24,7 @@ export const PanicMessages = {
   CATCH_HANDLER_THROW: "A catch handler threw.",
   FLOW_NO_EXIT: "flow() requires at least one task to call $exit().",
   ORCHESTRATION_UNSUPPORTED_POLICY: "Orchestration does not support retry() policies.",
+  RETRY_INVALID_DELAY: "retry() requires a non-negative finite delayMs and maxDelayMs.",
   RETRY_INVALID_LIMIT: "retry() requires a positive integer retry limit.",
   RUN_SYNC_ASYNC_RETRY_POLICY: "This retry policy may run asynchronously. Use run() instead.",
   RUN_SYNC_CATCH_PROMISE: "runSync() catch cannot return a Promise. Use run() instead.",
