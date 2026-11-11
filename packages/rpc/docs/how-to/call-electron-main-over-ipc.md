@@ -7,6 +7,7 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    ```typescript
    // main.ts
    import { createRouter } from "@sanely/rpc"
+   import { toWire } from "@sanely/rpc/wire"
    import { ipcMain } from "electron"
    import { contract } from "./contract"
 
@@ -15,9 +16,11 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    })
 
    for (const channel of router.channels) {
-     ipcMain.handle(channel, (_event, payload) => router.dispatch(channel, payload))
+     ipcMain.handle(channel, (_event, payload) => toWire(router.dispatch(channel, payload)))
    }
    ```
+
+   `ipcRenderer.invoke` rethrows only an error's message, so the handler wraps each outcome with `toWire`. The envelope keeps a `ChannelError`'s code and fields. By default, `toWire` hides server-side failures behind the code `internal`. Pass `expose` to send more, and `onHidden` to log what it hides.
 
    If each feature has its own router, merge them first with `mergeRouters(filesRouter, settingsRouter)` and run the same loop over the result. See [How to split handlers across files](./split-handlers-across-files.md#serve-several-routers-as-one).
 
@@ -37,25 +40,14 @@ This guide serves a contract from the main process with `ipcMain.handle` and cal
    ```typescript
    // renderer.ts
    import { createClient } from "@sanely/rpc"
+   import { fromWire } from "@sanely/rpc/wire"
    import { contract } from "./contract"
 
-   export const api = createClient(contract, (path, payload) => window.rpc.send(path, payload))
+   export const api = createClient(contract, async (path, payload) =>
+     fromWire(await window.rpc.send(path, payload))
+   )
    ```
 
 One-way channels use `invoke` too. The empty reply costs little and keeps the transport to one function.
 
 If the window loads remote content, check `event.senderFrame` in the handler before you dispatch.
-
-## Keep errors structured
-
-`ipcRenderer.invoke` rethrows only the error message, so a `ChannelError` from main arrives in the renderer as a plain `Error`. To keep the code and fields, wrap both sides in the envelope from `@sanely/rpc/wire`. By default, `toWire` hides server-side failures behind the code `internal`. Pass `expose` to `toWire` to send more.
-
-```typescript
-// main.ts
-ipcMain.handle(channel, (_event, payload) => toWire(router.dispatch(channel, payload)))
-
-// renderer.ts
-export const api = createClient(contract, async (path, payload) =>
-  fromWire(await window.rpc.send(path, payload))
-)
-```

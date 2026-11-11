@@ -1,9 +1,10 @@
 # API reference
 
-`@sanely/rpc` has four entry points:
+`@sanely/rpc` has five entry points:
 
 - `@sanely/rpc`
 - `@sanely/rpc/wire`
+- `@sanely/rpc/wire/fetch`
 - `@sanely/rpc/wire/message-port`
 - `@sanely/rpc/wire/web-socket`
 
@@ -136,6 +137,8 @@ Options passed to a call are shallow-merged over bound options.
 Nodes are stable. `client.files === client.files` is `true`.
 
 `then` and `toJSON` are `undefined` on every node. Awaiting a node returns the node, and no call is made.
+
+Every other `$` key is `undefined` too, so a probe such as `$$typeof` makes no call. `defineContract` rejects `$` keys, so no channel is hidden.
 
 ### `Transport<Options>`
 
@@ -273,6 +276,10 @@ A call's `signal` rejects that call with `signal.reason` and drops its late repl
 
 When the session closes, every pending call and every later call rejects with a `ChannelError` with code `closed` and the reason as `cause`. This end stops serving and aborts every resolver it is running.
 
+Several sessions can call over one wire. Each message carries the protocol version and the calling session's id, so a session settles only with the replies to its own calls, and a cancel reaches only its own request. A message from another protocol, or from another version of this one, is ignored.
+
+A wire has one serving end. If two sessions serve the same wire, both answer every request and the caller takes the first reply. Serve several routers from one session with `mergeRouters`.
+
 ### `Wire`
 
 ```typescript
@@ -283,6 +290,43 @@ type Wire = {
 ```
 
 If `onMessage` returns a function, `close` calls it to unsubscribe.
+
+## `@sanely/rpc/wire/fetch`
+
+Serves a router over HTTP with the Fetch API's `Request` and `Response`, and calls it with `fetch`. Each call is one `POST` to `<url>/<path>` with a JSON body, and every response carries a `WireResult`.
+
+### `fetchHandler(router, options?)`
+
+Returns `(request: Request) => Promise<Response>`. The last segment of the request's URL names the channel.
+
+| Option     | Type                            | Description                                                                                                                                         |
+| ---------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context`  | `(request: Request) => Context` | Derives each call's context. May be async. Required when the router's context type isn't `void`. If it throws, the call fails like a resolver would |
+| `expose`   | `(error: unknown) => boolean`   | Decides which failures the caller sees as-is, as in `toWire`                                                                                        |
+| `onHidden` | `(error: unknown) => void`      | Receives every hidden failure, except one caused by a client that disconnected                                                                      |
+
+| Outcome                                 | Status |
+| --------------------------------------- | ------ |
+| Success                                 | 200    |
+| `validation`, or a body that isn't JSON | 400    |
+| `unknown-channel`                       | 404    |
+| A method other than `POST`              | 405    |
+| `internal` and every other failure      | 500    |
+
+The request's `signal` reaches the resolver, so a client that disconnects aborts it.
+
+### `fetchTransport(url, options?)`
+
+Returns a `Transport<{ signal?: AbortSignal }>` that calls a `fetchHandler` at `url`.
+
+| Option    | Type                                                    | Description                                                  |
+| --------- | ------------------------------------------------------- | ------------------------------------------------------------ |
+| `headers` | `HeadersInit` or a function that returns one            | Sent with every call. A function runs per call. May be async |
+| `fetch`   | `(url: string, init: RequestInit) => Promise<Response>` | Replaces the global `fetch`, for a test or a custom client   |
+
+A call's `signal` cancels the request, and the call rejects with `signal.reason`. A response that isn't an envelope rejects with a `ChannelError` with code `malformed-envelope`. A network failure rejects with the error `fetch` raised.
+
+Payloads must survive `JSON.stringify`. A call with an `undefined` payload sends no body, so `undefined` and `null` stay distinct.
 
 ## `@sanely/rpc/wire/message-port`
 
