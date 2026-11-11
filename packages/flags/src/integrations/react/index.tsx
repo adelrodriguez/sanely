@@ -144,9 +144,6 @@ type Bucket = {
   active: Set<VersionStore>
   entries: Map<string, CacheEntry>
   flags: readonly Flag[]
-  // The identity keys that `invalidate` or `clear` dropped. Their next evaluation reads fresh, so it
-  // skips the reader's store as well as this cache.
-  fresh: Set<string>
   // The store that a render reuses for each identity, while it has a listener.
   stores: Map<string, VersionStore>
 }
@@ -157,8 +154,55 @@ type SnapshotState = {
   watch: Omit<ChangeWatch, "keys">
 }
 
+/**
+ * Which flags `invalidate` and `clear` dropped, so that their next evaluation reads fresh and skips
+ * the reader's store too. The marks belong to the cache, not to a bucket, so a list of flags that
+ * no component has read yet also reads fresh. Each mark is an epoch: a flag reads fresh while its
+ * latest mark, or the latest `clear`, is newer than its latest fresh read for that identity.
+ */
+class FreshMarks {
+  #cleared = 0
+  #epoch = 0
+  readonly #marked = new Map<string, Map<string, number>>()
+  readonly #read = new Map<string, Map<string, number>>()
+
+  mark(identity: string, flagKeys: Iterable<string>): void {
+    this.#epoch += 1
+    const marked = epochsOf(this.#marked, identity)
+    for (const flagKey of flagKeys) marked.set(flagKey, this.#epoch)
+  }
+
+  clear(): void {
+    this.#epoch += 1
+    this.#cleared = this.#epoch
+  }
+
+  /**
+   * Whether an evaluation of `flags` for `identity` must read fresh. It records the read, so the
+   * marks it consumes do not apply again.
+   */
+  take(identity: string, flags: readonly Flag[]): boolean {
+    const marked = epochsOf(this.#marked, identity)
+    const read = epochsOf(this.#read, identity)
+    const stale = flags.some(
+      ({ key }) => Math.max(this.#cleared, marked.get(key) ?? 0) > (read.get(key) ?? 0)
+    )
+    if (stale) {
+      for (const { key } of flags) read.set(key, this.#epoch)
+    }
+    return stale
+  }
+}
+
+function epochsOf(marks: Map<string, Map<string, number>>, identity: string) {
+  const epochs = marks.get(identity) ?? new Map<string, number>()
+  marks.set(identity, epochs)
+  return epochs
+}
+
 type FlagCache = {
   buckets: Map<string, Bucket>
+  fresh: FreshMarks
   maxEntries: number
   pendingTtl: number | undefined
   snapshot: SnapshotState | undefined
@@ -229,7 +273,7 @@ function getBucket(cache: FlagCache, flags: readonly Flag[]): Bucket {
   const key = flags.map((flag) => flagId(flag)).join(",")
   let bucket = cache.buckets.get(key)
   if (!bucket) {
-    bucket = { active: new Set(), entries: new Map(), flags, fresh: new Set(), stores: new Map() }
+    bucket = { active: new Set(), entries: new Map(), flags, stores: new Map() }
     cache.buckets.set(key, bucket)
   }
   return bucket
@@ -351,7 +395,7 @@ function storeEntry(
     }, 0)
     return null
   }
-  const fresh = bucket.fresh.delete(key)
+  const fresh = cache.fresh.take(key, bucket.flags)
   entry.promise = evictOnRejection(evaluateFlags(readerOf(context), bucket.flags, fresh), () => {
     setTimeout(() => {
       if (bucket.entries.get(key) === entry) bucket.entries.delete(key)
@@ -539,6 +583,7 @@ function createFlagCache(
   const { maxEntries, pendingTtl, ttl } = readCacheOptions(cacheOptions ?? {})
   return {
     buckets: new Map(),
+    fresh: new FreshMarks(),
     maxEntries,
     pendingTtl,
     snapshot: snapshotState(snapshot, getChangeClock(flags)),
@@ -627,7 +672,6 @@ export function useFlagCache(): FlagCacheControls {
     const storesOf = (bucket: Bucket) => new Set([...bucket.active, ...bucket.stores.values()])
     const drop = (bucket: Bucket) => {
       bucket.entries.delete(key)
-      bucket.fresh.add(key)
       for (const store of storesOf(bucket)) {
         if (store.key === key) store.bump()
       }
@@ -635,17 +679,15 @@ export function useFlagCache(): FlagCacheControls {
     return {
       clear() {
         cache.snapshot?.entries.clear()
+        cache.fresh.clear()
         for (const bucket of cache.buckets.values()) {
-          const identities = [...bucket.entries.keys(), ...[...bucket.active].map(({ key }) => key)]
-          for (const identity of identities) {
-            bucket.fresh.add(identity)
-          }
           bucket.entries.clear()
           for (const store of storesOf(bucket)) store.bump()
         }
       },
       invalidate(flags) {
         const keys = new Set(flags.map((flag) => flag.key))
+        cache.fresh.mark(key, keys)
         for (const flagKey of keys) cache.snapshot?.entries.delete(flagKey)
         for (const bucket of cache.buckets.values()) {
           if (bucket.flags.some((flag) => keys.has(flag.key))) drop(bucket)

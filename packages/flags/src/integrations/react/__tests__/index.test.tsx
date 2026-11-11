@@ -149,6 +149,11 @@ function BetaAndTheme() {
   return <span>{`${betaValue}:${themeValue}`}</span>
 }
 
+function ThemeAndBeta() {
+  const [themeValue, betaValue] = useFlags([theme, beta])
+  return <span>{`${themeValue}:${betaValue}`}</span>
+}
+
 function EmptyTuple() {
   return <span>{useFlags([]).length}</span>
 }
@@ -525,6 +530,93 @@ describe("React integration", () => {
       return Promise.resolve()
     })
     expect(await screen.findByText("true")).toBeTruthy()
+  })
+
+  it("reads fresh for a flag list that mounts after invalidate or clear", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    const { capture, controls } = captureCache()
+    const tree = (child: ReactNode) => (
+      <FlagsProvider flags={flags}>
+        {capture}
+        <Suspense fallback="loading">{child}</Suspense>
+      </FlagsProvider>
+    )
+    const { rerender } = await renderAsync(tree(<Value item={beta} />))
+    expect(await screen.findByText("true")).toBeTruthy()
+
+    // No reader is mounted, and the other flag list has no bucket yet, when the cache drops beta.
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+    provider.state.value = false
+    await act(() => {
+      controls().invalidate([beta])
+      return Promise.resolve()
+    })
+    await act(() => {
+      rerender(tree(<BetaAndTheme />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false:dark")).toBeTruthy()
+
+    await act(() => {
+      rerender(tree(null))
+      return Promise.resolve()
+    })
+    provider.state.value = true
+    await act(() => {
+      controls().clear()
+      return Promise.resolve()
+    })
+    await act(() => {
+      rerender(tree(<ThemeAndBeta />))
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("dark:true")).toBeTruthy()
+  })
+
+  it("reads fresh when it prefetches a snapshot flag after clear", async () => {
+    const provider = makeProvider()
+    const flags = createFlags({
+      cache: { store: memoryStore() },
+      identify: () => ({ distinctId: "core" }),
+      provider: provider.single,
+    })
+    // The store holds the server's decision, which the provider no longer returns.
+    await flags.get(beta)
+    provider.state.value = false
+    const snapshot: FlagSnapshot = {
+      distinctId: "core",
+      flags: { beta: { kind: "boolean", source: "provider", value: true } },
+    }
+    const { capture, controls } = captureCache()
+    const { rerender } = await renderAsync(
+      <FlagsProvider flags={flags} snapshot={snapshot}>
+        {capture}
+      </FlagsProvider>
+    )
+    await act(async () => {
+      controls().clear()
+      await controls().prefetch([beta])
+    })
+    await act(() => {
+      rerender(
+        <FlagsProvider flags={flags} snapshot={snapshot}>
+          {capture}
+          <Suspense fallback="loading">
+            <Value item={beta} />
+          </Suspense>
+        </FlagsProvider>
+      )
+      return Promise.resolve()
+    })
+    expect(await screen.findByText("false")).toBeTruthy()
   })
 
   it("re-renders readers on invalidate after React resubscribes them", async () => {
